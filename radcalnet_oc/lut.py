@@ -9,7 +9,7 @@ import xarray as xr
 import pandas as pd
 import datetime
 
-from numba import njit,prange
+from numba import njit, prange
 
 import matplotlib.pyplot as plt
 
@@ -27,7 +27,8 @@ dir, filename = os.path.split(__file__)
 thuillier_file = files('radcalnet_oc.data.auxdata').joinpath('ref_atlas_thuillier3.nc')
 gueymard_file = files('radcalnet_oc.data.auxdata').joinpath('NewGuey2003.dat')
 kurucz_file = files('radcalnet_oc.data.auxdata').joinpath('kurucz_0.1nm.dat')
-tsis_file = files('radcalnet_oc.data.auxdata').joinpath('hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc')
+tsis_file = files('radcalnet_oc.data.auxdata').joinpath(
+    'hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc')
 sunglint_eps_file = files('radcalnet_oc.data.auxdata').joinpath('mean_rglint_small_angles_vza_le_12_sza_le_60.txt')
 rayleigh_file = files('radcalnet_oc.data.auxdata').joinpath('rayleigh_bodhaine.txt')
 
@@ -51,6 +52,7 @@ def Gamma2sigma(Gamma):
     '''Function to convert FWHM (Gamma) to standard deviation (sigma)'''
     return Gamma * np.sqrt(2.) / (np.sqrt(2. * np.log(2.)) * 2.)
 
+
 @njit
 def gaussian(x, mu, sigma):
     '''
@@ -60,16 +62,26 @@ def gaussian(x, mu, sigma):
     :param sigma: Standard deviation of the Gaussian distribution
     :return:
     '''
-    result= np.full((len(x)), np.nan, dtype=np.float32)
+    result = np.full((len(x)), np.nan, dtype=np.float32)
     for i in range(len(result)):
-        result[i]=1 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x[i] - mu) ** 2 / (2 * sigma ** 2))
+        result[i] = 1 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x[i] - mu) ** 2 / (2 * sigma ** 2))
     return result
 
 
 class LUT:
     def __init__(self,
+                 wl=np.arange(350, 2500, 10),
                  lut_file=opj(GRSDATA, TOALUT),
                  trans_lut_file=opj(GRSDATA, TRANSLUT)):
+        '''
+
+        :param wl: array of wavelength to process in nm
+        :param lut_file: path for diffuse light radiation LUT
+        :param trans_lut_file: path for irradiance transmittance LUT
+        '''
+
+        # set parameters
+        self.wl = wl
 
         # get path of necessary look-up tables
 
@@ -89,17 +101,26 @@ class LUT:
         :return:
         '''
 
-        # get LUT
-        self.gas_lut = xr.open_dataset(self.abs_gas_file, engine='h5netcdf')
-        self.aero_lut = xr.open_dataset(self.lut_file)
+        logging.info('loading look-up tables')
+        self.trans_lut = xr.open_dataset(self.trans_lut_file, engine=NETCDF_ENGINE)
+        # convert wavelength in nanometer
+        self.trans_lut['wl'] = self.trans_lut['wl'] * 1000
+        self.trans_lut['wl'].attrs['description'] = 'wavelength of simulation (nanometer)'
+
+        self.aero_lut = xr.open_dataset(self.lut_file, engine=NETCDF_ENGINE)
         # convert wavelength in nanometer
         self.aero_lut['wl'] = self.aero_lut['wl'] * 1000
         self.aero_lut['wl'].attrs['description'] = 'wavelength of simulation (nanometer)'
+        self.aero_lut['aot'] = self.aero_lut.aot.isel(wind=0).squeeze()
+
+        self.gas_lut = xr.open_dataset(self.abs_gas_file, engine='h5netcdf')
         self.Twv_lut = xr.open_dataset(self.water_vapor_transmittance_file, engine='h5netcdf')
 
     def lut_preparation(self,
                         wind=2,
-                        ang_resol={'sza': 1, 'vza': 1, 'raa': 0},
+                        sza=[20, 40, 60],
+                        vza=[0],
+                        azi=[0],
                         aot_refs=np.linspace(0.0, 0.8, 25),
                         weights=[0, 0.5, 1, 0., 0.]):
 
@@ -107,8 +128,6 @@ class LUT:
 
         aero_lut = self.aero_lut.sel(wind=wind, method='nearest')
         trans_lut = self.trans_lut.sel(wind=wind, method='nearest')
-        for param in ['sza', 'vza', 'raa']:
-            self.prod.raster[param + '_trunc'] = self.prod.raster[param].round(ang_resol[param])
 
         # set mixture of aerosol models
         # ['ARCT_rh70', 'COAV_rh70', 'DESE_rh70', 'MACL_rh70', 'URBA_rh70']
@@ -122,33 +141,41 @@ class LUT:
         mix_aero_lut_ = mix_aero_lut_ / np.sum(weights)
         mix_trans_lut_ = mix_trans_lut_ / np.sum(weights)
 
-        aero_lut = mix_aero_lut_.interp(wl=self.wl_true, method='quadratic')
-        self.trans_aero_lut = mix_trans_lut_.interp(wl=self.wl_true, method='quadratic')
+        aero_lut = mix_aero_lut_
+        self.trans_aero_lut = mix_trans_lut_
         del mix_aero_lut_, mix_trans_lut_
 
-        sza_ = np.unique(self.prod.raster.sza_trunc)
-        vza_ = np.unique(self.prod.raster.vza_trunc)
-        azi_ = np.unique((180. - self.prod.raster.raa_trunc) % 360)
+        #-----------------------------
+        # interpolation transmittance
+        #-----------------------------
+        self.trans_aero_lut = self.trans_aero_lut.interp(sza=[*sza, *vza])
+        self.trans_aero_lut = self.trans_aero_lut.interp(aot_ref=aot_refs, method='quadratic')
+        self.trans_aero_lut = self.trans_aero_lut.interp(wl=self.wl, method='quadratic')
 
-        sza_ = sza_[~np.isnan(sza_)]
-        vza_ = vza_[~np.isnan(vza_)]
-        azi_ = azi_[~np.isnan(azi_)]
+        # -----------------------------
+        # interpolation Rayleigh
+        # -----------------------------
+        self.Rray =aero_lut.I.interp(sza=sza, vza=vza).interp(azi=azi).interp(aot_ref=0, method='quadratic')
+        self.Rray = self.Rray/np.cos(np.radians(self.Rray.sza))
+        self.Rray =self.Rray.interp(wl=self.wl, method='quadratic')
 
-        self.trans_aero_lut = self.trans_aero_lut.interp(sza=[*sza_, *vza_]).interp(aot_ref=aot_refs,
-                                                                                    method='quadratic')
+        # -----------------------------
+        # interpolation atmo diffuse light
+        # -----------------------------
+        self.Rdiff_lut = aero_lut.I.interp(sza=sza, vza=vza)
+        self.Rdiff_lut =self.Rdiff_lut.interp(azi=azi).interp(aot_ref=aot_refs, method='quadratic')
+        self.Rdiff_lut =self.Rdiff_lut /np.cos(np.radians(self.Rdiff_lut.sza))
+        self.Rdiff_lut = self.Rdiff_lut.interp(wl=self.wl, method='quadratic')
 
-        Rdiff_lut = aero_lut.I.interp(sza=sza_, vza=vza_).interp(azi=azi_).interp(aot_ref=aot_refs, method='quadratic')
-        self.aot_lut = aero_lut.aot.interp(aot_ref=aot_refs, method='quadratic')
-        self.Rdiff_lut = Rdiff_lut
-        self.Rray = Rdiff_lut.sel(aot_ref=0)
+        self.aot_lut = aero_lut.aot.interp(aot_ref=aot_refs, method='quadratic').interp(wl=self.wl, method='quadratic')
 
-        self.szas = Rdiff_lut.sza.values
-        self.vzas = Rdiff_lut.vza.values
-        self.azis = Rdiff_lut.azi.values
-        self.aot_refs = Rdiff_lut.aot_ref.values
+        self.szas = self.Rdiff_lut.sza.values
+        self.vzas = self.Rdiff_lut.vza.values
+        self.azis = self.Rdiff_lut.azi.values
+        self.aot_refs = self.Rdiff_lut.aot_ref.values
 
-        _auxdata = AuxData(wl=self.wl_true)  # wl=masked.wl)
-        self.sunglint_eps = _auxdata.sunglint_eps  # ['mean'].interp(wl=wl_true)
+        _auxdata = AuxData(wl=self.wl)  # wl=masked.wl)
+        self.sunglint_eps = _auxdata.sunglint_eps  # ['mean'].interp(wl=wl)
         self.rot = _auxdata.rot
 
 
