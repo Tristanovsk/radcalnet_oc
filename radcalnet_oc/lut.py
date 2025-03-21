@@ -91,7 +91,7 @@ class LUT:
         self.abs_gas_file = files('radcalnet_oc.data.lut.gases') / 'lut_abs_opt_thickness_normalized.nc'
         # self.lut_file = opj(self.dirdata, 'lut', 'opac_osoaa_lut_v2.nc')
         self.water_vapor_transmittance_file = files('radcalnet_oc.data.lut.gases') / 'water_vapor_transmittance.nc'
-        print(self.abs_gas_file)
+
         self.load_auxiliary_data()
 
     def load_auxiliary_data(self):
