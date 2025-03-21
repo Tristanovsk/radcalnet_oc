@@ -86,13 +86,13 @@ class Gases():
                        'no2': 3e-6,
                        'o3': 6.5e-3,
                        'h2o': 30}
-        self.coef_abs_scat = {'co2': 0.4,
-                              'o2': 0.3,
-                              'o4': 0.3,
-                              'ch4': 0.5,
+        self.coef_abs_scat = {'co2': 1.,
+                              'o2': 1.,
+                              'o4': 1.,
+                              'ch4': 1.,
                               'no2': 1,
                               'o3': 1,
-                              'h2o': 0.3}
+                              'h2o': 1.}
 
 
 class GaseousTransmittance(Gases):
