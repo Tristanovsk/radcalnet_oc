@@ -186,3 +186,16 @@ class Misc:
     @staticmethod
     def air_mass(sza, vza):
         return 1 / np.cos(np.radians(vza)) + 1 / np.cos(np.radians(sza))
+
+    @staticmethod
+    def earth_sun_correction(dayofyear):
+        '''
+        Earth-Sun distance correction factor for adjustment of mean solar irradiance
+
+        :param dayofyear:
+        :return: correction factor
+        '''
+        theta = 2. * np.pi * dayofyear / 365
+        d2 = 1.00011 + 0.034221 * np.cos(theta) + 0.00128 * np.sin(theta) + \
+             0.000719 * np.cos(2 * theta) + 0.000077 * np.sin(2 * theta)
+        return d2

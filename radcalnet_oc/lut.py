@@ -47,13 +47,13 @@ NCPU = config['processor']['ncpu']
 NETCDF_ENGINE = config['processor']['netcdf_engine']
 
 
-@njit
+@njit(fastmath=True)
 def Gamma2sigma(Gamma):
     '''Function to convert FWHM (Gamma) to standard deviation (sigma)'''
     return Gamma * np.sqrt(2.) / (np.sqrt(2. * np.log(2.)) * 2.)
 
 
-@njit
+@njit(parallel=True, fastmath=True)
 def gaussian(x, mu, sigma):
     '''
     Generate gaussian distribution
@@ -63,7 +63,7 @@ def gaussian(x, mu, sigma):
     :return:
     '''
     result = np.full((len(x)), np.nan, dtype=np.float32)
-    for i in range(len(result)):
+    for i in prange(len(result)):
         result[i] = 1 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x[i] - mu) ** 2 / (2 * sigma ** 2))
     return result
 
@@ -356,18 +356,36 @@ class Spectral():
         :param info: optional parameter to feed the attributes of the output xarray
         :return:
         '''
+
         wl_ref = signal.wl.values
         fwhm = self.fwhm.values
         wl = self.fwhm.wl.values
+        xdims = signal.dims
 
-        signal_int = self.convolve_(wl_ref, signal.values, wl, fwhm)
-        # signal_int = []
-        # for fwhm_ in self.fwhm:
-        #     sig = self.Gamma2sigma(fwhm_.values)
-        #     rsr = self.gaussian(wl_ref, fwhm_.wl.values, sig)
-        #
-        #     signal_ = (signal * rsr).integrate('wl') / np.trapz(rsr, wl_ref)
-        #     signal_int.append(signal_.values)
-        return xr.DataArray(signal_int, name=name,
-                            coords={'wl': self.fwhm.wl.values},
-                            attrs=info)
+        if len(xdims) == 1:
+            signal_int = self.convolve_(wl_ref, signal.values, wl, fwhm)
+            signal_int = xr.DataArray(signal_int, name=name,
+                         coords={'wl': self.fwhm.wl.values},
+                         attrs=info)
+
+        else:
+            # to handle multidimensional xarray
+            xdims = np.array(xdims)
+            xdims = xdims[xdims != 'wl']
+
+            xsignal_int = []
+            for dim in xdims:
+                xsignal_int_ = []
+                for value, signal_ in signal.groupby(dim):
+                    #print(dim, value)
+                    signal_ = signal_.squeeze()
+                    _ = self.convolve_(signal_.wl.values, signal_.values, wl, fwhm)
+                    _ = xr.Dataset({name: (['wl'], _)},
+                                   coords={'wl': wl,
+                                           dim: value})
+                    xsignal_int_.append(_)
+                xsignal_int.append(xr.concat(xsignal_int_, dim=dim))
+            signal_int = xr.merge(xsignal_int).to_dataarray()
+            signal_int.attrs=info
+
+        return signal_int
