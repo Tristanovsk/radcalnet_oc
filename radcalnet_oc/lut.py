@@ -1,6 +1,3 @@
-'''
-Module to load LUT files.
-'''
 
 import os
 
@@ -39,7 +36,7 @@ configfile = files(__package__) / '../config.yml'
 with open(configfile, 'r') as file:
     config = yaml.safe_load(file)
 
-GRSDATA = config['path']['grsdata']
+LUTDATA = config['path']['lutdata']
 TOALUT = config['path']['toa_lut']
 TRANSLUT = config['path']['trans_lut']
 CAMS_PATH = config['path']['trans_lut']
@@ -71,10 +68,10 @@ def gaussian(x, mu, sigma):
 class LUT:
     def __init__(self,
                  wl=np.arange(350, 2500, 10),
-                 lut_file=opj(GRSDATA, TOALUT),
-                 trans_lut_file=opj(GRSDATA, TRANSLUT)):
+                 lut_file=opj(LUTDATA, TOALUT),
+                 trans_lut_file=opj(LUTDATA, TRANSLUT)):
         '''
-
+        Module to load LUT files.
         :param wl: array of wavelength to process in nm
         :param lut_file: path for diffuse light radiation LUT
         :param trans_lut_file: path for irradiance transmittance LUT
@@ -87,7 +84,7 @@ class LUT:
 
         self.lut_file = lut_file
         self.trans_lut_file = trans_lut_file
-        self.dirdata = config['path']['grsdata']
+        self.dirdata = config['path']['lutdata']
         self.abs_gas_file = files('radcalnet_oc.data.lut.gases') / 'lut_abs_opt_thickness_normalized.nc'
         # self.lut_file = opj(self.dirdata, 'lut', 'opac_osoaa_lut_v2.nc')
         self.water_vapor_transmittance_file = files('radcalnet_oc.data.lut.gases') / 'water_vapor_transmittance.nc'

@@ -1,6 +1,6 @@
-'''
-Atmospheric Correction utilities to manage LUT and atmosphere parameters (aerosols, gases)
-'''
+#'''
+#Atmospheric Correction utilities to manage LUT and atmosphere parameters (aerosols, gases)
+#'''
 
 import os, sys
 import numpy as np
@@ -9,11 +9,11 @@ from scipy.optimize import curve_fit
 
 
 class Aerosol:
-    '''
-    aerosol parameters and parameterizations
-    '''
 
     def __init__(self):
+        '''
+        Aerosol parameters and parameterizations
+        '''
         self.aot550 = 0.1
         self.wavelengths = []
         self.aot = []
@@ -71,11 +71,12 @@ class CamsParams:
 
 
 class Gases():
-    '''
-     Intermediate class to set parameters for absorbing gases.
-    '''
 
     def __init__(self):
+        '''
+        Intermediate class to set parameters for absorbing gases.
+        '''
+
         self.pressure = 1010
         self.pressure_gas_ref = 1000
 
