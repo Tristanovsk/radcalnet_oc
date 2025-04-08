@@ -64,6 +64,26 @@ def gaussian(x, mu, sigma):
         result[i] = 1 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x[i] - mu) ** 2 / (2 * sigma ** 2))
     return result
 
+@njit(fastmath=True)
+def super_gaussian(x, amplitude=1.0, mu=0.0, sigma=1.0, expon=2.0):
+    """super-Gaussian distribution
+    super_gaussian(x, amplitude, mu, sigma, expon) =
+        (amplitude/(sqrt(2*pi)*sigma)) * exp(-abs(x-mu)**expon / (2*sigma**expon))
+    """
+    sigma = max(1.e-15, sigma)
+    return amplitude / (np.sqrt(2 * np.pi) * sigma) * \
+            np.exp(-np.abs(x - mu) ** expon / (2 * sigma ** expon))
+
+@njit(fastmath=True)
+def super_gaussian_fwhm2sigma(fwhm,
+                              expon):
+    '''
+    Function to convert FWHM to standard deviation (sigma) of the super-gaussian distribution
+    :param fwhm:
+    :param expon:
+    :return:
+    '''
+    return fwhm/2*(2*np.log(2))**(-1/expon)
 
 class LUT:
     def __init__(self,
@@ -140,7 +160,7 @@ class LUT:
 
         aero_lut = mix_aero_lut_
         self.trans_aero_lut = mix_trans_lut_
-        del mix_aero_lut_, mix_trans_lut_
+
 
         #-----------------------------
         # interpolation transmittance
@@ -148,6 +168,8 @@ class LUT:
         self.trans_aero_lut = self.trans_aero_lut.interp(sza=[*sza, *vza])
         self.trans_aero_lut = self.trans_aero_lut.interp(aot_ref=aot_refs, method='quadratic')
         self.trans_aero_lut = self.trans_aero_lut.interp(wl=self.wl, method='quadratic')
+        # clean up the xarray DataArray object:
+        self.trans_aero_lut = self.trans_aero_lut.to_dataarray().squeeze().reset_coords(drop=True)
 
         # -----------------------------
         # interpolation Rayleigh
@@ -341,6 +363,78 @@ class Spectral():
             rsr = gaussian(wl_signal, wl[ii], sig)
             signal_[ii] = np.trapz((signal * rsr), wl_signal) / np.trapz(rsr, wl_signal)
         return signal_
+
+    @staticmethod
+    @njit(parallel=True)
+    def convolve2_(
+            wl_signal,
+            signal,
+            wl,
+            fwhm,
+            expon=2.
+    ):
+        '''
+        Convolution assuming Dirac for signal source spectral response
+        :paral wl_signal: wavelength array of spectral signal
+        :param signal: numpy of signal to convolve, coord=wl_signal
+        :param wl: numpy of wavelength coordinates of signal
+        :param fwhm: numpy with data=fwhm containing full width at half maximum in nm
+        :return: numpy of convoluted signal
+        '''
+        Nwl = len(wl)
+        signal_ = np.full((Nwl), np.nan, dtype=np.float32)
+        for ii in prange(len(fwhm)):
+            sig = super_gaussian_fwhm2sigma(fwhm[ii],expon)
+            rsr = super_gaussian(wl_signal, mu=wl[ii], sigma=sig,expon=expon)
+            signal_[ii] = np.trapz((signal * rsr), wl_signal) / np.trapz(rsr, wl_signal)
+        return signal_
+
+    def convolve2(self,
+                 signal,
+                 name='signal',
+                 expon=1,
+                 info={}):
+        '''
+        Convolve with spectral response of sensor based on full width at half maximum of each band
+        :param signal: xarray spectral signal to convolve, coord=wl
+        :param fwhm: xarray with data=fwhm containing full width at half maximum in nm, and coords=wl
+        :param info: optional parameter to feed the attributes of the output xarray
+        :return:
+        '''
+
+        wl_ref = signal.wl.values
+        fwhm = self.fwhm.values
+        wl = self.fwhm.wl.values
+        xdims = signal.dims
+
+        if len(xdims) == 1:
+            signal_int = self.convolve2_(wl_ref, signal.values, wl, fwhm, expon)
+            signal_int = xr.DataArray(signal_int, name=name,
+                         coords={'wl': self.fwhm.wl.values},
+                         attrs=info)
+
+        else:
+            # to handle multidimensional xarray
+            xdims = np.array(xdims)
+            xdims = xdims[xdims != 'wl']
+
+            xsignal_int = []
+            for dim in xdims:
+                xsignal_int_ = []
+                for value, signal_ in signal.groupby(dim):
+                    #print(dim, value)
+                    signal_ = signal_.squeeze()
+                    _ = self.convolve2_(signal_.wl.values, signal_.values, wl, fwhm, expon)
+                    _ = xr.Dataset({name: (['wl'], _)},
+                                   coords={'wl': wl,
+                                           dim: value})
+                    xsignal_int_.append(_)
+                xsignal_int.append(xr.concat(xsignal_int_, dim=dim))
+            signal_int = xr.merge(xsignal_int).to_dataarray()
+            signal_int.attrs=info
+
+        return signal_int
+
 
     def convolve(self,
                  signal,
