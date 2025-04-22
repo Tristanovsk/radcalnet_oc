@@ -1,0 +1,18 @@
+name: radcalnet_oc
+channels:
+  - conda-forge
+  - default
+dependencies:
+
+  - xarray
+  - dask
+  - pip>=20.1  # pip is needed as dependency
+  - pip:
+    - jupyter
+    - importlib_resources
+    - xmltodict
+    - docopt
+    - numba
+    - numpy
+    - pandas>=2.0.3
+    - -r requirements.txt
