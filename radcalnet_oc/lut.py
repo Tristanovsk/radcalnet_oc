@@ -199,16 +199,17 @@ class LUT:
 
 
 class AuxData():
-    def __init__(self, wl=None):
+    def __init__(self,
+                 wl=None):
         # load data from raw files
-        self.solar_irr = SolarIrradiance()
+        # self.solar_irr = SolarIrradiance()
         self.sunglint_eps = pd.read_csv(sunglint_eps_file, sep=r'\s+', index_col=0).to_xarray()
         self.rayleigh()
         self.pressure_rot_ref = 1013.25
 
         # reproject onto desired wavelengths
         if wl is not None:
-            self.solar_irr = self.solar_irr.interp(wl=wl)
+            # self.solar_irr = self.solar_irr.interp(wl=wl)
             self.sunglint_eps = self.sunglint_eps['mean'].interp(wl=wl)
             self.rot = self.rot.interp(wl=wl)
 
