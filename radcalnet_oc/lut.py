@@ -27,6 +27,8 @@ tsis_file = files('radcalnet_oc.data.auxdata').joinpath(
     'hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc')
 sunglint_eps_file = files('radcalnet_oc.data.auxdata').joinpath('mean_rglint_small_angles_vza_le_12_sza_le_60.txt')
 rayleigh_file = files('radcalnet_oc.data.auxdata').joinpath('rayleigh_bodhaine.txt')
+LUT_FILE_BACKUP = files('radcalnet_oc.data.lut.atmo').joinpath('toa_lut_opac_ultra_light.nc')
+
 
 # --------------------------------------------------
 # get path of other files as indicated in config.yml
@@ -128,13 +130,16 @@ class LUT:
         self.trans_lut['wl'].attrs['description'] = 'wavelength of simulation (nanometer)'
         try:
             self.aero_lut = xr.open_dataset(self.lut_file, engine=NETCDF_ENGINE)
-            # convert wavelength in nanometer
-            self.aero_lut['wl'] = self.aero_lut['wl'] * 1000
-            self.aero_lut['wl'].attrs['description'] = 'wavelength of simulation (nanometer)'
-            self.aero_lut['aot'] = self.aero_lut.aot.isel(wind=0).squeeze()
+
         except:
-            logging.info('LUT file '+self.lut_file+" not found, please download and save it the proper directory")
-            self.aero_lut = None
+            logging.info('LUT file '+self.lut_file+' not found, please download and save it the proper directory')
+            logging.info('LUT has been replaced with light dataset that might produce inaccuracies')
+            self.aero_lut = xr.open_dataset(LUT_FILE_BACKUP, engine=NETCDF_ENGINE)
+
+        # convert wavelength in nanometer
+        self.aero_lut['wl'] = self.aero_lut['wl'] * 1000
+        self.aero_lut['wl'].attrs['description'] = 'wavelength of simulation (nanometer)'
+        self.aero_lut['aot'] = self.aero_lut.aot.isel(wind=0).squeeze()
 
         self.gas_lut = xr.open_dataset(self.abs_gas_file, engine='h5netcdf')
         self.Twv_lut = xr.open_dataset(self.water_vapor_transmittance_file, engine='h5netcdf')

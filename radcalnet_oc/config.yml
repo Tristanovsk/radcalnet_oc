@@ -1,5 +1,5 @@
 path:
-  lutdata: '/data/grs/grsdata'
+  lutdata: '/data/grs/grsdata2'
   toa_lut: 'toa_lut_opac_wind_light_v2.nc'
   trans_lut: 'transmittance_lut_opac_wind_light_v2.nc'
   cams: '/data/cams'
