@@ -1,4 +1,3 @@
-
 import os
 
 import numpy as np
@@ -39,6 +38,7 @@ with open(configfile, 'r') as file:
 LUTDATA = config['path']['lutdata']
 TOALUT = config['path']['toa_lut']
 TRANSLUT = config['path']['trans_lut']
+TRANSLUT = files('radcalnet_oc.data.lut.atmo').joinpath(TRANSLUT)
 CAMS_PATH = config['path']['trans_lut']
 NCPU = config['processor']['ncpu']
 NETCDF_ENGINE = config['processor']['netcdf_engine']
@@ -64,6 +64,7 @@ def gaussian(x, mu, sigma):
         result[i] = 1 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x[i] - mu) ** 2 / (2 * sigma ** 2))
     return result
 
+
 @njit(fastmath=True)
 def super_gaussian(x, amplitude=1.0, mu=0.0, sigma=1.0, expon=2.0):
     """super-Gaussian distribution
@@ -72,7 +73,8 @@ def super_gaussian(x, amplitude=1.0, mu=0.0, sigma=1.0, expon=2.0):
     """
     sigma = max(1.e-15, sigma)
     return amplitude / (np.sqrt(2 * np.pi) * sigma) * \
-            np.exp(-np.abs(x - mu) ** expon / (2 * sigma ** expon))
+        np.exp(-np.abs(x - mu) ** expon / (2 * sigma ** expon))
+
 
 @njit(fastmath=True)
 def super_gaussian_fwhm2sigma(fwhm,
@@ -83,13 +85,14 @@ def super_gaussian_fwhm2sigma(fwhm,
     :param expon:
     :return:
     '''
-    return fwhm/2*(2*np.log(2))**(-1/expon)
+    return fwhm / 2 * (2 * np.log(2)) ** (-1 / expon)
+
 
 class LUT:
     def __init__(self,
                  wl=np.arange(350, 2500, 10),
                  lut_file=opj(LUTDATA, TOALUT),
-                 trans_lut_file=opj(LUTDATA, TRANSLUT)):
+                 trans_lut_file=TRANSLUT):
         '''
         Module to load LUT files.
         :param wl: array of wavelength to process in nm
@@ -161,10 +164,9 @@ class LUT:
         aero_lut = mix_aero_lut_
         self.trans_aero_lut = mix_trans_lut_
 
-
-        #-----------------------------
+        # -----------------------------
         # interpolation transmittance
-        #-----------------------------
+        # -----------------------------
         self.trans_aero_lut = self.trans_aero_lut.interp(sza=[*sza, *vza])
         self.trans_aero_lut = self.trans_aero_lut.interp(aot_ref=aot_refs, method='quadratic')
         self.trans_aero_lut = self.trans_aero_lut.interp(wl=self.wl, method='quadratic')
@@ -174,16 +176,16 @@ class LUT:
         # -----------------------------
         # interpolation Rayleigh
         # -----------------------------
-        self.Rray =aero_lut.I.interp(sza=sza, vza=vza).interp(azi=azi).interp(aot_ref=0, method='quadratic')
-        self.Rray = self.Rray/np.cos(np.radians(self.Rray.sza))
-        self.Rray =self.Rray.interp(wl=self.wl, method='quadratic')
+        self.Rray = aero_lut.I.interp(sza=sza, vza=vza).interp(azi=azi).interp(aot_ref=0, method='quadratic')
+        self.Rray = self.Rray / np.cos(np.radians(self.Rray.sza))
+        self.Rray = self.Rray.interp(wl=self.wl, method='quadratic')
 
         # -----------------------------
         # interpolation atmo diffuse light
         # -----------------------------
         self.Rdiff_lut = aero_lut.I.interp(sza=sza, vza=vza)
-        self.Rdiff_lut =self.Rdiff_lut.interp(azi=azi).interp(aot_ref=aot_refs, method='quadratic')
-        self.Rdiff_lut =self.Rdiff_lut /np.cos(np.radians(self.Rdiff_lut.sza))
+        self.Rdiff_lut = self.Rdiff_lut.interp(azi=azi).interp(aot_ref=aot_refs, method='quadratic')
+        self.Rdiff_lut = self.Rdiff_lut / np.cos(np.radians(self.Rdiff_lut.sza))
         self.Rdiff_lut = self.Rdiff_lut.interp(wl=self.wl, method='quadratic')
 
         self.aot_lut = aero_lut.aot.interp(aot_ref=aot_refs, method='quadratic').interp(wl=self.wl, method='quadratic')
@@ -385,16 +387,16 @@ class Spectral():
         Nwl = len(wl)
         signal_ = np.full((Nwl), np.nan, dtype=np.float32)
         for ii in prange(len(fwhm)):
-            sig = super_gaussian_fwhm2sigma(fwhm[ii],expon)
-            rsr = super_gaussian(wl_signal, mu=wl[ii], sigma=sig,expon=expon)
+            sig = super_gaussian_fwhm2sigma(fwhm[ii], expon)
+            rsr = super_gaussian(wl_signal, mu=wl[ii], sigma=sig, expon=expon)
             signal_[ii] = np.trapz((signal * rsr), wl_signal) / np.trapz(rsr, wl_signal)
         return signal_
 
     def convolve2(self,
-                 signal,
-                 name='signal',
-                 expon=1,
-                 info={}):
+                  signal,
+                  name='signal',
+                  expon=1,
+                  info={}):
         '''
         Convolve with spectral response of sensor based on full width at half maximum of each band
         :param signal: xarray spectral signal to convolve, coord=wl
@@ -411,8 +413,8 @@ class Spectral():
         if len(xdims) == 1:
             signal_int = self.convolve2_(wl_ref, signal.values, wl, fwhm, expon)
             signal_int = xr.DataArray(signal_int, name=name,
-                         coords={'wl': self.fwhm.wl.values},
-                         attrs=info)
+                                      coords={'wl': self.fwhm.wl.values},
+                                      attrs=info)
 
         else:
             # to handle multidimensional xarray
@@ -423,7 +425,7 @@ class Spectral():
             for dim in xdims:
                 xsignal_int_ = []
                 for value, signal_ in signal.groupby(dim):
-                    #print(dim, value)
+                    # print(dim, value)
                     signal_ = signal_.squeeze()
                     _ = self.convolve2_(signal_.wl.values, signal_.values, wl, fwhm, expon)
                     _ = xr.Dataset({name: (['wl'], _)},
@@ -432,10 +434,9 @@ class Spectral():
                     xsignal_int_.append(_)
                 xsignal_int.append(xr.concat(xsignal_int_, dim=dim))
             signal_int = xr.merge(xsignal_int).to_dataarray()
-            signal_int.attrs=info
+            signal_int.attrs = info
 
         return signal_int
-
 
     def convolve(self,
                  signal,
@@ -457,8 +458,8 @@ class Spectral():
         if len(xdims) == 1:
             signal_int = self.convolve_(wl_ref, signal.values, wl, fwhm)
             signal_int = xr.DataArray(signal_int, name=name,
-                         coords={'wl': self.fwhm.wl.values},
-                         attrs=info)
+                                      coords={'wl': self.fwhm.wl.values},
+                                      attrs=info)
 
         else:
             # to handle multidimensional xarray
@@ -469,7 +470,7 @@ class Spectral():
             for dim in xdims:
                 xsignal_int_ = []
                 for value, signal_ in signal.groupby(dim):
-                    #print(dim, value)
+                    # print(dim, value)
                     signal_ = signal_.squeeze()
                     _ = self.convolve_(signal_.wl.values, signal_.values, wl, fwhm)
                     _ = xr.Dataset({name: (['wl'], _)},
@@ -478,6 +479,6 @@ class Spectral():
                     xsignal_int_.append(_)
                 xsignal_int.append(xr.concat(xsignal_int_, dim=dim))
             signal_int = xr.merge(xsignal_int).to_dataarray()
-            signal_int.attrs=info
+            signal_int.attrs = info
 
         return signal_int
