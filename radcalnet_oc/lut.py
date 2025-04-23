@@ -126,12 +126,15 @@ class LUT:
         # convert wavelength in nanometer
         self.trans_lut['wl'] = self.trans_lut['wl'] * 1000
         self.trans_lut['wl'].attrs['description'] = 'wavelength of simulation (nanometer)'
-
-        self.aero_lut = xr.open_dataset(self.lut_file, engine=NETCDF_ENGINE)
-        # convert wavelength in nanometer
-        self.aero_lut['wl'] = self.aero_lut['wl'] * 1000
-        self.aero_lut['wl'].attrs['description'] = 'wavelength of simulation (nanometer)'
-        self.aero_lut['aot'] = self.aero_lut.aot.isel(wind=0).squeeze()
+        try:
+            self.aero_lut = xr.open_dataset(self.lut_file, engine=NETCDF_ENGINE)
+            # convert wavelength in nanometer
+            self.aero_lut['wl'] = self.aero_lut['wl'] * 1000
+            self.aero_lut['wl'].attrs['description'] = 'wavelength of simulation (nanometer)'
+            self.aero_lut['aot'] = self.aero_lut.aot.isel(wind=0).squeeze()
+        except:
+            logging.info('LUT file '+self.lut_file+" not found, please download and save it the proper directory")
+            self.aero_lut = None
 
         self.gas_lut = xr.open_dataset(self.abs_gas_file, engine='h5netcdf')
         self.Twv_lut = xr.open_dataset(self.water_vapor_transmittance_file, engine='h5netcdf')
