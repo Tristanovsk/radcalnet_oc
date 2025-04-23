@@ -5,6 +5,9 @@ channels:
 dependencies:
 
   - xarray
+  - netcdf4
+  - h5netcdf
+  - zarr
   - dask
   - pip>=20.1  # pip is needed as dependency
   - pip:
