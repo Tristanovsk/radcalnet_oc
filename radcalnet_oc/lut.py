@@ -32,7 +32,7 @@ rayleigh_file = files('radcalnet_oc.data.auxdata').joinpath('rayleigh_bodhaine.t
 # --------------------------------------------------
 # get path of other files as indicated in config.yml
 # --------------------------------------------------
-configfile = files(__package__) / '../config.yml'
+configfile = files(__package__) / 'config.yml'
 with open(configfile, 'r') as file:
     config = yaml.safe_load(file)
 
