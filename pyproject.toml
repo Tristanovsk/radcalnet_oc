@@ -24,7 +24,7 @@ where = ["."]
 
 [tool.setuptools.package-data]
 #"grs"= []
-"radcalnet_oc"= ['*.yml','data/lut/gases/*.nc', 'data/aux/*.txt']
+"radcalnet_oc"= ['*.yml','data/lut/gases/*.nc', 'data/auxdata/*']
 
 [tool.setuptools.exclude-package-data]
 "*" = [".gitattributes"]
