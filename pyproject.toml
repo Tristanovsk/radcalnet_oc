@@ -24,7 +24,10 @@ where = ["."]
 
 [tool.setuptools.package-data]
 #"grs"= []
-"radcalnet_oc"= ['*.yml','data/lut/gases/*.nc', 'data/auxdata/*']
+"radcalnet_oc"= ['*.yml',
+                 'data/lut/gases/*.nc',
+                 'data/lut/atmo/*.nc',
+                 'data/auxdata/*']
 
 [tool.setuptools.exclude-package-data]
 "*" = [".gitattributes"]
@@ -41,4 +44,4 @@ dev = ["black", "bumpver", "isort", "pip-tools", "pytest"]
 
 [project.urls]
 Homepage = "https://github.com/Tristanovsk/radcalnet_co"
-Documentation = "tbd"
+Documentation = "https://radcalnet-oc.readthedocs.io"
