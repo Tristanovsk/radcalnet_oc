@@ -1,4 +1,4 @@
-lut
+﻿lut
 ===
 
 .. automodule:: radcalnet_oc.data.lut
@@ -28,5 +28,6 @@ lut
    :template: custom-module-template.rst
    :recursive:
 
+   atmo
    gases
 

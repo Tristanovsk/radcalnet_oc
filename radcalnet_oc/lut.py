@@ -68,11 +68,23 @@ def gaussian(x, mu, sigma):
 
 
 @njit(fastmath=True)
-def super_gaussian(x, amplitude=1.0, mu=0.0, sigma=1.0, expon=2.0):
-    """super-Gaussian distribution
+def super_gaussian(x,
+                   amplitude=1.0,
+                   mu=0.0,
+                   sigma=1.0,
+                   expon=2.0):
+    '''
+    Super-Gaussian distribution:
     super_gaussian(x, amplitude, mu, sigma, expon) =
         (amplitude/(sqrt(2*pi)*sigma)) * exp(-abs(x-mu)**expon / (2*sigma**expon))
-    """
+    :param x:
+    :param amplitude:
+    :param mu:
+    :param sigma:
+    :param expon:
+    :return:
+    '''
+
     sigma = max(1.e-15, sigma)
     return amplitude / (np.sqrt(2 * np.pi) * sigma) * \
         np.exp(-np.abs(x - mu) ** expon / (2 * sigma ** expon))

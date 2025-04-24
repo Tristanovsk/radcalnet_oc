@@ -29,7 +29,7 @@ of passive optical satellite sensors above coastal and oceanic waters.
 
 .. toctree::
    :maxdepth: 3
-   :caption: GRS API
+   :caption: API
    :hidden:
 
    api
