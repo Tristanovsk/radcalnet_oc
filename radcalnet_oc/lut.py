@@ -168,6 +168,7 @@ class LUT:
                         vza=[0],
                         azi=[0],
                         aot_refs=np.linspace(0.0, 0.8, 25),
+                        TLu_exponent =1.07,
                         aerosol_combination=AEROSOL_COMBINATION):
 
         logging.info('LUT preparation')
@@ -186,12 +187,17 @@ class LUT:
         # -----------------------------
         # interpolation transmittance
         # -----------------------------
-        self.trans_aero_lut = trans_lut.interp(sza=[*sza, *vza]).sortby('sza')
-        self.trans_aero_lut = (self.trans_aero_lut * aerosol_combination).sum('model')
-        self.trans_aero_lut = self.trans_aero_lut.interp(aot_ref=aot_refs, method='quadratic')
+        self.trans_Ed = trans_lut.interp(sza=sza)#.sortby('sza') #, *vza
+        self.trans_Ed = (self.trans_Ed * aerosol_combination).sum('model')
+        self.trans_Ed = self.trans_Ed.interp(aot_ref=aot_refs, method='quadratic')
         #self.trans_aero_lut = self.trans_aero_lut.interp(wl=self.wl, method='quadratic')
         # clean up the xarray DataArray object:
-        self.trans_aero_lut = self.trans_aero_lut.to_dataarray().squeeze().reset_coords(drop=True)
+        self.trans_Ed = self.trans_Ed.to_dataarray().squeeze().reset_coords(drop=True)
+
+        self.trans_Lu = trans_lut.interp(sza=vza).sortby('sza').rename({'sza': 'vza'})** TLu_exponent  # , *vza
+        self.trans_Lu = (self.trans_Lu * aerosol_combination).sum('model')
+        self.trans_Lu = self.trans_Lu.interp(aot_ref=aot_refs, method='quadratic')
+        self.trans_Lu = self.trans_Lu.to_dataarray().squeeze().reset_coords(drop=True)
 
         # -----------------------------
         # interpolation Rayleigh

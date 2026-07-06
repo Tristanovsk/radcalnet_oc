@@ -26,8 +26,8 @@ class Process():
     def __init__(self,
 
                  input_db=None,
-                 vza=[0],
-                 azi=[0],
+                 vza=xr.DataArray([0], coords={'vza': [0]}, dims='vza'),
+                 azi=xr.DataArray([0], coords={'azi': [0]}, dims='azi'),
                  central_wl=np.arange(350, 2500, 1),
                  solar_database='tsis',
                  Rrs_name='Rrs'
@@ -66,7 +66,6 @@ class Process():
         logging.info('get solar irradiance')
         solar_irr = SolarIrradiance()
         self.F0 = solar_irr.__dict__[solar_database].interp(wl=full_wl)
-
 
         logging.info('get gaseous transmittance object')
         self.gas_trans = GaseousTransmittance(lut.gas_lut)
@@ -112,14 +111,39 @@ class Process():
         self.gas_trans.air_mass = 1. / self.muv
         self.Tg_u = self.gas_trans.get_gaseous_transmittance()
 
+    def get_direct_transmittance(self,
+                                 aot,
+                                 rot,
+                                 air_mass):
+        '''
+
+        :return:
+        '''
+
+        input_db = self.input_db
+        self.gas_trans.gas_tc['h2o'] = input_db.tcwv
+        self.gas_trans.pressure = input_db['pressure']
+        # gas_trans.gas_tc['h2o'] = tcwv
+        self.gas_trans.gas_tc['o3'] = input_db['tco3']
+        # gas_trans.gas_tc['ch4'] = tcch4
+        self.gas_trans.gas_tc['no2'] = input_db['tcno2']
+
+        self.gas_trans.air_mass = air_mass
+        Tg_dir = self.gas_trans.get_gaseous_transmittance()
+        Tdir = np.exp(-(rot + aot) * air_mass)
+
+        return Tg_dir * Tdir
+
+
     def get_irradiance_transmittance(self):
         '''
 
         :return:
         '''
-        self.Tra_d = self.lut.trans_aero_lut.interp(sza=self.sza,
-                                                    aot_ref=self.aot550
-                                                    ).interpolate_na('time').interp(wl=self.full_wl, method='quadratic')
+        self.Tra_d = self.lut.trans_Ed.interp(  # sza=self.sza,
+            aot_ref=self.aot550
+        ).interpolate_na('time'
+                         ).interp(wl=self.full_wl, method='quadratic')
 
     def get_radiance_transmittance(self):
         '''
@@ -127,9 +151,8 @@ class Process():
         :return:
         '''
 
-        tra_u = self.lut.trans_aero_lut.interp(sza=self.vza).interp(aot_ref=self.aot550) ** 1.07
-        tra_u = tra_u.interp(wl=self.full_wl, method='quadratic')
-        self.tra_u = tra_u.rename({'sza': 'vza'})
+        tra_u = self.lut.trans_Lu.interp(vza=self.vza).interp(aot_ref=self.aot550)
+        self.tra_u = tra_u.interp(wl=self.full_wl, method='quadratic')
 
     def get_downwelling_irradiance(self,
                                    aerosol_combination=AEROSOL_COMBINATION):
@@ -149,15 +172,15 @@ class Process():
 
         self.Ed = self.Tra_d * self.Tg_d * self.mu0 * self.F0 * self.D2
 
-    def lut_preparation(self,aerosol_combination=AEROSOL_COMBINATION):
+    def lut_preparation(self, aerosol_combination=AEROSOL_COMBINATION):
         '''
 
         :param aerosol_combination:
         :return:
         '''
-        self.sza_lut = np.sort(np.unique(np.round(self.sza,1)))
+        self.sza_lut = np.sort(np.unique(np.round(self.sza, 1)))
         self.lut.lut_preparation(sza=self.sza_lut,
-                                 vza=self.vza,
+                                 vza=self.vza.values,
                                  aerosol_combination=aerosol_combination)
 
     def execute(self,
@@ -172,7 +195,8 @@ class Process():
 
         # atmospheric + sky-reflection radiance
         self.lut.lut_preparation(sza=self.sza,
-                                 vza=self.vza,
+                                 vza=self.vza.values,
+                                 azi=self.azi,
                                  aerosol_combination=aerosol_combination)
 
         self.get_gas_transmittance()
@@ -190,7 +214,7 @@ class Process():
         # Ed = Ed.dropna('wl')
 
         Rrs = self.Rrs.interp(wl=self.full_wl).fillna(0)
-        self.Lw_boa =  Rrs * Ed
+        self.Lw_boa = Rrs * Ed
 
         Lw_toa = self.tra_u * self.Tg_u * self.Lw_boa
         Lw_toa = Lw_toa.fillna(0)
@@ -199,7 +223,8 @@ class Process():
 
         Ed.name = 'Ed'
 
-        radcalnet_db = Ed.reset_coords('sza')
+        radcalnet_db = Ed.to_dataset()  # .reset_coords('sza')
+        self.radcalnet_db = radcalnet_db
         radcalnet_db['Ed'].attrs = {'unit': 'mW m-2 nm-1',
                                     'description': 'Plane solar irradiance at bottom-of-atmosphere'}
 
@@ -218,8 +243,8 @@ class Process():
         radcalnet_db['E0'].attrs = {'unit': 'mW m-2 nm-1',
                                     'description': 'Plane solar irradiance at top-of-atmosphere'}
 
-        #radcalnet_db['Lw_toa'] = Lw_toa.reset_coords(drop=True)
-        #radcalnet_db['Lw_toa'].attrs = {'unit': 'mW m-2 sr-1 nm-1',
+        # radcalnet_db['Lw_toa'] = Lw_toa.reset_coords(drop=True)
+        # radcalnet_db['Lw_toa'].attrs = {'unit': 'mW m-2 sr-1 nm-1',
         #                                'description': 'water-leaving radiance at top-of-atmosphere'}
 
         radcalnet_db['Rtoa'] = Rtoa.reset_coords(drop=True)
@@ -232,9 +257,12 @@ class Process():
 
         radcalnet_db['aerosol_combination'] = self.lut.aerosol_combination
         radcalnet_db['aerosol_combination'].attrs = {'description':
-                                                        'relative proportion of each aerosol model used for the computation',
-                                                    'models': AEROSOL_MODELS }
+                                                         'relative proportion of each aerosol model used for the computation',
+                                                     'models': AEROSOL_MODELS}
         radcalnet_db['D2'] = self.D2
 
-        self.radcalnet_db = radcalnet_db.squeeze()
+        # add sza as coordinates
+        radcalnet_db['sza'] = self.sza
+        radcalnet_db = radcalnet_db.set_coords('sza')
 
+        self.radcalnet_db = radcalnet_db.squeeze()
