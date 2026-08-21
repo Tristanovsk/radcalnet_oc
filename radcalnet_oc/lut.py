@@ -186,7 +186,9 @@ class LUT:
 
         # -----------------------------
         # interpolation transmittance
+        # transmittance for irradiance and radiance
         # -----------------------------
+
         self.trans_Ed = trans_lut.interp(sza=sza)#.sortby('sza') #, *vza
         self.trans_Ed = (self.trans_Ed * aerosol_combination).sum('model')
         self.trans_Ed = self.trans_Ed.interp(aot_ref=aot_refs, method='quadratic')
@@ -194,10 +196,11 @@ class LUT:
         # clean up the xarray DataArray object:
         self.trans_Ed = self.trans_Ed.to_dataarray().squeeze().reset_coords(drop=True)
 
-        self.trans_Lu = trans_lut.interp(sza=vza).sortby('sza').rename({'sza': 'vza'})** TLu_exponent  # , *vza
-        self.trans_Lu = (self.trans_Lu * aerosol_combination).sum('model')
-        self.trans_Lu = self.trans_Lu.interp(aot_ref=aot_refs, method='quadratic')
-        self.trans_Lu = self.trans_Lu.to_dataarray().squeeze().reset_coords(drop=True)
+        self.trans_Eu = trans_lut.interp(sza=vza).sortby('sza').rename({'sza': 'vza'})
+        self.trans_Eu = (self.trans_Eu * aerosol_combination).sum('model')
+        self.trans_Eu = self.trans_Eu.interp(aot_ref=aot_refs, method='quadratic')
+        self.trans_Eu = self.trans_Eu.to_dataarray().squeeze().reset_coords(drop=True)
+        self.trans_Lu = self.trans_Eu**TLu_exponent
 
         # -----------------------------
         # interpolation Rayleigh
