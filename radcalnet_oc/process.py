@@ -151,7 +151,7 @@ class Process():
         :return:
         '''
 
-        tra_u = self.lut.trans_Lu.interp(vza=self.vza).interp(aot_ref=self.aot550)
+        tra_u = self.lut.trans_Lu.interp(aot_ref=self.aot550)#.interp(vza=self.vza)
         self.tra_u = tra_u.interp(wl=self.full_wl, method='quadratic')
 
     def get_downwelling_irradiance(self,

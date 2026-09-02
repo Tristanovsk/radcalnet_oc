@@ -310,6 +310,9 @@ class AuxData():
         data = pd.read_csv(rayleigh_file, skiprows=16, sep=' ', header=None)
         data.columns = ('wl', 'rot', 'dpol')
         self.rot = data.set_index('wl').to_xarray().rot
+        self.rot.attrs['description']="Rayleigh Optical Thickness for P=1013.25mb, T=288.15K, CO2=360ppm"
+        self.rot.attrs['reference'] = "Bodhaine, B.A., Wood, N.B, Dutton, E.G., Slusser, J.R. (1999). On Rayleigh " + \
+                                      "Optical Depth Calculations, J. Atmos. Ocean Tech., 16, 1854-1861."
 
 
 class SolarIrradiance():

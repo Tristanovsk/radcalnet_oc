@@ -252,3 +252,42 @@ class Misc:
         d2 = 1.00011 + 0.034221 * np.cos(theta) + 0.00128 * np.sin(theta) + \
              0.000719 * np.cos(2 * theta) + 0.000077 * np.sin(2 * theta)
         return d2
+
+
+class Radiometry():
+
+    def __init__(self):
+        # ---------------------------------------------
+        #      PARAMETERS
+        # Planck constant in J s or W s2
+        h = 6.6260695729e-3  # d-34
+        # light speed in m s-1
+        c = 2.99792458e0  # d8
+        # Avogadro Number in mol-1
+        Avogadro = 6.0221412927e0  # d23
+        self.Ahc = Avogadro * h * c
+        # ---------------------------------------------
+
+    def PAR(self,
+            Ed: xr.Dataset):
+        '''
+        Compute instantaneous PAR from Ed spectrum.
+        PAR in mW m-2
+        PAR_quanta in µmol photon m-2 s-1
+        Typical values of PAR above surface: 1,500 – 2,000 μmol m-2 s-1 (full sunlight).Overcast Day or Morning/Evening: 200 – 500 μmol m-2 s-1.
+        :param wl:
+        :param Ed:
+        :return:
+        '''
+
+        wl_range = slice(400, 700)
+        Ed_par = Ed.sel(wl=wl_range).squeeze()
+
+        #
+        # Ed_par.integrate('wl').values
+
+        # in mol photon m-2 s-1
+        PAR_d = ((Ed_par.wl * Ed_par).integrate('wl') / self.Ahc)
+        # conversion in µmol photon m-2 s-1
+        PAR_d = 1e-6 * PAR_d
+        return PAR_d.values
