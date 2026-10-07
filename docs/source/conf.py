@@ -1,144 +1,117 @@
 # Configuration file for the Sphinx documentation builder.
-#
-# For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
-# -- Path setup --------------------------------------------------------------
 
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-#
-import os
 import sys
+from pathlib import Path
 
+# Make the package importable without installation (local builds);
+# on Read the Docs the package is also pip-installed (see .readthedocs.yaml).
+DOCS_SOURCE = Path(__file__).resolve().parent
+REPO_ROOT = DOCS_SOURCE.parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 
-sys.path.insert(0, os.path.abspath('../..'))
+import radcalnet_oc
 
 # -- Project information -----------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'radcalnet_oc'
-copyright = '2025, Tristan Harmel'
+copyright = '2026, Tristan Harmel'
 author = 'Tristan Harmel'
-release = '0.0.1'
-today_fmt = "%Y-%m-%d"
+version = radcalnet_oc.__version__
+release = radcalnet_oc.__version__
+today_fmt = '%Y-%m-%d'
 
 # -- General configuration ---------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx.ext.autodoc',
-    'sphinx.ext.intersphinx',
-    'sphinx.ext.todo',
-    'sphinx.ext.coverage',
-    'sphinx.ext.viewcode',
+extensions = [
+    'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
-    'sphinx.ext.duration',
-    'sphinx.ext.doctest',
+    'sphinx.ext.napoleon',
+    'sphinx.ext.intersphinx',
     'sphinx.ext.mathjax',
+    'sphinx.ext.viewcode',
+    'sphinx_copybutton',
     'myst_nb',
-    'IPython.sphinxext.ipython_console_highlighting']
-
-## Include Python objects as they appear in source files
-## Default: alphabetically ('alphabetical')
-autodoc_member_order = 'bysource'
-## Default flags used by autodoc directives
-autodoc_default_flags = ['members', 'show-inheritance']
-## Generate autodoc stubs with summaries from code
-autosummary_generate = True
-
-templates_path = ['_templates']
-exclude_patterns = []
-
-
-
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
-
-# -- Options for HTML output -------------------------------------------------
-# The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "sphinx"
-
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
-#html_theme = 'alabaster'
-#html_theme = 'sphinx_rtd_theme'
-html_theme = 'sphinx_book_theme'
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
-
-html_theme_options = {
-    "repository_url": "https://github.com/Tristanovsk/radcalnet_oc",
-    "repository_branch": "main",
-    "use_repository_button": True,
-    "use_issues_button": True,
-    "use_edit_page_button": True,
-    "navigation_with_keys":True,
-    "path_to_docs": "docs/source",
-}
-
-
-html_logo = "_static/radcalnet-oc-logo.png"
-html_title = ""
-
-html_favicon = "_static/radcalnet-oc-favicon.png"
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ["_static"]
-html_css_files = ["custom.css"]
-
-# Custom sidebar templates, must be a dictionary that maps document names
-# to template names.
-
-html_show_sourcelink = False
-
-html_last_updated_fmt = today_fmt
-
-# -- Options for HTMLHelp output ------------------------------------------
-
-# Output file base name for HTML help builder.
-htmlhelp_basename = "radcalnet_oc_doc"
-
-# -------------------------------
-# For Jupyter notebook rendering
-# --------------------------------
-
-myst_enable_extensions = [
-    "amsmath",
-    "colon_fence",
-    "deflist",
-    "dollarmath",
-    "html_admonition",
-    "html_image",
-    "linkify",
-    "replacements",
-    "smartquotes",
-    "substitution",
 ]
 
-# Autodoc
-autodoc_default_options = {
-    'member-order': 'groupwise',
-    'show-inheritance': True,
+templates_path = ['_templates']
+
+# List of patterns, relative to source directory, that match files and
+# directories to ignore when looking for source files.
+exclude_patterns = ['_build', '**.ipynb_checkpoints', 'Thumbs.db', '.DS_Store']
+
+# -- Autodoc / autosummary ---------------------------------------------------
+
+autosummary_generate = True
+autoclass_content = 'both'          # the parameters are documented in __init__
+autodoc_typehints = 'none'          # types are given in the docstrings
+autodoc_member_order = 'bysource'
+# 'members' is set in the autosummary templates (_templates/autosummary/) to
+# avoid documenting objects twice
+add_module_names = False
+
+# The docstrings use reST fields (":param x:"); napoleon also converts the
+# NumPy sections ("Parameters", "Notes") if any.
+napoleon_google_docstring = False
+napoleon_numpy_docstring = True
+napoleon_use_rtype = False
+napoleon_use_ivar = True
+napoleon_preprocess_types = True
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'numpy': ('https://numpy.org/doc/stable', None),
+    'scipy': ('https://docs.scipy.org/doc/scipy', None),
+    'xarray': ('https://docs.xarray.dev/en/stable', None),
 }
 
-# Notebook integration parameters
-nbsphinx_execute = 'auto'
-#nb_execution_mode = "off"
-nb_execution_mode = "cache"
-nb_execution_timeout = -1
-nb_execution_allow_errors = True
+# labelled equations are numbered by page and cited with :eq:
+math_eqref_format = 'Eq. ({number})'
 
-# Manage new READTHEDOCS output mechanism
-cache_path = os.getenv('READTHEDOCS_OUTPUT')
-if cache_path is not None:
-    nb_execution_cache_path = f"{cache_path}/../docs/build/.jupyter_cache"
+# -- Options for HTML output -------------------------------------------------
 
-# Merge stderr and stdout
+html_theme = 'sphinx_book_theme'
+pygments_style = 'sphinx'
+
+html_theme_options = {
+    'repository_url': 'https://github.com/Tristanovsk/radcalnet_oc',
+    'repository_branch': 'main',
+    'path_to_docs': 'docs/source',
+    'use_repository_button': True,
+    'use_issues_button': True,
+    'use_edit_page_button': True,
+    'use_download_button': True,
+    'navigation_with_keys': True,
+    'show_toc_level': 2,
+}
+
+html_title = ''
+html_logo = '_static/radcalnet-oc-logo.png'
+html_favicon = '_static/radcalnet-oc-favicon.png'
+
+html_static_path = ['_static']
+html_show_sourcelink = False
+html_last_updated_fmt = today_fmt
+
+htmlhelp_basename = 'radcalnet_oc_doc'
+
+# -- MyST / notebook rendering -----------------------------------------------
+
+myst_enable_extensions = [
+    'amsmath',
+    'colon_fence',
+    'deflist',
+    'dollarmath',
+    'html_admonition',
+    'html_image',
+    'linkify',
+    'smartquotes',
+]
+myst_heading_anchors = 3
+
+# The tutorial notebooks need the look-up tables that are not available on
+# Read the Docs: they are rendered with the outputs stored in the notebooks,
+# not executed.
+nb_execution_mode = 'off'
 nb_merge_streams = True
-
+suppress_warnings = ['mystnb.unknown_mime_type', 'myst.header']
