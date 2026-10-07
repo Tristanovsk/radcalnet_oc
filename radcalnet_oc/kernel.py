@@ -1,3 +1,8 @@
+'''
+Atmospheric components of the simulation: aerosol model retrieval, gaseous transmittance and
+miscellaneous radiometric utilities (see :doc:`/methods`).
+'''
+
 
 
 import os, sys
@@ -32,18 +37,35 @@ AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 NETCDF_ENGINE = config['processor']['netcdf_engine']
 
 class Aerosol:
+    '''
+    Retrieval of the proportions of the aerosol models from the spectral aerosol optical thickness (AOT).
+
+    The normalized AOT measured (e.g. by AERONET) is fitted with a mixture of the normalized AOT spectra of
+    three OPAC models (desert ``DESE_rh70``, maritime clean ``MACL_rh70`` and water-soluble ``WASO_rh0``)
+    by bounded least squares (see :ref:`methods-aerosol`).
+
+    Example::
+
+        aerosol = Aerosol(naot, process.lut.naot_lut)
+        aerosol.process()
+        process.execute(aerosol_combination=aerosol.model_db.aerosol_combination)
+
+    :ivar model_db: :py:class:`xarray.Dataset` set by :py:meth:`process`, with ``aerosol_combination``
+        (dimensions ``time``, ``model``) and the residual ``cost`` of the fit
+    '''
 
     def __init__(self,
                  naot_db,
                  naot_lut,
                  wl_dimension="wl_aeronet",
                  ):
-        '''
-        Algorithm to retrieve aerosol models mixture from spectral aerosol optical thickness
-        The algorithm is based on the aerosol models used to  build the variable self.naot_lut
-        
-        :param naot_db: xarray with "time" dimension of normalized aerosol optical thickness 
-        :param wl_dimension: name of the spectral dimension of the input naot_db
+        r'''
+        :param naot_db: normalized aerosol optical thickness
+            :math:`\tau_a(\lambda)/\tau_a(\lambda_{ref})`, :py:class:`xarray.DataArray` with a ``time``
+            dimension and a spectral dimension; missing values are interpolated along the wavelengths and time
+        :param naot_lut: normalized aerosol optical thickness of the aerosol models (dimensions ``model``,
+            ``wl``), e.g. ``LUT().naot_lut``
+        :param wl_dimension: name of the spectral dimension of ``naot_db``
         '''
 
         self.naot_db = naot_db.rename({wl_dimension: "wl"})
@@ -65,8 +87,13 @@ class Aerosol:
 
 
     def func_aero(self, fcoef, n_aot):
-        '''function to fit spectral behavior of bimodal aerosols
-         onto aeronet optical thickness'''
+        '''
+        Normalized AOT spectrum of a mixture of the three aerosol models.
+
+        :param fcoef: proportions of the three models (normalized to a sum of 1)
+        :param n_aot: normalized AOT spectra of the three models, array of shape (3, number of wavelengths)
+        :return: normalized AOT spectrum of the mixture
+        '''
         fcoef = fcoef / np.sum(fcoef)
         sim = fcoef[0] * n_aot[0] + fcoef[1] * n_aot[1] + fcoef[2] * n_aot[2]
         return sim
@@ -76,11 +103,12 @@ class Aerosol:
                   n_aot_lut,
                   naot_mes):
         '''
-        Cost function for aerosl model retrieval
-        :param fcoef: proportions of each model
-        :param n_aot_lut: LUT with the spectral aot of each model
-        :param naot_mes: spectral aot from measurements
-        :return:
+        Residuals of the fit of the aerosol models.
+
+        :param fcoef: proportions of the three models
+        :param n_aot_lut: normalized AOT spectra of the three models
+        :param naot_mes: measured normalized AOT spectrum
+        :return: measured minus simulated normalized AOT, for each wavelength
         '''
         sim = self.func_aero(fcoef, n_aot_lut)
         return naot_mes - sim
@@ -88,9 +116,11 @@ class Aerosol:
     def process(self
                 ):
         '''
-        Optimization process to retrieve the proportion of each selected aerosol models
+        Retrieve the proportion of each aerosol model for each time of ``naot_db``.
 
-        :return:
+        The proportions are bounded between 0 and 1 and normalized to a sum of 1; the models not fitted
+        are set to 0. The result is stored in ``model_db``, with the models of ``config.yml``
+        (``settings: aerosol_models``) as ``model`` coordinate.
         '''
 
 
@@ -115,6 +145,13 @@ class Aerosol:
 
 
 class CamsParams:
+    '''
+    Name and resolution of a CAMS parameter.
+
+    :param name: name of the CAMS variable
+    :param resol: spatial resolution
+    '''
+
     def __init__(self,
                  name,
                  resol):
@@ -123,10 +160,19 @@ class CamsParams:
 
 
 class Gases():
+    '''
+    Default parameters of the absorbing gases, used by :py:class:`~radcalnet_oc.kernel.GaseousTransmittance`.
+
+    :ivar pressure: surface pressure (hPa), 1010 by default
+    :ivar pressure_gas_ref: reference pressure of the background gases optical thickness (hPa)
+    :ivar gas_tc: total column of each gas (kg m-2), keys ``'co2'``, ``'o2'``, ``'o4'``, ``'ch4'``,
+        ``'no2'``, ``'o3'``, ``'h2o'``
+    :ivar coef_abs_scat: scaling coefficient :math:`c_g` of the optical thickness of each gas (1 by default)
+    '''
 
     def __init__(self):
         '''
-        Intermediate class to set parameters for absorbing gases.
+        Set the default parameters.
         '''
 
         self.pressure = 1010
@@ -149,15 +195,31 @@ class Gases():
 
 
 class GaseousTransmittance(Gases):
+    r'''
+    Direct transmittance of the absorbing gases (see :doc:`/methods`).
+
+    The transmittance of a gas :math:`g` of total column :math:`U_g` is
+    :math:`T_g = \exp(-m\, c_g\, U_g\, \kappa_g(\lambda))`, with :math:`\kappa_g` the normalized
+    optical thickness of the gaseous look-up table and :math:`m` the air mass of the path. The
+    attributes ``pressure``, ``gas_tc`` and ``air_mass`` are set before calling
+    :py:meth:`get_gaseous_transmittance`::
+
+        gas_trans = GaseousTransmittance(lut.gas_lut)
+        gas_trans.pressure = 1013.
+        gas_trans.gas_tc['h2o'] = 25.        # kg m-2
+        gas_trans.air_mass = 1 / mu0
+        Tg = gas_trans.get_gaseous_transmittance()
+    '''
 
     def __init__(self,
                  gas_lut: xr.DataArray,
                  zenith_angle=0
                  ):
-        '''
-        Class containing functions to compute the direct transmittance of the absorbing gases.
-        :param gas_lut: xarray.DataArray Look-up table data for gaseous absorption
-        :param zenith_angle: zenith angle (solar or viewing) in degrees
+        r'''
+        :param gas_lut: look-up table of the normalized absorption optical thickness of the gases
+            (:py:class:`xarray.Dataset`, e.g. ``LUT().gas_lut``)
+        :param zenith_angle: zenith angle of the path (solar or viewing, deg), used to set the air mass
+            :math:`m = 1/\cos\theta`
         '''
         Gases.__init__(self)
         self.air_mass = 1. / np.cos(np.radians(zenith_angle))
@@ -165,9 +227,10 @@ class GaseousTransmittance(Gases):
 
     def Tgas_background(self):
         '''
-        Compute direct transmittance for background absorbing gases: :math:`CO, O_2, O_4`
+        Direct transmittance of the background gases (:math:`CO`, :math:`CO_2`, :math:`O_2`, :math:`O_4`),
+        with their optical thickness scaled by the ratio of the surface pressure to the reference pressure.
 
-        :return:
+        :return: transmittance at the wavelengths of the gaseous LUT (also stored in ``Tg_bg``)
         '''
         gl = self.gas_lut
         self.ot_air = self.pressure / self.pressure_gas_ref * \
@@ -181,14 +244,10 @@ class GaseousTransmittance(Gases):
              gas_name,
              ):
         '''
-        Compute hyperspectral transmittance for a given absorbing gas and
-        convolve it with the spectral response functions of the satellite sensor.
+        Direct transmittance of one absorbing gas, at the full spectral resolution of the gaseous LUT.
 
-        :param gas_name: name of the absorbing gas, choose between:
-            - 'h2o'
-            - 'o3'
-            - 'n2o'
-        :return: Gaseous transmittance for satellite bands
+        :param gas_name: name of the gas: ``'h2o'``, ``'o3'``, ``'no2'`` or ``'ch4'``
+        :return: transmittance at the wavelengths of the gaseous LUT
         '''
 
         ot = self.coef_abs_scat[gas_name] * self.gas_tc[gas_name] * self.gas_lut[gas_name]
@@ -199,8 +258,11 @@ class GaseousTransmittance(Gases):
                                   gases=['ch4', 'no2', 'o3', 'h2o'],
                                   background=True):
         '''
-        Get the final total gaseous transmittance.
-        :return:
+        Total direct transmittance of the absorbing gases, product of the transmittance of each gas.
+
+        :param gases: names of the variable gases to include
+        :param background: if True, include the background gases (:py:meth:`Tgas_background`)
+        :return: transmittance at the wavelengths of the gaseous LUT
         '''
 
         first = True
@@ -219,34 +281,53 @@ class GaseousTransmittance(Gases):
 
 class Misc:
     '''
-    Miscelaneous utilities
+    Miscellaneous utilities.
     '''
 
     @staticmethod
     def get_pressure(alt, psl):
-        '''Compute the pressure for a given altitude
-           alt : altitude in meters (float or np.array)
-           psl : pressure at sea level in hPa
-           palt : pressure at the given altitude in hPa'''
+        r'''
+        Pressure at a given altitude, from the barometric formula
+        :math:`P(z) = P_{sl}\,(1 - 0.0065\, z / 288.15)^{5.255}`.
+
+        :param alt: altitude (m), float or array (NaN are set to 0)
+        :param psl: pressure at sea level (hPa)
+        :return: pressure at the given altitude (hPa)
+        '''
 
         palt = psl * (1. - 0.0065 * np.nan_to_num(alt) / 288.15) ** 5.255
         return palt
 
     @staticmethod
     def transmittance_dir(aot, air_mass, rot=0):
+        r'''
+        Direct (beam) transmittance :math:`\exp\left[-(\tau_r + \tau_a)\, m\right]`.
+
+        :param aot: aerosol optical thickness
+        :param air_mass: air mass of the path
+        :param rot: Rayleigh optical thickness
+        :return: direct transmittance
+        '''
         return np.exp(-(rot + aot) * air_mass)
 
     @staticmethod
     def air_mass(sza, vza):
+        r'''
+        Air mass of the Sun-surface-sensor path, :math:`1/\cos\theta_v + 1/\cos\theta_s`.
+
+        :param sza: solar zenith angle (deg)
+        :param vza: viewing zenith angle (deg)
+        :return: air mass
+        '''
         return 1 / np.cos(np.radians(vza)) + 1 / np.cos(np.radians(sza))
 
     @staticmethod
     def earth_sun_correction(dayofyear):
-        '''
-        Earth-Sun distance correction factor for adjustment of mean solar irradiance
+        r'''
+        Earth-Sun distance correction factor :math:`d^2 = (\bar{d}/d)^2` of the mean solar irradiance.
 
-        :param dayofyear:
-        :return: correction factor
+        :param dayofyear: day of year (1--366)
+        :return: correction factor, to multiply the solar irradiance at mean Earth-Sun distance by
         '''
         theta = 2. * np.pi * dayofyear / 365
         d2 = 1.00011 + 0.034221 * np.cos(theta) + 0.00128 * np.sin(theta) + \
@@ -255,11 +336,17 @@ class Misc:
 
 
 class Radiometry():
+    '''
+    Radiometric conversions.
+    '''
 
     def __init__(self):
         # ---------------------------------------------
         #      PARAMETERS
         # Planck constant in J s or W s2
+        '''
+        Set the product of the Avogadro number, the Planck constant and the speed of light.
+        '''
         h = 6.6260695729e-3  # d-34
         # light speed in m s-1
         c = 2.99792458e0  # d8
@@ -270,14 +357,16 @@ class Radiometry():
 
     def PAR(self,
             Ed: xr.Dataset):
-        '''
-        Compute instantaneous PAR from Ed spectrum.
-        PAR in mW m-2
-        PAR_quanta in µmol photon m-2 s-1
-        Typical values of PAR above surface: 1,500 – 2,000 μmol m-2 s-1 (full sunlight).Overcast Day or Morning/Evening: 200 – 500 μmol m-2 s-1.
-        :param wl:
-        :param Ed:
-        :return:
+        r'''
+        Instantaneous photosynthetically available radiation from a downwelling irradiance spectrum,
+        :math:`\mathrm{PAR} = \frac{1}{N_A h c}\int_{400}^{700} \lambda\, E_d(\lambda)\, d\lambda`.
+
+        Typical values above the surface: 1500--2000 µmol photons m-2 s-1 in full sunlight,
+        200--500 µmol photons m-2 s-1 on an overcast day or in the morning or evening.
+
+        :param Ed: downwelling irradiance (mW m-2 nm-1), :py:class:`xarray.DataArray` with a ``wl``
+            dimension (nm)
+        :return: PAR (µmol photons m-2 s-1), numpy array
         '''
 
         wl_range = slice(400, 700)
