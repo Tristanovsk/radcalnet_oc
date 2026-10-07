@@ -34,6 +34,7 @@ extensions = ['sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.duration',
     'sphinx.ext.doctest',
+    'sphinx.ext.mathjax',
     'myst_nb',
     'IPython.sphinxext.ipython_console_highlighting']
 
