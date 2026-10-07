@@ -31,6 +31,7 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'sphinx_copybutton',
+    'sphinxcontrib.mermaid',
     'myst_nb',
 ]
 
@@ -83,6 +84,10 @@ html_theme_options = {
     'use_download_button': True,
     'navigation_with_keys': True,
     'show_toc_level': 2,
+    'logo': {
+        'image_light': '_static/radcalnet-oc-logo.png',
+        'image_dark': '_static/radcalnet-oc-logo-dark.png',
+    },
 }
 
 html_title = ''
@@ -90,6 +95,7 @@ html_logo = '_static/radcalnet-oc-logo.png'
 html_favicon = '_static/radcalnet-oc-favicon.png'
 
 html_static_path = ['_static']
+html_css_files = ['custom.css']
 html_show_sourcelink = False
 html_last_updated_fmt = today_fmt
 

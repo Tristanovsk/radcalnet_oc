@@ -1,0 +1,39 @@
+flowchart LR
+    subgraph main["Input main data"]
+        IN1["Surface measurement time series<br/>Rrs, sza, AOT, gas columns, pressure<br/>NetCDF / xarray.Dataset"]
+    end
+
+    subgraph aux["Input auxiliary data"]
+        IN2["Atmosphere TOA LUT<br/>NetCDF (external, config.yml)"]
+        IN3["Transmittance and gas LUTs,<br/>solar spectra, Rayleigh optical thickness<br/>packaged with radcalnet_oc"]
+    end
+
+    IN4["Sensor bands (optional)<br/>central wavelengths + FWHM"]
+
+    PROC["radcalnet_oc processing chain<br/>radcalnet_oc.Process"]
+
+    subgraph out["Output data"]
+        OUT1["Hyperspectral TOA simulation<br/>Rtoa, Ratm, Ed, E0, Rrs<br/>xarray.Dataset (NetCDF)"]
+        OUT2["Band-averaged simulation<br/>radcalnet_oc.Spectral"]
+    end
+
+    main --> PROC
+    aux --> PROC
+    PROC --> OUT1
+    OUT1 --> OUT2
+    IN4 --> OUT2
+
+    %% mid-grey arrows, visible on the light and dark themes
+    linkStyle default stroke:#8a8a8a,stroke-width:2px
+
+    classDef mainStyle fill:#3d85c6,stroke:#1c4587,stroke-width:2px,color:#ffffff
+    classDef auxStyle fill:#8e7cc3,stroke:#4a2d84,stroke-width:2px,color:#ffffff
+    classDef procStyle fill:#e69138,stroke:#a35a00,stroke-width:3px,color:#ffffff,font-weight:bold
+    classDef outStyle fill:#6aa84f,stroke:#274e13,stroke-width:2px,color:#ffffff
+    classDef groupStyle fill:#f3f3f3,stroke:#999999,stroke-dasharray: 4 3,color:#333333
+
+    class IN1 mainStyle
+    class IN2,IN3,IN4 auxStyle
+    class PROC procStyle
+    class OUT1,OUT2 outStyle
+    class main,aux,out groupStyle

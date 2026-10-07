@@ -21,6 +21,7 @@ passive optical satellite sensors above coastal and oceanic waters.
    installation
    usage
    methods
+   processing_chain
 
 .. toctree::
    :maxdepth: 2
