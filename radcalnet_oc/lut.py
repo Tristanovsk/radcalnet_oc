@@ -1,3 +1,11 @@
+'''
+Look-up tables, auxiliary data (solar spectra, Rayleigh optical thickness) and spectral response of
+the satellite sensors.
+
+The paths of the atmosphere look-up tables are set in ``config.yml`` (see :doc:`/installation`);
+the other data are installed with the package.
+'''
+
 import os
 
 import numpy as np
@@ -50,18 +58,26 @@ AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 
 @njit(fastmath=True)
 def Gamma2sigma(Gamma):
-    '''Function to convert FWHM (Gamma) to standard deviation (sigma)'''
+    r'''
+    Standard deviation of a Gaussian function from its full width at half maximum,
+    :math:`\sigma = \Gamma / (2\sqrt{2\ln 2})`.
+
+    :param Gamma: full width at half maximum
+    :return: standard deviation, in the unit of ``Gamma``
+    '''
     return Gamma / (2. * np.sqrt(2. * np.log(2.)))
 
 
 @njit(parallel=True, fastmath=True)
 def gaussian(x, mu, sigma):
-    '''
-    Generate gaussian distribution
-    :param x:
-    :param mu: mode of the Gaussian distribution
-    :param sigma: Standard deviation of the Gaussian distribution
-    :return:
+    r'''
+    Normalized Gaussian function
+    :math:`\frac{1}{\sigma\sqrt{2\pi}}\exp\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)`.
+
+    :param x: abscissa (e.g. wavelengths in nm), 1-D array
+    :param mu: mode of the Gaussian function
+    :param sigma: standard deviation of the Gaussian function
+    :return: values at ``x``, float32 array
     '''
     result = np.full((len(x)), np.nan, dtype=np.float32)
     for i in prange(len(result)):
@@ -76,18 +92,18 @@ def super_gaussian(x,
                    sigma=1.0,
                    expon=2.0):
     r'''
-    Super-Gaussian distribution:
+    Super-Gaussian function, a Gaussian function with a flatter top for :math:`p > 2`:
 
     .. math::
 
        S(x) = \frac{A}{\sqrt{2\pi}\,\sigma} \exp\left(-\frac{|x-\mu|^{p}}{2\sigma^{p}}\right)
 
-    :param x:
-    :param amplitude:
-    :param mu:
-    :param sigma:
-    :param expon:
-    :return:
+    :param x: abscissa (e.g. wavelengths in nm), float or array
+    :param amplitude: amplitude :math:`A`
+    :param mu: center :math:`\mu`
+    :param sigma: width parameter :math:`\sigma` (see :py:func:`super_gaussian_fwhm2sigma`)
+    :param expon: exponent :math:`p` (2 for a Gaussian function)
+    :return: values at ``x``
     '''
 
     sigma = max(1.e-15, sigma)
@@ -98,25 +114,43 @@ def super_gaussian(x,
 @njit(fastmath=True)
 def super_gaussian_fwhm2sigma(fwhm,
                               expon):
-    '''
-    Function to convert FWHM to standard deviation (sigma) of the super-gaussian distribution
-    :param fwhm:
-    :param expon:
-    :return:
+    r'''
+    Width parameter of a super-Gaussian function from its full width at half maximum,
+    :math:`\sigma = \frac{\Gamma}{2}\,(2\ln 2)^{-1/p}`.
+
+    :param fwhm: full width at half maximum :math:`\Gamma`
+    :param expon: exponent :math:`p` of the super-Gaussian function
+    :return: width parameter :math:`\sigma`, in the unit of ``fwhm``
     '''
     return fwhm / 2 * (2 * np.log(2)) ** (-1 / expon)
 
 
 class LUT:
+    '''
+    Look-up tables of the atmosphere and of the gaseous absorption.
+
+    At initialization, the tables are loaded (:py:meth:`load_auxiliary_data`); :py:meth:`lut_preparation`
+    then combines the aerosol models and interpolates the tables at the geometry of the simulation.
+
+    :ivar aero_lut: TOA look-up table (:py:class:`xarray.Dataset`): normalized radiance ``I`` and aerosol
+        optical thickness ``aot`` for the aerosol models, wind speeds, geometries and reference aerosol
+        optical thicknesses ``aot_ref`` (at 550 nm); wavelengths in nm
+    :ivar trans_lut: irradiance transmittance look-up table (:py:class:`xarray.Dataset`)
+    :ivar gas_lut: normalized absorption optical thickness of the gases
+    :ivar naot_lut: aerosol optical thickness of each model normalized by ``aot_ref``, used by
+        :py:class:`~radcalnet_oc.kernel.Aerosol`
+    '''
+
     def __init__(self,
                  wl=np.arange(350, 2500, 10),
                  lut_file=opj(LUTDATA, TOALUT),
                  trans_lut_file=TRANSLUT):
         '''
-        Module to load LUT files.
-        :param wl: array of wavelength to process in nm
-        :param lut_file: path for diffuse light radiation LUT
-        :param trans_lut_file: path for irradiance transmittance LUT
+        :param wl: wavelengths (nm) used by :py:meth:`lut_preparation_all_models` and for the auxiliary data
+        :param lut_file: path of the TOA look-up table (by default ``lutdata/toa_lut`` of ``config.yml``);
+            if not found, the light look-up table of the package is used
+        :param trans_lut_file: path of the irradiance transmittance look-up table (by default the one of the
+            package named ``trans_lut`` in ``config.yml``)
         '''
 
         # set parameters
@@ -135,9 +169,11 @@ class LUT:
 
     def load_auxiliary_data(self):
         '''
-        Load look-up tables data for gas absorption and backgroud transmittance
+        Load the look-up tables: TOA radiance, irradiance transmittance, gaseous absorption and water vapour
+        transmittance.
 
-        :return:
+        The wavelengths are converted from µm to nm. If the TOA look-up table is not found, the light
+        version of the package is used, with a lower accuracy (logged at ``INFO`` level).
         '''
 
         logging.info('loading look-up tables')
@@ -174,6 +210,31 @@ class LUT:
                         TLu_exponent =1.07,
                         aerosol_combination=AEROSOL_COMBINATION):
 
+        r'''
+        Combine the aerosol models and interpolate the look-up tables at the geometry of the simulation.
+
+        The tables of the aerosol models are combined linearly with the proportions ``aerosol_combination``
+        (:ref:`methods-aerosol`) and interpolated at the reference aerosol optical thicknesses ``aot_refs``.
+
+        :param wind: wind speed (m s-1); the nearest wind speed of the tables is used
+        :param sza: solar zenith angles (deg)
+        :param vza: viewing zenith angles (deg)
+        :param azi: relative azimuth angles (deg)
+        :param aot_refs: reference aerosol optical thicknesses at 550 nm of the interpolated tables
+        :param TLu_exponent: exponent :math:`\gamma` of the radiance transmittance,
+            :math:`t^{\uparrow} = (T^{\uparrow})^{\gamma}`
+        :param aerosol_combination: proportion of each aerosol model of ``config.yml``
+            (``settings: aerosol_models``), list, array or :py:class:`xarray.DataArray`
+
+        Sets the attributes:
+
+        - ``trans_Ed``: irradiance transmittance :math:`T^{\downarrow}` for the solar zenith angles
+        - ``trans_Eu``, ``trans_Lu``: upward irradiance and radiance transmittances for the viewing angles
+        - ``Rdiff_lut``: atmospheric path reflectance :math:`R_{atm} = I/\mu_0`
+        - ``Rray``: Rayleigh reflectance (no aerosol)
+        - ``aot_lut``: spectral aerosol optical thickness of the mixture
+        - ``rot``, ``sunglint_eps``: Rayleigh optical thickness and spectral shape of the sunglint
+        '''
         logging.info('LUT preparation')
 
         if isinstance(aerosol_combination, (list, np.ndarray)):
@@ -244,6 +305,19 @@ class LUT:
                                    aot_refs=np.linspace(0.0, 0.8, 25),
                                    ):
 
+        '''
+        Interpolate the look-up tables at the geometry of the simulation for each aerosol model, without
+        combining them (the ``model`` dimension is kept), at the wavelengths ``wl`` of the object.
+
+        :param wind: wind speed (m s-1); the nearest wind speed of the tables is used
+        :param sza: solar zenith angles (deg)
+        :param vza: viewing zenith angles (deg)
+        :param azi: relative azimuth angles (deg)
+        :param aot_refs: reference aerosol optical thicknesses at 550 nm of the interpolated tables
+
+        Sets the attributes ``trans_aero_lut``, ``Rray``, ``Rdiff_lut``, ``aot_lut``, ``rot`` and
+        ``sunglint_eps``.
+        '''
         logging.info('LUT preparation')
 
         aero_lut = self.aero_lut.sel(wind=wind, method='nearest')
@@ -286,10 +360,24 @@ class LUT:
 
 
 class AuxData():
+    '''
+    Auxiliary spectral data: Rayleigh optical thickness and mean spectral shape of the sunglint
+    reflectance.
+
+    :ivar rot: Rayleigh optical thickness (Bodhaine et al., 1999) for 1013.25 hPa
+    :ivar sunglint_eps: mean spectral shape of the sunglint reflectance (small angles,
+        vza <= 12 deg, sza <= 60 deg)
+    :ivar pressure_rot_ref: reference pressure of ``rot`` (hPa)
+    '''
+
     def __init__(self,
                  wl=None):
         # load data from raw files
         # self.solar_irr = SolarIrradiance()
+        '''
+        :param wl: wavelengths (nm) at which ``rot`` and ``sunglint_eps`` are interpolated; if None, the
+            original wavelengths are kept
+        '''
         self.sunglint_eps = pd.read_csv(sunglint_eps_file, sep=r'\s+', index_col=0).to_xarray()
         self.rayleigh()
         self.pressure_rot_ref = 1013.25
@@ -302,13 +390,11 @@ class AuxData():
 
     def rayleigh(self):
         '''
-        Rayleigh Optical Thickness for
-        P=1013.25mb,
-        T=288.15K,
-        CO2=360ppm
-        from
-        Bodhaine, B.A., Wood, N.B, Dutton, E.G., Slusser, J.R. (1999). On Rayleigh
-        Optical Depth Calculations, J. Atmos. Ocean Tech., 16, 1854-1861.
+        Load the Rayleigh optical thickness for P = 1013.25 hPa, T = 288.15 K and 360 ppm of CO2, from
+        Bodhaine, B. A., Wood, N. B., Dutton, E. G., Slusser, J. R. (1999). On Rayleigh optical depth
+        calculations, J. Atmos. Ocean. Tech., 16, 1854-1861.
+
+        Sets the attribute ``rot`` (:py:class:`xarray.DataArray`, wavelengths in nm).
         '''
         data = pd.read_csv(rayleigh_file, skiprows=16, sep=' ', header=None)
         data.columns = ('wl', 'rot', 'dpol')
@@ -319,8 +405,21 @@ class AuxData():
 
 
 class SolarIrradiance():
+    '''
+    Extraterrestrial solar irradiance spectra at mean Earth-Sun distance, in mW m-2 nm-1, between 300 and
+    2600 nm.
+
+    :ivar tsis: TSIS-1 hybrid solar reference spectrum (Coddington et al., 2021), 0.1 nm resolution
+    :ivar thuillier: Thuillier et al. (2003) spectrum
+    :ivar gueymard: Gueymard (2004) spectrum
+    :ivar kurucz: Kurucz (1992) spectrum, 0.1 nm resolution
+    '''
+
     def __init__(self, wl=None):
         # load data from raw files
+        '''
+        :param wl: not used
+        '''
         self.wl_min = 300
         self.wl_max = 2600
 
@@ -331,8 +430,9 @@ class SolarIrradiance():
 
     def read_tsis(self):
         '''
-        Open TSIS data and convert them into xarray in mW/m2/nm
-        :return:
+        Read the TSIS-1 hybrid solar reference spectrum.
+
+        :return: solar irradiance (mW m-2 nm-1), :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
         '''
         tsis = xr.open_dataset(tsis_file)
         tsis = tsis.set_index(wavelength='Vacuum Wavelength').rename(
@@ -348,8 +448,9 @@ class SolarIrradiance():
 
     def read_thuillier(self):
         '''
-        Open Thuillier data and convert them into xarray in mW/m2/nm
-        :return:
+        Read the Thuillier solar spectrum.
+
+        :return: solar irradiance (mW m-2 nm-1), :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
         '''
         solar_irr = xr.open_dataset(thuillier_file).squeeze().data.drop('time') * 1e3
         solar_irr = solar_irr.rename({'wavelength': 'wl'})
@@ -360,8 +461,9 @@ class SolarIrradiance():
 
     def read_gueymard(self):
         '''
-        Open Thuillier data and convert them into xarray in mW/m2/nm
-        :return:
+        Read the Gueymard solar spectrum.
+
+        :return: solar irradiance (mW m-2 nm-1), :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
         '''
         solar_irr = pd.read_csv(gueymard_file, sep=r'\s+', skiprows=30, header=None)
         solar_irr.columns = ['wl', 'data']
@@ -374,8 +476,9 @@ class SolarIrradiance():
 
     def read_kurucz(self):
         '''
-        Open Kurucz data and convert them into xarray in mW/m2/nm
-        :return:
+        Read the Kurucz solar spectrum.
+
+        :return: solar irradiance (mW m-2 nm-1), :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
         '''
         solar_irr = pd.read_csv(kurucz_file, sep=r'\s+', skiprows=11, header=None)
         solar_irr.columns = ['wl', 'data']
@@ -390,23 +493,36 @@ class SolarIrradiance():
 
     def interp(self, wl=[440, 550, 660, 770, 880]):
         '''
-        Interpolation on new wavelengths
-        :param wl: wavelength in nm
-        :return: update variables of the class
+        Interpolate the Thuillier and Gueymard spectra at new wavelengths (in place).
+
+        :param wl: wavelengths (nm)
         '''
         self.thuillier = self.thuillier.interp(wl=wl)
         self.gueymard = self.gueymard.interp(wl=wl)
 
 
 class Spectral():
+    '''
+    Spectral response of the bands of a satellite sensor, modelled from their central wavelength and
+    full width at half maximum (FWHM), and convolution of hyperspectral signals with these responses
+    (see :ref:`spectral_convolution`).
+
+    Example::
+
+        spectral = Spectral(central_wl=np.array([443., 490., 560., 665., 865.]), fwhm=20.)
+        Rtoa_bands = spectral.convolve2(radcalnet_db.Rtoa)
+
+    :ivar fwhm: FWHM of the bands (nm), :py:class:`xarray.DataArray` with the central wavelengths as
+        ``wl`` coordinate
+    '''
+
     def __init__(self,
                  central_wl,
                  fwhm):
         '''
-        Convolve with spectral response of sensor based on full width at half maximum of each band
-        :param central_wl: numpy array of the central wavelengths
-        :param fwhm: scalar or numpy array containing full width at half maximum in nm                :param info: optional parameter to feed the attributes of the output xarray
-        :return:
+        :param central_wl: central wavelengths of the bands (nm), numpy array
+        :param fwhm: full width at half maximum of the bands (nm), scalar (same for all the bands) or numpy
+            array
         '''
         self.central_wl = central_wl
         if not isinstance(fwhm, np.ndarray):
@@ -419,6 +535,11 @@ class Spectral():
 
     def plot_rsr(self):
 
+        '''
+        Plot the Gaussian spectral response functions of the bands.
+
+        :return: :py:class:`matplotlib.figure.Figure`
+        '''
         wl_ref = np.linspace(360, 2550, 10000)
         fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(10, 4))
 
@@ -440,12 +561,13 @@ class Spectral():
             fwhm,
     ):
         '''
-        Convolution assuming Dirac for signal source spectral response
-        :paral wl_signal: wavelength array of spectral signal
-        :param signal: numpy of signal to convolve, coord=wl_signal
-        :param wl: numpy of wavelength coordinates of signal
-        :param fwhm: numpy with data=fwhm containing full width at half maximum in nm
-        :return: numpy of convoluted signal
+        Convolution of a spectrum with Gaussian spectral responses (numba function).
+
+        :param wl_signal: wavelengths of the signal (nm), 1-D array
+        :param signal: spectrum to convolve, 1-D array at ``wl_signal``
+        :param wl: central wavelengths of the bands (nm)
+        :param fwhm: full width at half maximum of the bands (nm)
+        :return: band values, float32 array
         '''
         Nwl = len(wl)
         signal_ = np.full((Nwl), np.nan, dtype=np.float32)
@@ -466,13 +588,16 @@ class Spectral():
             threshold=1e-6
     ):
         '''
-        Convolution assuming Dirac for signal source spectral response
-        :paral wl_signal: wavelength array of spectral signal
-        :param signal: numpy of signal to convolve, coord=wl_signal
-        :param wl: numpy of wavelength coordinates of signal
-        :param fwhm: numpy with data=fwhm containing full width at half maximum in nm
-        :param threshold: minimum values of the response function to be included in the convolution
-        :return: numpy of convoluted signal
+        Convolution of a spectrum with super-Gaussian spectral responses (numba function).
+
+        :param wl_signal: wavelengths of the signal (nm), 1-D array
+        :param signal: spectrum to convolve, 1-D array at ``wl_signal``
+        :param wl: central wavelengths of the bands (nm)
+        :param fwhm: full width at half maximum of the bands (nm)
+        :param expon: exponent of the super-Gaussian function (2 for a Gaussian function)
+        :param threshold: values of the spectral response below this threshold are ignored, to speed up the
+            computation
+        :return: band values, float32 array
         '''
 
         Nwl = len(wl)
@@ -494,10 +619,12 @@ class Spectral():
                     signal,
                     convolve_1d):
         '''
-        Apply a 1-D convolution function to each spectrum of a multidimensional signal
-        :param signal: xarray.DataArray spectral signal to convolve, coord=wl, any other dimensions
-        :param convolve_1d: function(wl_signal, signal_1d) returning the band values
-        :return: xarray.DataArray with the band wavelengths as 'wl' coordinate
+        Apply a 1-D convolution function to each spectrum of a multidimensional signal.
+
+        :param signal: spectral signal, :py:class:`xarray.DataArray` with a ``wl`` dimension (nm) and any
+            other dimensions
+        :param convolve_1d: function ``(wl_signal, signal_1d)`` returning the band values
+        :return: :py:class:`xarray.DataArray` with the central wavelengths of the bands as ``wl`` coordinate
         '''
         wl_signal = signal.wl.values
         signal_int = xr.apply_ufunc(
@@ -517,12 +644,16 @@ class Spectral():
                   threshold=1e-4,
                   info={}):
         '''
-        Convolve with spectral response of sensor based on full width at half maximum of each band
-        :param signal: xarray spectral signal to convolve, coord=wl
-        :param fwhm: xarray with data=fwhm containing full width at half maximum in nm, and coords=wl
-        :param info: optional parameter to feed the attributes of the output xarray
-        :param threshold: minimum values of the response function to be included in the convolution
-        :return:
+        Convolve a signal with super-Gaussian spectral responses of the bands, Eq. :eq:`convolution`.
+
+        :param signal: spectral signal, :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
+        :param name: name of the output variable if ``signal`` has no name
+        :param expon: exponent of the super-Gaussian function (2 for a Gaussian function)
+        :param threshold: values of the spectral response below this threshold are ignored, to speed up the
+            computation
+        :param info: not used (the attributes of ``signal`` are kept)
+        :return: band values: :py:class:`xarray.DataArray` for a 1-D signal, :py:class:`xarray.Dataset` with
+            one variable for a multidimensional signal; the ``wl`` coordinate gives the central wavelengths
         '''
 
         wl_ref = signal.wl.values
@@ -551,11 +682,13 @@ class Spectral():
                  name='signal',
                  info={}):
         '''
-        Convolve with spectral response of sensor based on full width at half maximum of each band
-        :param signal: xarray spectral signal to convolve, coord=wl
-        :param fwhm: xarray with data=fwhm containing full width at half maximum in nm, and coords=wl
-        :param info: optional parameter to feed the attributes of the output xarray
-        :return:
+        Convolve a signal with Gaussian spectral responses of the bands, Eq. :eq:`convolution`.
+
+        :param signal: spectral signal, :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
+        :param name: name of the output variable
+        :param info: attributes of the output
+        :return: band values, :py:class:`xarray.DataArray` (with an extra ``variable`` dimension of size 1
+            for a multidimensional signal); the ``wl`` coordinate gives the central wavelengths
         '''
 
         wl_ref = signal.wl.values

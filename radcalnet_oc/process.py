@@ -1,3 +1,11 @@
+'''
+Simulation of the top-of-atmosphere signal from surface measurements.
+
+:py:class:`Process` chains the steps described in :doc:`/methods`: solar irradiance, gaseous and
+atmospheric transmittances, downwelling irradiance, water-leaving radiance, atmospheric path
+reflectance and top-of-atmosphere reflectance.
+'''
+
 import os
 
 import numpy as np
@@ -23,6 +31,25 @@ AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 
 
 class Process():
+    '''
+    Simulation of the top-of-atmosphere (TOA) signal for a time series of surface measurements.
+
+    The input dataset is read at initialization; :py:meth:`execute` computes the simulation and stores
+    it in ``radcalnet_db``.
+
+    Example::
+
+        process = Process(input_db=input_db, vza=vza, azi=azi)
+        process.execute()
+        process.radcalnet_db.Rtoa
+
+    :ivar lut: :py:class:`~radcalnet_oc.lut.LUT` object with the look-up tables
+    :ivar full_wl: wavelengths of the simulation (nm), from the gaseous absorption LUT (350--2500 nm)
+    :ivar F0: extraterrestrial solar irradiance at ``full_wl`` (mW m-2 nm-1)
+    :ivar gas_trans: :py:class:`~radcalnet_oc.kernel.GaseousTransmittance` object
+    :ivar radcalnet_db: output :py:class:`xarray.Dataset`, set by :py:meth:`execute`
+    '''
+
     def __init__(self,
 
                  input_db=None,
@@ -33,12 +60,16 @@ class Process():
                  Rrs_name='Rrs'
                  ):
         '''
-
-        :param input_db:
-        :param vza:
-        :param azi:
-        :param central_wl:
-        :param solar_database:
+        :param input_db: time series of the surface measurements, :py:class:`xarray.Dataset` with a
+            ``time`` dimension and the variables listed in :doc:`/usage` (``Rrs``, ``sza``,
+            ``day_of_year``, ``aot550``, ``pressure``, ``tcwv``, ``tco3``, ``tcno2``...);
+            if None, the clear-water template of the package is used
+        :param vza: viewing zenith angles (deg), :py:class:`xarray.DataArray` with a ``vza`` dimension
+        :param azi: relative azimuth angles (deg), :py:class:`xarray.DataArray` with an ``azi`` dimension
+        :param central_wl: not used (the wavelengths are those of the gaseous absorption LUT)
+        :param solar_database: solar spectrum used for :math:`F_0`: ``'tsis'`` (default), ``'thuillier'``,
+            ``'gueymard'`` or ``'kurucz'``
+        :param Rrs_name: name of the remote-sensing reflectance variable in ``input_db``
         '''
 
         if input_db is None:
@@ -76,8 +107,12 @@ class Process():
     def set_param(self,
                   Rrs_name='Rrs'):
         '''
+        Read the solar geometry, the remote-sensing reflectance, the aerosol optical thickness and the
+        Earth-Sun distance correction from the input dataset.
 
-        :return:
+        :param Rrs_name: name of the remote-sensing reflectance variable in ``input_db``
+
+        Sets the attributes ``sza``, ``mu0``, ``muv``, ``Rrs``, ``aot550`` and ``D2``.
         '''
 
         input_db = self.input_db
@@ -93,9 +128,12 @@ class Process():
         self.D2 = Misc.earth_sun_correction(input_db['day_of_year'])
 
     def get_gas_transmittance(self):
-        '''
+        r'''
+        Compute the downward and upward gaseous transmittances :math:`T_g^{\downarrow}` and
+        :math:`T_g^{\uparrow}` (:ref:`Gaseous transmittance <methods>`) from the surface pressure and the
+        water vapour, ozone and nitrogen dioxide columns of the input dataset.
 
-        :return:
+        Sets the attributes ``Tg_d`` (air mass :math:`1/\mu_0`) and ``Tg_u`` (air mass :math:`1/\mu_v`).
         '''
         input_db = self.input_db
         self.gas_trans.gas_tc['h2o'] = input_db.tcwv
@@ -115,9 +153,14 @@ class Process():
                                  aot,
                                  rot,
                                  air_mass):
-        '''
+        r'''
+        Direct (beam) transmittance including gaseous absorption, Rayleigh and aerosol extinction:
+        :math:`T_g \exp\left[-(\tau_r + \tau_a)\, m\right]`.
 
-        :return:
+        :param aot: aerosol optical thickness :math:`\tau_a`
+        :param rot: Rayleigh optical thickness :math:`\tau_r`
+        :param air_mass: air mass :math:`m` of the path (e.g. :math:`1/\mu_0 + 1/\mu_v`)
+        :return: direct transmittance at the wavelengths of the gaseous LUT
         '''
 
         input_db = self.input_db
@@ -136,9 +179,11 @@ class Process():
 
 
     def get_irradiance_transmittance(self):
-        '''
+        r'''
+        Interpolate the total (direct + diffuse) irradiance transmittance :math:`T^{\downarrow}` at the
+        aerosol optical thickness at 550 nm of each measurement and at the wavelengths of the simulation.
 
-        :return:
+        Requires the LUT to be prepared (:py:meth:`lut_preparation`). Sets the attribute ``Tra_d``.
         '''
         self.Tra_d = self.lut.trans_Ed.interp(  # sza=self.sza,
             aot_ref=self.aot550
@@ -146,9 +191,11 @@ class Process():
                          ).interp(wl=self.full_wl, method='quadratic')
 
     def get_radiance_transmittance(self):
-        '''
+        r'''
+        Interpolate the upward radiance transmittance :math:`t^{\uparrow}` at the aerosol optical thickness
+        at 550 nm of each measurement and at the wavelengths of the simulation.
 
-        :return:
+        Requires the LUT to be prepared (:py:meth:`lut_preparation`). Sets the attribute ``tra_u``.
         '''
 
         tra_u = self.lut.trans_Lu.interp(aot_ref=self.aot550)#.interp(vza=self.vza)
@@ -156,10 +203,13 @@ class Process():
 
     def get_downwelling_irradiance(self,
                                    aerosol_combination=AEROSOL_COMBINATION):
-        '''
-        Function to get the downwelling irradiance at the bottom-of-atmosphere level.
+        r'''
+        Compute the downwelling plane irradiance at the bottom of the atmosphere,
+        :math:`E_d = T^{\downarrow}\, T_g^{\downarrow}\, \mu_0\, d^2\, F_0` (mW m-2 nm-1).
 
-        :return:
+        Requires the LUT to be prepared (:py:meth:`lut_preparation`). Sets the attribute ``Ed``.
+
+        :param aerosol_combination: not used (the aerosol models are those of the prepared LUT)
         '''
 
         self.get_gas_transmittance()
@@ -174,9 +224,11 @@ class Process():
 
     def lut_preparation(self, aerosol_combination=AEROSOL_COMBINATION):
         '''
+        Prepare the look-up tables for the solar zenith angles of the input (rounded to 0.1 deg) and the
+        viewing zenith angles, with the given proportions of the aerosol models.
 
-        :param aerosol_combination:
-        :return:
+        :param aerosol_combination: proportion of each aerosol model of ``config.yml``
+            (``settings: aerosol_models``), list, array or :py:class:`xarray.DataArray`
         '''
         self.sza_lut = np.sort(np.unique(np.round(self.sza, 1)))
         self.lut.lut_preparation(sza=self.sza_lut,
@@ -187,10 +239,16 @@ class Process():
                 aerosol_combination=AEROSOL_COMBINATION
                 ):
         '''
-        Once all parameters set up, this function proceed with
-        the full computation of the top-of-atmosphere exiting radiation for the input time series.
+        Compute the top-of-atmosphere simulation for the input time series (see :doc:`/methods`).
 
-        :return:
+        The result is stored in ``radcalnet_db``, an :py:class:`xarray.Dataset` with the variables
+        ``Rtoa`` (TOA reflectance), ``Ratm`` (atmospheric reflectance), ``Ed`` and ``E0`` (irradiance at the
+        bottom and top of atmosphere, mW m-2 nm-1), ``Rrs`` (sr-1), ``D2``, ``aerosol_combination`` and the
+        input atmospheric parameters.
+
+        :param aerosol_combination: proportion of each aerosol model of ``config.yml``
+            (``settings: aerosol_models``), list, array or :py:class:`xarray.DataArray`
+            (e.g. retrieved with :py:class:`~radcalnet_oc.kernel.Aerosol`)
         '''
 
         # atmospheric + sky-reflection radiance
