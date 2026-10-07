@@ -1,9 +1,9 @@
 version: 2
 
 build:
-  os: ubuntu-22.04
+  os: ubuntu-24.04
   tools:
-    python: "mambaforge-22.9"
+    python: "mambaforge-latest"
 
 sphinx:
   configuration: docs/source/conf.py
@@ -16,8 +16,5 @@ conda:
 
 python:
   install:
-    - requirements: requirements.txt
     - method: pip
       path: .
-      extra_requirements:
-        - docs
