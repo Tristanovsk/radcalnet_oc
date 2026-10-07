@@ -10,7 +10,7 @@ import yaml
 
 from . import GaseousTransmittance, Misc, LUT, SolarIrradiance
 
-template = files('radcalnet_oc.data.template').joinpath('template.nc')
+template = files('radcalnet_oc.data.template').joinpath('template_clear_water.nc')
 # --------------------------------------------------
 # get path of other files as indicated in config.yml
 # --------------------------------------------------

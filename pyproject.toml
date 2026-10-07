@@ -26,7 +26,10 @@ where = ["."]
 "radcalnet_oc"= ['*.yml',
                  'data/lut/gases/*.nc',
                  'data/lut/atmo/*.nc',
-                 'data/auxdata/*']
+                 'data/auxdata/*',
+                 'data/aeronet/*.csv',
+                 'data/template/*.nc',
+                 'data/template/*.yml']
 
 [tool.setuptools.exclude-package-data]
 "*" = [".gitattributes"]
