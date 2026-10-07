@@ -5,7 +5,6 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "radcalnet_oc"
-version = "0.0.2"
 description = "Processor to simulate top-of-atmosphere radiance signal above AERONET-OC sites"
 readme = "pypi_README.rst"
 authors = [{ name = "Tristan Harmel", email = "tristan.harmel@gmail.com" }]
@@ -17,7 +16,7 @@ classifiers = [
 ]
 keywords = ["Sentinel-2","Landsat-8","Landsat-9", "EO satellite"]
 requires-python = ">=3.9"
-dynamic = ["dependencies"]
+dynamic = ["version", "dependencies"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -39,6 +38,7 @@ radcalnet_oc = "radcalnet_oc.run:main"
 
 #dynamic = ["dependencies"]
 [tool.setuptools.dynamic]
+version = { attr = "radcalnet_oc.__version__" }
 dependencies = { file = ["requirements.txt"] }
 
 [project.optional-dependencies]

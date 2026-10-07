@@ -490,6 +490,26 @@ class Spectral():
             response[ii] = np.trapezoid((signal_ * rsr), wl_signal_) / np.trapezoid(rsr, wl_signal_)
         return response
 
+    def convolve_nd(self,
+                    signal,
+                    convolve_1d):
+        '''
+        Apply a 1-D convolution function to each spectrum of a multidimensional signal
+        :param signal: xarray.DataArray spectral signal to convolve, coord=wl, any other dimensions
+        :param convolve_1d: function(wl_signal, signal_1d) returning the band values
+        :return: xarray.DataArray with the band wavelengths as 'wl' coordinate
+        '''
+        wl_signal = signal.wl.values
+        signal_int = xr.apply_ufunc(
+            lambda sig: convolve_1d(wl_signal, np.ascontiguousarray(sig, dtype=np.float64)),
+            signal,
+            input_core_dims=[['wl']],
+            output_core_dims=[['wl_band']],
+            vectorize=True,
+            output_dtypes=[np.float32],
+        )
+        return signal_int.rename(wl_band='wl').assign_coords(wl=self.fwhm.wl.values)
+
     def convolve2(self,
                   signal,
                   name='signal',
@@ -510,7 +530,7 @@ class Spectral():
         wl = self.fwhm.wl.values
         xdims = signal.dims
         attrs=signal.attrs
-        name=signal.name
+        name=signal.name if signal.name is not None else name
         if len(xdims) == 1:
             signal_int = self.convolve2_(wl_ref, signal.values, wl, fwhm, expon, threshold=threshold)
             signal_int = xr.DataArray(signal_int, name=name,
@@ -518,23 +538,10 @@ class Spectral():
                                       attrs=attrs)
 
         else:
-            # to handle multidimensional xarray
-            xdims = np.array(xdims)
-            xdims = xdims[xdims != 'wl']
-
-            xsignal_int = []
-            for dim in xdims:
-                xsignal_int_ = []
-                for value, signal_ in signal.groupby(dim):
-                    # print(dim, value)
-                    signal_ = signal_.squeeze()
-                    _ = self.convolve2_(signal_.wl.values, signal_.values, wl, fwhm, expon)
-                    _ = xr.Dataset({name: (['wl'], _)},
-                                   coords={'wl': wl,
-                                           dim: value})
-                    xsignal_int_.append(_)
-                xsignal_int.append(xr.concat(xsignal_int_, dim=dim))
-            signal_int = xr.merge(xsignal_int)#.to_dataarray()
+            # to handle multidimensional xarray: convolution of each spectrum
+            signal_int = self.convolve_nd(
+                signal, lambda wl_signal, sig: self.convolve2_(wl_signal, sig, wl, fwhm, expon, threshold))
+            signal_int = signal_int.to_dataset(name=name)
             signal_int.attrs = attrs
 
         return signal_int
@@ -563,23 +570,10 @@ class Spectral():
                                       attrs=info)
 
         else:
-            # to handle multidimensional xarray
-            xdims = np.array(xdims)
-            xdims = xdims[xdims != 'wl']
-
-            xsignal_int = []
-            for dim in xdims:
-                xsignal_int_ = []
-                for value, signal_ in signal.groupby(dim):
-                    # print(dim, value)
-                    signal_ = signal_.squeeze()
-                    _ = self.convolve_(signal_.wl.values, signal_.values, wl, fwhm)
-                    _ = xr.Dataset({name: (['wl'], _)},
-                                   coords={'wl': wl,
-                                           dim: value})
-                    xsignal_int_.append(_)
-                xsignal_int.append(xr.concat(xsignal_int_, dim=dim))
-            signal_int = xr.merge(xsignal_int).to_dataarray()
+            # to handle multidimensional xarray: convolution of each spectrum
+            signal_int = self.convolve_nd(
+                signal, lambda wl_signal, sig: self.convolve_(wl_signal, sig, wl, fwhm))
+            signal_int = signal_int.to_dataset(name=name).to_dataarray()
             signal_int.attrs = info
 
         return signal_int
