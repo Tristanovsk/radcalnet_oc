@@ -1,11 +1,12 @@
-.. _theory:
+.. _methods:
 
-Theoretical background
-======================
+Methods
+=======
 
-This page details the radiative transfer equations implemented in ``radcalnet_oc``
-to propagate the water-leaving signal measured at bottom-of-atmosphere (BOA)
-by AERONET-OC stations up to the top-of-atmosphere (TOA) level.
+This page describes what :py:meth:`Process.execute <radcalnet_oc.process.Process.execute>` computes
+to propagate the water-leaving signal measured at bottom-of-atmosphere (BOA) by AERONET-OC stations
+up to the top-of-atmosphere (TOA) level, and the equations of the other modules of the package
+(aerosol model retrieval, sunglint, spectral response of the sensors).
 
 .. figure:: _static/slide_boa2toa.png
    :width: 100%
@@ -57,6 +58,32 @@ Notation
      - downward (irradiance) and upward (radiance) atmospheric transmittances
      - --
 
+Processing steps
+----------------
+
+For each measurement of the input time series (see :doc:`usage`),
+:py:class:`~radcalnet_oc.process.Process` computes, at the full spectral resolution of the
+gaseous absorption look-up table:
+
+1. **Solar irradiance at TOA** :math:`E_0`, from the solar spectrum (TSIS-1 by default), the solar
+   zenith angle and the day of year (`Solar irradiance`_).
+2. **Gaseous transmittances** :math:`T_g^{\downarrow}` and :math:`T_g^{\uparrow}` along the Sun and
+   viewing directions, from the surface pressure and the columns of water vapour, ozone and nitrogen
+   dioxide (`Gaseous transmittance`_).
+3. **Look-up table preparation.** The look-up tables of the aerosol models are combined with the
+   ``aerosol_combination`` proportions and interpolated at the geometry of the simulation
+   (:py:meth:`LUT.lut_preparation <radcalnet_oc.lut.LUT.lut_preparation>`, :ref:`methods-aerosol`).
+4. **Atmospheric transmittances** :math:`T^{\downarrow}` and :math:`t^{\uparrow}`, interpolated for
+   the aerosol optical thickness at 550 nm (`Atmospheric transmittances`_).
+5. **Downwelling irradiance** :math:`E_d` and **water-leaving radiance** :math:`L_w = R_{rs}\,E_d` at
+   the surface (`Downwelling irradiance at the surface`_).
+6. **Atmospheric path reflectance** :math:`R_{atm}` (`Atmospheric path reflectance`_).
+7. **TOA reflectance** :math:`R_{toa}`, Eq. :eq:`rtoa_rrs`.
+
+The hyperspectral outputs are then convolved with the spectral response of the satellite sensor
+(:ref:`spectral_convolution`). The sunglint reflectance of the direct sunlight can be computed
+separately with :py:class:`~radcalnet_oc.coxmunk.Sunglint` (`Sunglint`_).
+
 Top-of-atmosphere reflectance
 -----------------------------
 
@@ -107,8 +134,8 @@ reference spectrum by default, Thuillier, Gueymard or Kurucz), and
 .. math::
    :label: earth_sun
 
-   d^{2}(J) = 1.00011 + 0.034221\cos\Theta + 0.00128\sin\Theta
-   + 0.000719\cos 2\Theta + 0.000077\sin 2\Theta,
+   d^{2}(J) = {} & 1.00011 + 0.034221\cos\Theta + 0.00128\sin\Theta \\
+   & + 0.000719\cos 2\Theta + 0.000077\sin 2\Theta,
    \qquad \Theta = \frac{2\pi J}{365}.
 
 Downwelling irradiance at the surface
@@ -137,7 +164,7 @@ with :math:`N_A` the Avogadro number, :math:`h` the Planck constant and :math:`c
 Gaseous transmittance
 ---------------------
 
-Absorption by gases is treated separately from scattering. For a path of air mass
+Implemented in :py:class:`~radcalnet_oc.kernel.GaseousTransmittance`. Absorption by gases is treated separately from scattering. For a path of air mass
 :math:`m = 1/\mu` (with :math:`\mu = \mu_0` downward and :math:`\mu = \mu_v` upward), the
 transmittance of a gas :math:`g` with total column :math:`U_g` is
 
@@ -179,6 +206,8 @@ the sea-level pressure :math:`P_{sl}` with the barometric formula
 Rayleigh and aerosol scattering
 -------------------------------
 
+.. _methods-aerosol:
+
 Aerosol model mixture
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -193,7 +222,8 @@ atmosphere is described by an external mixture of these models with proportions
 
    X(\lambda, \tau_a) = \sum_k f_k\, X_k(\lambda, \tau_a).
 
-The proportions can be retrieved from the AERONET spectral aerosol optical thickness. The
+The proportions can be retrieved from the AERONET spectral aerosol optical thickness with
+:py:class:`~radcalnet_oc.kernel.Aerosol`. The
 measured AOT is normalized by its value at the reference wavelength,
 :math:`\tilde{\tau}_a(\lambda) = \tau_a(\lambda)/\tau_a(\lambda_{ref})`, and fitted with the
 normalized AOT spectra :math:`\tilde{\tau}_k` of three models (desert, maritime clean and
@@ -251,7 +281,7 @@ The pure Rayleigh reflectance :math:`R_r` is obtained in the same way for :math:
 Sunglint
 --------
 
-The sunglint reflectance is modelled with the Cox and Munk (1954) wave slope statistics.
+Implemented in :py:class:`~radcalnet_oc.coxmunk.Sunglint`. The sunglint reflectance is modelled with the Cox and Munk (1954) wave slope statistics.
 For a given geometry, the scattering angle :math:`\Theta` and the incidence angle
 :math:`\omega` on the reflecting facets are
 
@@ -404,7 +434,8 @@ Finally, the Stokes vector of the sunglint reflectance is
 Spectral convolution
 --------------------
 
-The hyperspectral quantities :math:`X(\lambda)` are integrated over the spectral response
+Implemented in :py:class:`~radcalnet_oc.lut.Spectral` (``convolve`` for Gaussian and ``convolve2``
+for super-Gaussian responses). The hyperspectral quantities :math:`X(\lambda)` are integrated over the spectral response
 function :math:`S_b` of each band :math:`b` of the satellite sensor:
 
 .. math::

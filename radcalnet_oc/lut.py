@@ -75,10 +75,13 @@ def super_gaussian(x,
                    mu=0.0,
                    sigma=1.0,
                    expon=2.0):
-    '''
+    r'''
     Super-Gaussian distribution:
-    super_gaussian(x, amplitude, mu, sigma, expon) =
-        (amplitude/(sqrt(2*pi)*sigma)) * exp(-abs(x-mu)**expon / (2*sigma**expon))
+
+    .. math::
+
+       S(x) = \frac{A}{\sqrt{2\pi}\,\sigma} \exp\left(-\frac{|x-\mu|^{p}}{2\sigma^{p}}\right)
+
     :param x:
     :param amplitude:
     :param mu:

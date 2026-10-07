@@ -1,27 +1,26 @@
-.. radcalnet_oc documentation master file, created by
-   sphinx-quickstart on Wed Apr  2 17:28:31 2025.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
 radcalnet-oc documentation
 ==========================
 
-This package is dedicated to modeling and parameterizing
-the radiative transfer equations to propagate the water-leaving radiance
-at the top of the atmosphere level for Cal/Val operation
-of passive optical satellite sensors above coastal and oceanic waters.
+``radcalnet_oc`` models the radiative transfer through the atmosphere to propagate the water-leaving
+radiance measured at the surface, typically by AERONET-OC stations, up to the top-of-atmosphere level.
+The simulated top-of-atmosphere reflectance is used for the calibration and validation (Cal/Val) of
+passive optical satellite sensors above coastal and oceanic waters.
 
-.. toctree::
-   :maxdepth: 3
-   :caption: Getting started:
+.. math::
 
-   usage
+   R_{toa}(\lambda) = T_g^{\downarrow} T_g^{\uparrow}
+   \left[ \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda) + R_{atm}(\lambda) \right]
+
+.. figure:: _static/slide_boa2toa.png
+   :alt: Propagation of the water-leaving signal from bottom to top of atmosphere
 
 .. toctree::
    :maxdepth: 2
-   :caption: Theory
+   :caption: User guide
 
-   theory
+   installation
+   usage
+   methods
 
 .. toctree::
    :maxdepth: 2
@@ -31,20 +30,15 @@ of passive optical satellite sensors above coastal and oceanic waters.
    notebook/solar_irradiance
    notebook/toa_atmosphere_radiation
 
-
-
 .. toctree::
-   :maxdepth: 3
-   :caption: API
-   :hidden:
+   :maxdepth: 2
+   :caption: Reference
 
    api
-
-
-
+   history
 
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`
