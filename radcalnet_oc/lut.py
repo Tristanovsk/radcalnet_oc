@@ -51,7 +51,7 @@ AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 @njit(fastmath=True)
 def Gamma2sigma(Gamma):
     '''Function to convert FWHM (Gamma) to standard deviation (sigma)'''
-    return Gamma * np.sqrt(2.) / (np.sqrt(2. * np.log(2.)) * 2.)
+    return Gamma / (2. * np.sqrt(2. * np.log(2.)))
 
 
 @njit(parallel=True, fastmath=True)

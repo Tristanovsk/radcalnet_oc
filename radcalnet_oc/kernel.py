@@ -160,7 +160,7 @@ class GaseousTransmittance(Gases):
         :param zenith_angle: zenith angle (solar or viewing) in degrees
         '''
         Gases.__init__(self)
-        self.air_mass = np.cos(np.radians(zenith_angle))
+        self.air_mass = 1. / np.cos(np.radians(zenith_angle))
         self.gas_lut = gas_lut
 
     def Tgas_background(self):
