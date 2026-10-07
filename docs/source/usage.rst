@@ -63,9 +63,10 @@ Python
    process.execute()                  # default aerosol model proportions of config.yml
    radcalnet_db = process.radcalnet_db
 
-   # convolution of one spectrum with the spectral response of the sensor bands
+   # convolution with the spectral response of the sensor bands
+   # (an xarray.Dataset for a multidimensional signal, a DataArray for one spectrum)
    spectral = radoc.Spectral(central_wl=np.array([443., 490., 560., 665., 865.]), fwhm=20.)
-   Rtoa_bands = spectral.convolve2(radcalnet_db.Rtoa.isel(time=0, vza=0))
+   Rtoa_bands = spectral.convolve2(radcalnet_db.Rtoa).Rtoa
 
 The proportions of the aerosol models can be given explicitly,
 ``process.execute(aerosol_combination=[0, 0.5, 0, 0.5, 0, 0])``, or retrieved from the AERONET
