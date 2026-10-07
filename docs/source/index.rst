@@ -19,6 +19,12 @@ of passive optical satellite sensors above coastal and oceanic waters.
 
 .. toctree::
    :maxdepth: 2
+   :caption: Theory
+
+   theory
+
+.. toctree::
+   :maxdepth: 2
    :caption: Tutorials
 
    notebook/gaseous_transmittance
