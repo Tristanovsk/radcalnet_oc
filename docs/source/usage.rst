@@ -43,6 +43,17 @@ The input is an :py:class:`xarray.Dataset` with a ``time`` dimension (one row pe
 Examples are shipped with the package in ``radcalnet_oc/data/template``
 (``template_clear_water.nc``, ``template_turbid_water.nc``).
 
+Command line
+------------
+
+The ``radcalnet_oc`` command reads the input NetCDF file and writes the simulation (see `Output`_) in a
+NetCDF file:
+
+.. literalinclude:: ../../radcalnet_oc/run.py
+   :language: text
+   :start-at: Usage:
+   :end-before: Exit status
+
 Python
 ------
 

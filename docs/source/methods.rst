@@ -15,12 +15,14 @@ up to the top-of-atmosphere (TOA) level, and the equations of the other modules 
 
    Principle of the BOA-to-TOA propagation.
 
-.. figure:: _static/slide_boa2toa_dark.png
-   :width: 100%
-   :figclass: only-dark
-   :alt: Propagation of the water-leaving signal from bottom to top of atmosphere
+.. only:: html
 
-   Principle of the BOA-to-TOA propagation.
+   .. figure:: _static/slide_boa2toa_dark.png
+      :width: 100%
+      :figclass: only-dark
+      :alt: Propagation of the water-leaving signal from bottom to top of atmosphere
+
+      Principle of the BOA-to-TOA propagation.
 
 Notation
 --------
