@@ -15,9 +15,11 @@ passive optical satellite sensors above coastal and oceanic waters.
    :figclass: only-light
    :alt: Propagation of the water-leaving signal from bottom to top of atmosphere
 
-.. figure:: _static/slide_boa2toa_dark.png
-   :figclass: only-dark
-   :alt: Propagation of the water-leaving signal from bottom to top of atmosphere
+.. only:: html
+
+   .. figure:: _static/slide_boa2toa_dark.png
+      :figclass: only-dark
+      :alt: Propagation of the water-leaving signal from bottom to top of atmosphere
 
 .. toctree::
    :maxdepth: 2
