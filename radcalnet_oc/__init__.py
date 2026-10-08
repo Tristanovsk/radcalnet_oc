@@ -8,7 +8,7 @@ Version history
 0.0.2:
     - add multiangular option for TOA simulation (2026/03/31)
 0.0.3:
-    - add sunglint module (2016/09/02)
+    - add sunglint module (2026/09/02)
 '''
 
 __package__ = 'radcalnet_oc'
