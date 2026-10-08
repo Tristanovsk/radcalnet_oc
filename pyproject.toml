@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "radcalnet_oc"
 description = "Processor to simulate top-of-atmosphere radiance signal above AERONET-OC sites"
-readme = "pypi_README.rst"
+readme = "README.md"
 authors = [{ name = "Tristan Harmel", email = "tristan.harmel@gmail.com" }]
 license = { file = "LICENSE" }
 classifiers = [
@@ -54,5 +54,5 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Tristanovsk/radcalnet_co"
+Homepage = "https://github.com/Tristanovsk/radcalnet_oc"
 Documentation = "https://radcalnet-oc.readthedocs.io"

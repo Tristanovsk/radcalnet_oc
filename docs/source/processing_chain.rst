@@ -18,12 +18,9 @@ at the full spectral resolution of the look-up tables. The simulated TOA reflect
 convolved with the spectral response of a satellite sensor for its calibration and validation. The
 equations are described in :doc:`methods`.
 
-The processor is used through its Python API: :py:class:`radcalnet_oc.process.Process` (see
-:doc:`usage`).
-
-.. note::
-   ``pyproject.toml`` declares a ``radcalnet_oc`` command-line entry point (``radcalnet_oc.run:main``),
-   but the ``run`` module is not implemented yet: the command is installed but fails.
+The processor is invoked through the ``radcalnet_oc`` command-line executable (entry point
+``radcalnet_oc.run:main``, see :doc:`usage`), which reads an input NetCDF file and writes the
+simulation in a NetCDF file, or through its Python API, :py:class:`radcalnet_oc.process.Process`.
 
 Application Domain (Granule)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -38,8 +35,8 @@ The output granule is one dataset covering the same time series and geometries, 
 Scheduling and Triggers
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-radcalnet_oc has no built-in scheduler: it is run interactively (Python scripts, Jupyter notebooks),
-one time series at a time. Updating the simulations when new AERONET-OC data are published is left to
+radcalnet_oc has no built-in scheduler: it is run one time series at a time, from the command line
+(e.g. in batch scripts or job schedulers) or interactively (Python scripts, Jupyter notebooks). Updating the simulations when new AERONET-OC data are published is left to
 the calling scripts.
 
 Dataflow
@@ -125,20 +122,32 @@ Outputs
      - Description
    * - Hyperspectral TOA simulation (``Process.radcalnet_db``)
      - 1..1
-     - :py:class:`xarray.Dataset` in memory with ``Rtoa``, ``Ratm``, ``Ed``, ``E0``, ``Rrs``, the
-       aerosol model proportions and the input atmospheric parameters (see :doc:`usage`). It is saved
-       by the caller, usually as NetCDF with :py:meth:`xarray.Dataset.to_netcdf`.
+     - :py:class:`xarray.Dataset` with ``Rtoa``, ``Ratm``, ``Ed``, ``E0``, ``Rrs``, the
+       aerosol model proportions and the input atmospheric parameters (see :doc:`usage`). The command
+       line writes it in a NetCDF file (by default ``<input basename>_radcalnet_oc.nc``); with the
+       Python API, it is saved by the caller, e.g. with :py:meth:`xarray.Dataset.to_netcdf`.
    * - Band-averaged simulation
      - 0..1
      - Output of :py:meth:`Spectral.convolve2 <radcalnet_oc.lut.Spectral.convolve2>` (super-Gaussian
        responses) or :py:meth:`Spectral.convolve <radcalnet_oc.lut.Spectral.convolve>` (Gaussian
-       responses) for the bands of a sensor.
+       responses) for the bands of a sensor. With the command line option ``--bands``, the
+       band-averaged ``Rtoa``, ``Ratm``, ``Ed``, ``E0`` and ``Rrs`` are added to the output file
+       (variables ``<name>_bands``, dimension ``wl_band``).
 
 Return Codes
 ------------
 
-radcalnet_oc is a Python library without command line (see `Description`_): errors are raised as
-Python exceptions to the caller (e.g. ``KeyError`` when a variable of the input dataset is missing).
+Exit status of the ``radcalnet_oc`` command (see :py:func:`radcalnet_oc.run.main`):
+
+- ``0``: the output file is written, or the processing is skipped because the output file already
+  exists and ``--no_clobber`` is set;
+- ``1``: invalid command-line arguments, or error during the processing (e.g. missing input file,
+  missing variable in the input dataset, wrong number of aerosol proportions); the error and its
+  traceback are logged at ``ERROR`` level and no output file is written.
+
+With the Python API, the errors are raised as Python exceptions to the caller (e.g. ``KeyError`` when a
+variable of the input dataset is missing).
+
 A missing atmosphere LUT is not an error: the light LUT shipped with the package is used instead and
 the replacement is logged at ``INFO`` level.
 
@@ -146,9 +155,14 @@ Log Format
 ----------
 
 The messages are emitted with the Python :py:mod:`logging` module, on the root logger, whose level is
-set to ``INFO`` when the package is imported. The package does not configure any handler: the format
-and the destination of the messages are those configured by the calling application (e.g. with
-:py:func:`logging.basicConfig`). The messages trace the steps of the processing (``get LUT object``,
+set to ``INFO`` when the package is imported.
+
+The ``radcalnet_oc`` command writes them on the standard error with the format
+``"%(asctime)s %(levelname)s | %(message)s"``, e.g.
+``2026-10-08 02:06:54,386 INFO | output written in AAOT_radcalnet_oc.nc``.
+
+With the Python API, the package does not configure any handler: the format and the destination of the
+messages are those configured by the calling application (e.g. with :py:func:`logging.basicConfig`). The messages trace the steps of the processing (``get LUT object``,
 ``loading look-up tables``, ``LUT preparation``...).
 
 Required Resources

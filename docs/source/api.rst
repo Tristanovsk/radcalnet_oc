@@ -24,6 +24,12 @@ Processing chain
 
    radcalnet_oc.process.Process
 
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.run.main
+
 Look-up tables and auxiliary data
 ---------------------------------
 
