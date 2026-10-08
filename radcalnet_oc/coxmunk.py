@@ -1,19 +1,34 @@
 # coding=utf-8
+'''
+Sunglint reflectance of a rough sea surface from the Cox and Munk wave slope statistics
+(see the Sunglint section of :doc:`/methods`).
+'''
+
 import numpy as np
 from scipy import special
 
 
 class Sunglint:
+    '''
+    Polarized sunglint reflectance of a wind-roughened sea surface for one Sun-sensor geometry.
+
+    Example::
+
+        glint = Sunglint(sza=30., vza=10., azi=150.)
+        I, Q, U, V = glint.sunglint(ws=5., stats='cm_dir')
+
+    The angles are given in degrees and stored in radians.
+    '''
 
     def __init__(self, sza, vza, azi, m=1.334, tau_atm=0):
         '''
-
-        :param sza: solar zenith angle in deg.
-        :param vza: viewing zenith angle in deg.
-        :param azi: viewing azimuth in deg. for convention 180° when Sun and sensor in opposition;
-                    Sun azimuth set to 0 in the reference frame
+        :param sza: solar zenith angle (deg)
+        :param vza: viewing zenith angle (deg)
+        :param azi: relative azimuth angle (deg), 180 deg when the Sun and the sensor are in opposition
+            (Sun azimuth set to 0 in the reference frame)
         :param m: refractive index of water
-        :param tau_atm: TODO implement transmittances with optical thickness
+        :param tau_atm: atmospheric optical thickness, not used yet (the atmospheric transmittances are
+            set to 1)
         '''
         degrad = np.pi / 180.
         self.sza = sza * degrad
@@ -26,14 +41,19 @@ class Sunglint:
 
     def sunglint(self, ws, wazi=0, stats='cm_dir', shadow=True, slope=False):
         '''
+        Stokes vector of the sunglint reflectance, Eq. :eq:`glint`, without atmospheric transmittance.
 
-        :param ws: wind speed in m/s
-        :param wazi: wind direction downwind (in deg.) with respect to Sun direction counterclockwise
-                     (e.g., wazi=0° wind direction toward the Sun)
-        :param stats: in `cm_iso`, `cm_dir`, `bh2006`
-        :param shadow: if True, apply shadow correction based on
-        :param slope: if True outputs are the slope up and cross-wind and the Fresnel value
-        :return:
+        :param ws: wind speed (m s-1)
+        :param wazi: wind direction (deg), downwind, counterclockwise from the Sun direction
+            (0 deg: wind blowing towards the Sun)
+        :param stats: wave slope statistics: ``'cm_iso'`` (isotropic Cox and Munk), ``'cm_dir'``
+            (directional Cox and Munk, Gram-Charlier expansion) or ``'bh2006'`` (Bréon and Henriot, 2006)
+        :param shadow: if True, apply the shadowing and hiding correction of the waves (Smith function,
+            Ross and Dion, 2005, 2007); only for a non-nadir view
+        :param slope: output selection: False for the Stokes vector, True for
+            ``[z_up, z_cr, Rf[0, 0], p]`` (upwind and crosswind slopes, Fresnel reflectance and slope
+            probability), ``'check'`` for ``[Rf[0, 0], Rf[1, 0], Rf[2, 0], Rf[3, 0], p, cos(theta_n), S]``
+        :return: ``[I, Q, U, V]``, Stokes components of the sunglint reflectance (by default)
         '''
         sza = self.sza
         vza = self.vza
@@ -200,6 +220,15 @@ class Sunglint:
         # ---------------------------------------------------------------------*
         #                           Direct Transmittance
         # ---------------------------------------------------------------------*
+        r'''
+        Apply the downward direct transmittance :math:`\exp(-\tau/\cos\theta_s)` to a sunglint
+        reflectance.
+
+        :param tau: atmospheric optical thickness
+        :param sza: solar zenith angle (rad)
+        :param Iglint: sunglint reflectance
+        :return: attenuated sunglint reflectance
+        '''
         sza
         Td = np.exp(-1 * tau / np.cos(sza))
         # Tup = np.exp(-1 * (self.tau_atm) / np.cos(self.vza))
@@ -207,9 +236,12 @@ class Sunglint:
         return Iglint * Td
 
     def fresnel(self, angle):
-        ''' 
-        :param angle: incident angle on the wave facets (in rad)
-        :return: 
+        '''
+        Mueller matrix of the Fresnel reflection on the wave facets, Eq. :eq:`fresnel_matrix`, for an
+        illumination from above.
+
+        :param angle: incidence angle on the wave facets (rad)
+        :return: 4 x 4 reflection matrix
         '''
         m = self.m
 
@@ -231,9 +263,11 @@ class Sunglint:
         return Rf_pol
 
     def scat_angle(self):
-        '''
-        self.azi: azimuth in rad for convention azi=180 when sun-sensenor in oppositioon
-        :return: scattering angle in rad
+        r'''
+        Scattering angle of the Sun-sensor geometry,
+        :math:`\cos\Theta = -\cos\theta_s\cos\theta_v - \sin\theta_s\sin\theta_v\cos\phi`.
+
+        :return: scattering angle (rad)
         '''
         sza = self.sza
         vza = self.vza
@@ -245,13 +279,15 @@ class Sunglint:
         return ang
 
     def nu(self, sigx2, sigy2, cosphi2, theta):
-        '''
-        From Ross & Dion, 2005 and Eq. 15 Ross & Dion, 2007
-        :param sigx2
-        :param sigy2:
-        :param cosphi2:
-        :param theta:
-        :return:
+        r'''
+        Parameter :math:`\nu` of the Smith shadowing function (Ross and Dion, 2005; Eq. 15 of Ross and
+        Dion, 2007).
+
+        :param sigx2: upwind slope variance
+        :param sigy2: crosswind slope variance
+        :param cosphi2: square of the cosine of the azimuth relative to the wind direction
+        :param theta: zenith angle (rad)
+        :return: :math:`\nu = 1 / (\sqrt{2}\,\sigma\tan\theta)`
         '''
 
         sig = np.sqrt(sigx2 * cosphi2 + sigy2 * (1 - cosphi2))
@@ -259,13 +295,15 @@ class Sunglint:
         return 1 / (np.tan(theta) * np.sqrt(2) * sig)
 
     def Lambda(self, sigx2, sigy2, cosphi2, theta):
-        '''
-        From Eq. 33b Ross & Dion, 2005 and Eq. 15 Ross & Dion, 2007
-        :param sigx2: upwind variance
-        :param sigy2:crosswind variance
-        :param cosphi2: square of cos phi
+        r'''
+        Smith shadowing function :math:`\Lambda(\nu)`, Eq. :eq:`shadow` (Eq. 33b of Ross and Dion, 2005;
+        Eq. 15 of Ross and Dion, 2007).
+
+        :param sigx2: upwind slope variance
+        :param sigy2: crosswind slope variance
+        :param cosphi2: square of the cosine of the azimuth relative to the wind direction
         :param theta: zenith angle (rad)
-        :return: Lambda
+        :return: :math:`\Lambda`
         '''
         piroot = np.sqrt(np.pi)
         nu = self.nu(sigx2, sigy2, cosphi2, theta)

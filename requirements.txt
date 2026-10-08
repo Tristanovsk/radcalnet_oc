@@ -1,0 +1,14 @@
+numpy
+scipy
+pandas>=2.0.3
+xarray
+netcdf4
+h5netcdf
+zarr
+dask
+numba
+pyyaml
+matplotlib
+importlib_resources
+xmltodict
+docopt

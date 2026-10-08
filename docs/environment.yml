@@ -1,9 +1,8 @@
 name: radcalnet_oc
 channels:
   - conda-forge
-  - default
 dependencies:
-
+  - python=3.12
   - xarray
   - netcdf4
   - h5netcdf
@@ -19,4 +18,5 @@ dependencies:
     - numpy
     - scipy
     - pandas>=2.0.3
+    - pyyaml
     - -r requirements.txt

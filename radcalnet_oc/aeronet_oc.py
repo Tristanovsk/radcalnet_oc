@@ -1,3 +1,8 @@
+'''
+Readers of the AERONET and AERONET-OC files (see :doc:`/processing_chain` for the preparation of the
+input of the simulation).
+'''
+
 import os
 import pandas as pd
 import numpy as np
@@ -16,10 +21,27 @@ aeronet_oc_location_file = files('radcalnet_oc.data.aeronet'
 
 
 class Aeronet:
+    '''
+    Readers of AERONET-OC and AERONET files into :py:class:`pandas.DataFrame`.
+
+    The data are indexed by time; the columns are a 3-level :py:class:`pandas.MultiIndex`: original
+    field name, data type (e.g. ``'aot'``, ``'wavelength'``) and wavelength (nm) for the spectral fields.
+
+    :ivar aeronet_oc_site_info: :py:class:`pandas.DataFrame` of the AERONET-OC sites and their
+        location in the Sentinel-2 tiles
+    '''
+
     def __init__(self):
+        '''
+        Load the information of the AERONET-OC sites.
+        '''
         self.get_aeronet_oc_site_info()
 
     def get_aeronet_oc_site_info(self):
+        '''
+        Load the AERONET-OC sites and their location in the Sentinel-2 tiles (file of the package) into
+        ``aeronet_oc_site_info``.
+        '''
         self.aeronet_oc_site_info = pd.read_csv(aeronet_oc_location_file, index_col=0)
 
 
@@ -29,10 +51,12 @@ class Aeronet:
                           skiprows=8,
                           encoding='latin_1'):
         '''
-         Read and format in pandas data.frame the standard AERONET-OC data
+        Read an AERONET-OC version 3 file (e.g. ``AAOT_OCv3.lev20``).
 
-        :param skiprows: number of rows to skip in the ASCII AERONET file
-        :return:
+        :param ifile: path of the AERONET-OC file
+        :param skiprows: number of header rows to skip
+        :param encoding: encoding of the file
+        :return: :py:class:`pandas.DataFrame` indexed by time, columns sorted by increasing wavelength
         '''
 
         h1 = pd.read_csv(ifile, skiprows=skiprows - 1, nrows=1, encoding=encoding).columns[3:]
@@ -65,7 +89,14 @@ class Aeronet:
     def read_aeronet(self,
                      skiprows=6,
                      encoding='latin_1'):
-        ''' Read and format in pandas data.frame the V3 AERONET data '''
+        '''
+        Read an AERONET version 3 aerosol optical depth file, whose path is given by the ``file``
+        attribute.
+
+        :param skiprows: number of header rows to skip
+        :param encoding: encoding of the file
+        :return: :py:class:`pandas.DataFrame` indexed by time; the exact wavelengths are converted to nm
+        '''
 
         ifile = self.file
         df = pd.read_csv(ifile, skiprows=skiprows, nrows=1, encoding=encoding)  # read just first line for columns
@@ -113,7 +144,13 @@ class Aeronet:
     def read_aeronet_inv(self,
                          skiprows=6,
                          encoding='latin_1'):
-        ''' Read and format in pandas data.frame the V3 Aerosol Inversion AERONET data '''
+        '''
+        Read an AERONET version 3 aerosol inversion file, whose path is given by the ``file`` attribute.
+
+        :param skiprows: number of header rows to skip
+        :param encoding: encoding of the file
+        :return: :py:class:`pandas.DataFrame` indexed by time; the exact wavelengths are converted to nm
+        '''
         ifile = self.file
         df = pd.read_csv(ifile, skiprows=skiprows, nrows=1,encoding=encoding)  # read just first line for columns
         columns = df.columns.tolist()  # get the columns
