@@ -209,7 +209,6 @@ class LUT:
                         aot_refs=np.linspace(0.0, 0.8, 25),
                         TLu_exponent =1.07,
                         aerosol_combination=AEROSOL_COMBINATION):
-
         r'''
         Combine the aerosol models and interpolate the look-up tables at the geometry of the simulation.
 
@@ -304,7 +303,6 @@ class LUT:
                                    azi=[0],
                                    aot_refs=np.linspace(0.0, 0.8, 25),
                                    ):
-
         '''
         Interpolate the look-up tables at the geometry of the simulation for each aerosol model, without
         combining them (the ``model`` dimension is kept), at the wavelengths ``wl`` of the object.
@@ -533,22 +531,27 @@ class Spectral():
                                 'definition': 'full width at half maximum of spectral responses modeled as gaussian distributions'})
         self.fwhm = fwhm
 
-    def plot_rsr(self):
-
+    def plot_rsr(self,
+                 expon=None):
         '''
-        Plot the Gaussian spectral response functions of the bands.
+        Plot the spectral response functions of the bands, normalized to a maximum of 1.
 
+        :param expon: None for the Gaussian responses used by :py:meth:`convolve`, or the exponent of
+            the super-Gaussian responses used by :py:meth:`convolve2` (3 by default in ``convolve2``)
         :return: :py:class:`matplotlib.figure.Figure`
         '''
-        wl_ref = np.linspace(360, 2550, 10000)
+        wl_ref = np.linspace(350, 2550, 10000)
         fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(10, 4))
 
-        for mu, fwhm in self.fwhm.groupby('wl'):
-            sig = self.Gamma2sigma(fwhm.values)
-            rsr = self.gaussian(wl_ref, mu, sig)
-            axs.plot(wl_ref, rsr, '-k', lw=0.5, alpha=0.4)
+        for mu, fwhm in zip(self.fwhm.wl.values, self.fwhm.values):
+            if expon is None:
+                rsr = gaussian(wl_ref, float(mu), Gamma2sigma(float(fwhm)))
+            else:
+                rsr = super_gaussian(wl_ref, mu=float(mu), sigma=super_gaussian_fwhm2sigma(float(fwhm), expon),
+                                     expon=expon)
+            axs.plot(wl_ref, rsr / rsr.max(), '-k', lw=0.5, alpha=0.4)
         axs.set_xlabel('Wavelength (nm)')
-        axs.set_ylabel('Spectral response function')
+        axs.set_ylabel('Relative spectral response')
 
         return fig
 
