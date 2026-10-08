@@ -1,0 +1,100 @@
+# Checks run on each push and pull request:
+# - package: build the sdist and the wheel, check their metadata and content, install the wheel in
+#   a clean environment and run the command line on a packaged template (pip pipeline)
+# - docs: build the documentation as Read the Docs does, warnings and broken references are errors
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  package:
+    name: package (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build the sdist and the wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check --strict dist/*
+
+      - name: Check the data files of the wheel
+        run: |
+          python - <<'EOF'
+          import glob, zipfile
+          names = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist()
+          required = ['radcalnet_oc/config.yml',
+                      'radcalnet_oc/data/lut/atmo/toa_lut_opac_ultra_light.nc',
+                      'radcalnet_oc/data/lut/atmo/transmittance_lut_opac_wind_v3.nc',
+                      'radcalnet_oc/data/lut/gases/lut_abs_opt_thickness_normalized.nc',
+                      'radcalnet_oc/data/auxdata/rayleigh_bodhaine.txt',
+                      'radcalnet_oc/data/aeronet/info_aeronet_oc_sentinel2_location.csv',
+                      'radcalnet_oc/data/template/template_clear_water.nc']
+          missing = [f for f in required if f not in names]
+          assert not missing, f'missing in the wheel: {missing}'
+          print(f'{len(names)} files in the wheel, required data files present')
+          EOF
+
+      - name: Install the wheel in a clean environment
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install dist/*.whl
+
+      - name: Run the command line on a packaged template
+        # outside the repository, so that the installed package is used; the atmosphere LUT of
+        # config.yml is not available: the light LUT of the package is used
+        working-directory: /tmp
+        run: |
+          /tmp/venv/bin/radcalnet_oc --version
+          TEMPLATE=$(/tmp/venv/bin/python -c "from importlib.resources import files; print(files('radcalnet_oc.data.template') / 'template_clear_water.nc')")
+          /tmp/venv/bin/radcalnet_oc "$TEMPLATE" -o /tmp/out.nc --vza 0,10 --azi 90 --bands 443,560,865 --fwhm 20
+          /tmp/venv/bin/python - <<'EOF'
+          import numpy as np, xarray as xr
+          ds = xr.open_dataset('/tmp/out.nc')
+          for name in ['Rtoa', 'Ratm', 'Ed', 'E0', 'Rrs', 'Rtoa_bands']:
+              assert name in ds, f'{name} missing in the output'
+          assert dict(ds.Rtoa_bands.sizes) == {'time': 50, 'vza': 2, 'wl_band': 3}, ds.Rtoa_bands.sizes
+          assert np.isfinite(ds.Rtoa_bands).all() and (ds.Rtoa_bands > 0).all()
+          print('output OK:', dict(ds.sizes))
+          EOF
+          # invalid arguments must give a non-zero exit status
+          if /tmp/venv/bin/radcalnet_oc "$TEMPLATE" -o /tmp/bad.nc --aerosol_combination 0.5,0.5; then
+            echo "error not detected"; exit 1
+          fi
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the package with the docs dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[docs]"
+
+      - name: Build the documentation
+        # the notebooks are rendered with their stored outputs (not executed), as on Read the Docs
+        run: sphinx-build -n -W --keep-going -b html docs/source docs/build/html
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: html-docs
+          path: docs/build/html
+          retention-days: 7

@@ -42,7 +42,14 @@ the calling scripts.
 Dataflow
 --------
 
-.. mermaid:: _diagrams/dataflow.mmd
+.. only:: html
+
+   .. mermaid:: _diagrams/dataflow.mmd
+
+.. only:: not html
+
+   See the dataflow diagram in the
+   `online documentation <https://radcalnet-oc.readthedocs.io/en/latest/processing_chain.html#dataflow>`__.
 
 Inputs
 ------
