@@ -5,7 +5,10 @@
 Principle 
 -------
 
- ![...](docs/source/_static/slide_boa2toa.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/source/_static/slide_boa2toa_dark.png">
+  <img alt="Propagation of the AERONET-OC measurements from the surface to the top of atmosphere and comparison with satellite data" src="docs/source/_static/slide_boa2toa.png">
+</picture>
 
 # Usage
 

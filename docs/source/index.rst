@@ -12,6 +12,11 @@ passive optical satellite sensors above coastal and oceanic waters.
    \left[ \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda) + R_{atm}(\lambda) \right]
 
 .. figure:: _static/slide_boa2toa.png
+   :figclass: only-light
+   :alt: Propagation of the water-leaving signal from bottom to top of atmosphere
+
+.. figure:: _static/slide_boa2toa_dark.png
+   :figclass: only-dark
    :alt: Propagation of the water-leaving signal from bottom to top of atmosphere
 
 .. toctree::
@@ -27,9 +32,10 @@ passive optical satellite sensors above coastal and oceanic waters.
    :maxdepth: 2
    :caption: Tutorials
 
-   notebook/gaseous_transmittance
-   notebook/solar_irradiance
-   notebook/toa_atmosphere_radiation
+   notebook/radcalnet_oc_gaseous_transmittance
+   notebook/radcalnet_oc_solar_irradiance
+   notebook/radcalnet_oc_downwelling_irradiance
+   notebook/radcalnet_oc_toa_atmosphere_radiation
 
 .. toctree::
    :maxdepth: 2
