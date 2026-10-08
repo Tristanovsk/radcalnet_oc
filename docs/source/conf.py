@@ -69,7 +69,7 @@ intersphinx_mapping = {
 }
 
 # labelled equations are numbered by page and cited with :eq:
-math_eqref_format = 'Eq. ({number})'
+math_eqref_format = '({number})'
 
 # -- Options for HTML output -------------------------------------------------
 
