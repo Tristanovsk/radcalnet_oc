@@ -55,6 +55,12 @@ NETCDF_ENGINE = config['processor']['netcdf_engine']
 AEROSOL_MODELS = config['settings']['aerosol_models']
 AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 
+# in-memory cache of the decompressed TOA radiance tables (see LUT.toa_lut), shared by the LUT objects
+# (a Process creates a new LUT object at each run); one entry per aerosol model, wind speed and azimuth
+# range, up to 90 MB each
+TOA_LUT_CACHE = {}
+TOA_LUT_CACHE_SIZE = 12
+
 
 @njit(fastmath=True)
 def Gamma2sigma(Gamma):
@@ -244,8 +250,17 @@ class LUT:
 
         self.aerosol_combination=aerosol_combination
 
+        # the models of null proportion do not contribute to the mixture: they are not read nor interpolated
+        models = aerosol_combination.model.values[aerosol_combination.values != 0]
+        if len(models) == 0:
+            models = aerosol_combination.model.values
+        aerosol_combination = aerosol_combination.sel(model=models)
+
         aero_lut = self.aero_lut.sel(wind=wind, method='nearest')
-        trans_lut = self.trans_lut.sel(wind=wind, method='nearest')
+        trans_lut = self.trans_lut.sel(wind=wind, method='nearest').sel(model=models)
+        # TOA radiance of the Rayleigh atmosphere (first model, aot_ref=0) and of the aerosol models, in memory
+        lut_models = [aero_lut.model.values[0], *[model for model in models if model != aero_lut.model.values[0]]]
+        toa_lut = self.toa_lut(aero_lut.wind.values, lut_models, azi)
 
         # -----------------------------
         # interpolation transmittance
@@ -268,21 +283,21 @@ class LUT:
         # -----------------------------
         # interpolation Rayleigh
         # -----------------------------
-        self.Rray = aero_lut.I.isel(model=0).interp(sza=sza, vza=vza).interp(azi=azi).interp(aot_ref=0,
-                                                                                             method='quadratic')
+        # aot_ref=0 is a node of the table: selecting it is exact and avoids interpolating all the aot_ref
+        self.Rray = self._interp_geometry(toa_lut.isel(model=0).sel(aot_ref=0), sza, vza, azi)
         self.Rray = self.Rray / np.cos(np.radians(self.Rray.sza))
         #self.Rray = self.Rray.interp(wl=self.wl, method='quadratic')
 
         # -----------------------------
         # interpolation atmo diffuse light
         # -----------------------------
-        self.Rdiff_lut = aero_lut.I.interp(sza=sza, vza=vza).interp(azi=azi)
+        self.Rdiff_lut = self._interp_geometry(toa_lut.sel(model=models), sza, vza, azi)
         self.Rdiff_lut = (self.Rdiff_lut * aerosol_combination).sum('model')
         self.Rdiff_lut = self.Rdiff_lut.interp(aot_ref=aot_refs, method='quadratic')
         self.Rdiff_lut = self.Rdiff_lut / np.cos(np.radians(self.Rdiff_lut.sza))
         #self.Rdiff_lut = self.Rdiff_lut.interp(wl=self.wl, method='quadratic')
 
-        self.aot_lut = (aero_lut.aot * aerosol_combination).sum('model')
+        self.aot_lut = (aero_lut.aot.sel(model=models) * aerosol_combination).sum('model')
         self.aot_lut = self.aot_lut.interp(aot_ref=aot_refs,
                                            method='quadratic'
                                            )#.interp(wl=self.wl, method='quadratic')
@@ -295,6 +310,61 @@ class LUT:
         _auxdata = AuxData(wl=self.wl)  # wl=masked.wl)
         self.sunglint_eps = _auxdata.sunglint_eps  # ['mean'].interp(wl=wl)
         self.rot = _auxdata.rot
+
+    def toa_lut(self,
+                wind,
+                models,
+                azi):
+        '''
+        Normalized TOA radiance ``I`` of the look-up table for a wind speed and some aerosol models, loaded
+        in memory for the azimuth range bracketing ``azi``.
+
+        Reading the compressed table is the most expensive step of :py:meth:`lut_preparation`: the tables
+        read are kept in a cache shared by all the :py:class:`LUT` objects (``TOA_LUT_CACHE``, at most
+        ``TOA_LUT_CACHE_SIZE`` entries), so that the next preparations with the same file, wind speed,
+        models and azimuth range do not read the file again.
+
+        :param wind: wind speed (m s-1), a value of the ``wind`` coordinate of the table
+        :param models: names of the aerosol models
+        :param azi: relative azimuth angles (deg) to be interpolated
+        :return: :py:class:`xarray.DataArray` with a ``model`` dimension, without the ``wind`` dimension
+        '''
+        azis = self.aero_lut.azi.values
+        azi = np.atleast_1d(azi)
+        i0 = max(int(np.searchsorted(azis, np.min(azi), side='right')) - 1, 0)
+        i1 = min(int(np.searchsorted(azis, np.max(azi), side='left')) + 1, len(azis))
+
+        keys = {model: (str(self.lut_file), float(wind), str(model), i0, i1) for model in models}
+        missing = [model for model in models if keys[model] not in TOA_LUT_CACHE]
+        if missing:
+            # read the missing models at once: they can share the chunks of the compressed file
+            lut = self.aero_lut.I.sel(wind=wind, model=missing).isel(azi=slice(i0, i1)).load()
+            for model in missing:
+                if len(TOA_LUT_CACHE) >= TOA_LUT_CACHE_SIZE:
+                    # remove the oldest entry
+                    TOA_LUT_CACHE.pop(next(iter(TOA_LUT_CACHE)))
+                # copy: the entry must not keep the array of all the models alive
+                TOA_LUT_CACHE[keys[model]] = lut.sel(model=model).copy()
+
+        return xr.concat([TOA_LUT_CACHE[keys[model]] for model in models], dim='model')
+
+    @staticmethod
+    def _interp_geometry(lut, sza, vza, azi):
+        '''
+        Linear interpolation of a look-up table at the solar zenith, viewing zenith and relative azimuth
+        angles.
+
+        The multilinear interpolation is separable: the dimensions are interpolated one after the other,
+        starting with those reduced the most (azimuth and viewing angles), so that only the table nodes
+        bracketing the requested angles are read and the next interpolations work on smaller arrays.
+
+        :param lut: :py:class:`xarray.DataArray` with ``sza``, ``vza`` and ``azi`` dimensions
+        :param sza: solar zenith angles (deg)
+        :param vza: viewing zenith angles (deg)
+        :param azi: relative azimuth angles (deg)
+        :return: interpolated :py:class:`xarray.DataArray`
+        '''
+        return lut.interp(azi=azi).interp(vza=vza).interp(sza=sza)
 
     def lut_preparation_all_models(self,
                                    wind=2,
@@ -333,15 +403,16 @@ class LUT:
         # -----------------------------
         # interpolation Rayleigh
         # -----------------------------
-        self.Rray = aero_lut.I.interp(sza=sza, vza=vza).interp(azi=azi).interp(aot_ref=0, method='quadratic')
+        toa_lut = self.toa_lut(aero_lut.wind.values, aero_lut.model.values, azi)
+        self.Rray = self._interp_geometry(toa_lut.sel(aot_ref=0), sza, vza, azi)
         self.Rray = self.Rray / np.cos(np.radians(self.Rray.sza))
         self.Rray = self.Rray.interp(wl=self.wl, method='quadratic')
 
         # -----------------------------
         # interpolation atmo diffuse light
         # -----------------------------
-        self.Rdiff_lut = aero_lut.I.interp(sza=sza, vza=vza)
-        self.Rdiff_lut = self.Rdiff_lut.interp(azi=azi).interp(aot_ref=aot_refs, method='quadratic')
+        self.Rdiff_lut = self._interp_geometry(toa_lut, sza, vza, azi)
+        self.Rdiff_lut = self.Rdiff_lut.interp(aot_ref=aot_refs, method='quadratic')
         self.Rdiff_lut = self.Rdiff_lut / np.cos(np.radians(self.Rdiff_lut.sza))
         self.Rdiff_lut = self.Rdiff_lut.interp(wl=self.wl, method='quadratic')
 
@@ -618,25 +689,86 @@ class Spectral():
             response[ii] = np.trapezoid((signal_ * rsr), wl_signal_) / np.trapezoid(rsr, wl_signal_)
         return response
 
+    def band_weights(self,
+                     wl_signal,
+                     expon=None,
+                     threshold=None):
+        '''
+        Integration weights of the spectral response of each band on the wavelengths of the signal.
+
+        The convolution of Eq. :eq:`convolution`, computed with the trapezoidal rule, is linear in the
+        signal: the band value is the dot product of the signal with weights that depend only on the
+        wavelengths. The weights are computed once and applied to all the spectra
+        (:py:meth:`convolve_nd`), which gives the same results as :py:meth:`convolve_` and
+        :py:meth:`convolve2_`.
+
+        :param wl_signal: wavelengths of the signal (nm), 1-D array
+        :param expon: None for the Gaussian responses of :py:meth:`convolve`, or the exponent of the
+            super-Gaussian responses of :py:meth:`convolve2`
+        :param threshold: values of the spectral response below this threshold are ignored (super-Gaussian
+            responses only)
+        :return: list of ``(start, stop, weights)`` per band: the band value is
+            ``signal[start:stop] @ weights``; ``weights`` is None when the response does not overlap the
+            signal (band value NaN)
+        '''
+        wl_signal = np.asarray(wl_signal, dtype=np.float64)
+        bands = []
+        for mu, fwhm in zip(self.fwhm.wl.values, self.fwhm.values):
+            if expon is None:
+                rsr = gaussian(wl_signal, float(mu), Gamma2sigma(float(fwhm))).astype(np.float64)
+                start, stop = 0, len(wl_signal)
+            else:
+                rsr = super_gaussian(wl_signal, mu=float(mu),
+                                     sigma=super_gaussian_fwhm2sigma(float(fwhm), expon), expon=expon)
+                idx = np.flatnonzero(rsr > threshold)
+                if len(idx) == 0:
+                    bands.append((0, 0, None))
+                    continue
+                # the response is unimodal: the wavelengths above the threshold are contiguous
+                start, stop = idx[0], idx[-1] + 1
+            rsr = rsr[start:stop]
+            # trapezoidal rule coefficients
+            dwl = np.diff(wl_signal[start:stop]) / 2
+            coef = np.zeros_like(rsr)
+            coef[:-1] += dwl
+            coef[1:] += dwl
+            norm = np.sum(rsr * coef)
+            bands.append((start, stop, rsr * coef / norm if norm > 0 else None))
+        return bands
+
     def convolve_nd(self,
                     signal,
-                    convolve_1d):
+                    bands):
         '''
-        Apply a 1-D convolution function to each spectrum of a multidimensional signal.
+        Apply the band weights of :py:meth:`band_weights` to each spectrum of a multidimensional signal.
+
+        The computation is vectorized over all the spectra; for a dask-backed signal it is lazy and done
+        chunk by chunk (the ``wl`` dimension is gathered in a single chunk).
 
         :param signal: spectral signal, :py:class:`xarray.DataArray` with a ``wl`` dimension (nm) and any
             other dimensions
-        :param convolve_1d: function ``(wl_signal, signal_1d)`` returning the band values
+        :param bands: band weights returned by :py:meth:`band_weights`
         :return: :py:class:`xarray.DataArray` with the central wavelengths of the bands as ``wl`` coordinate
         '''
-        wl_signal = signal.wl.values
+
+        def apply_weights(sig):
+            # sig: numpy array with the wavelengths on the last axis
+            out = np.full(sig.shape[:-1] + (len(bands),), np.nan, dtype=np.float32)
+            for ii, (start, stop, weights) in enumerate(bands):
+                if weights is not None:
+                    out[..., ii] = sig[..., start:stop] @ weights
+            return out
+
+        if signal.chunks is not None:
+            signal = signal.chunk({'wl': -1})
         signal_int = xr.apply_ufunc(
-            lambda sig: convolve_1d(wl_signal, np.ascontiguousarray(sig, dtype=np.float64)),
+            apply_weights,
             signal,
             input_core_dims=[['wl']],
             output_core_dims=[['wl_band']],
-            vectorize=True,
+            dask='parallelized',
             output_dtypes=[np.float32],
+            dask_gufunc_kwargs={'output_sizes': {'wl_band': len(bands)}},
         )
         return signal_int.rename(wl_band='wl').assign_coords(wl=self.fwhm.wl.values)
 
@@ -659,24 +791,15 @@ class Spectral():
             one variable for a multidimensional signal; the ``wl`` coordinate gives the central wavelengths
         '''
 
-        wl_ref = signal.wl.values
-        fwhm = self.fwhm.values
-        wl = self.fwhm.wl.values
-        xdims = signal.dims
         attrs=signal.attrs
         name=signal.name if signal.name is not None else name
-        if len(xdims) == 1:
-            signal_int = self.convolve2_(wl_ref, signal.values, wl, fwhm, expon, threshold=threshold)
-            signal_int = xr.DataArray(signal_int, name=name,
-                                      coords={'wl': self.fwhm.wl.values},
-                                      attrs=attrs)
-
+        bands = self.band_weights(signal.wl.values, expon=expon, threshold=threshold)
+        if signal.ndim == 1:
+            signal_int = self.convolve_nd(signal.reset_coords(drop=True), bands).rename(name)
         else:
             # to handle multidimensional xarray: convolution of each spectrum
-            signal_int = self.convolve_nd(
-                signal, lambda wl_signal, sig: self.convolve2_(wl_signal, sig, wl, fwhm, expon, threshold))
-            signal_int = signal_int.to_dataset(name=name)
-            signal_int.attrs = attrs
+            signal_int = self.convolve_nd(signal, bands).to_dataset(name=name)
+        signal_int.attrs = attrs
 
         return signal_int
 
@@ -694,22 +817,12 @@ class Spectral():
             for a multidimensional signal); the ``wl`` coordinate gives the central wavelengths
         '''
 
-        wl_ref = signal.wl.values
-        fwhm = self.fwhm.values
-        wl = self.fwhm.wl.values
-        xdims = signal.dims
-
-        if len(xdims) == 1:
-            signal_int = self.convolve_(wl_ref, signal.values, wl, fwhm)
-            signal_int = xr.DataArray(signal_int, name=name,
-                                      coords={'wl': self.fwhm.wl.values},
-                                      attrs=info)
-
+        bands = self.band_weights(signal.wl.values)
+        if signal.ndim == 1:
+            signal_int = self.convolve_nd(signal.reset_coords(drop=True), bands).rename(name)
         else:
             # to handle multidimensional xarray: convolution of each spectrum
-            signal_int = self.convolve_nd(
-                signal, lambda wl_signal, sig: self.convolve_(wl_signal, sig, wl, fwhm))
-            signal_int = signal_int.to_dataset(name=name).to_dataarray()
-            signal_int.attrs = info
+            signal_int = self.convolve_nd(signal, bands).to_dataset(name=name).to_dataarray()
+        signal_int.attrs = info
 
         return signal_int

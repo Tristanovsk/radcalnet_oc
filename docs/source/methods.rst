@@ -38,7 +38,10 @@ Notation
      - wavelength
      - nm
    * - :math:`\theta_0,\ \theta_v,\ \phi`
-     - solar zenith, viewing zenith and relative azimuth angles
+     - solar zenith, viewing zenith and relative azimuth angles; following the radiative transfer
+       convention of the look-up tables, :math:`\phi = 0` when the viewing direction points towards the
+       Sun (specular reflection, sunglint geometry) and :math:`\phi = 180°` for the backscattering
+       geometry (Sun behind the sensor)
      - deg
    * - :math:`\mu_0 = \cos\theta_0,\ \mu_v = \cos\theta_v`
      - cosines of the solar and viewing zenith angles
@@ -83,6 +86,9 @@ gaseous absorption look-up table:
 3. **Look-up table preparation.** The look-up tables of the aerosol models are combined with the
    ``aerosol_combination`` proportions and interpolated at the geometry of the simulation
    (:py:meth:`LUT.lut_preparation <radcalnet_oc.lut.LUT.lut_preparation>`, :ref:`methods-aerosol`).
+   Only the models of non-null proportion are read, for the range of relative azimuth angles of the
+   simulation; the tables read are kept in memory for the next preparations
+   (:py:meth:`LUT.toa_lut <radcalnet_oc.lut.LUT.toa_lut>`).
 4. **Atmospheric transmittances** :math:`T^{\downarrow}` and :math:`t^{\uparrow}`, interpolated for
    the aerosol optical thickness at 550 nm (`Atmospheric transmittances`_).
 5. **Downwelling irradiance** :math:`E_d` and **water-leaving radiance** :math:`L_w = R_{rs}\,E_d` at
@@ -292,6 +298,19 @@ Sunglint
 --------
 
 Implemented in :py:class:`~radcalnet_oc.coxmunk.Sunglint`. The sunglint reflectance is modelled with the Cox and Munk (1954) wave slope statistics.
+The look-up tables give the diffuse light, without sunglint (`Atmospheric path reflectance`_); the
+sunglint is defined as the direct sunlight reflected by the sea surface and attenuated by the Beer-Lambert
+law only (Eq. :eq:`tdir`), to be added to the diffuse light. It is not included in the TOA reflectance of
+:py:class:`~radcalnet_oc.process.Process`; its contribution to the TOA signal is evaluated in the
+tutorial :doc:`tutorials/research/radcalnet_oc_sunglint`.
+
+.. note::
+
+   In this section and in :py:class:`~radcalnet_oc.coxmunk.Sunglint`, the relative azimuth angle
+   :math:`\phi` is 180° for the specular reflection (Sun and sensor in opposition), whereas it is 0° in the
+   convention of the look-up tables: the azimuth angle of the look-up tables is converted with
+   :math:`\phi_{glint} = 180° - \phi`.
+
 For a given geometry, the scattering angle :math:`\Theta` and the incidence angle
 :math:`\omega` on the reflecting facets are
 
@@ -466,6 +485,15 @@ super-Gaussian function of exponent :math:`p`:
    \sigma_b = \frac{\Gamma_b}{2}\left( 2\ln 2 \right)^{-1/p}.
 
 The Gaussian case corresponds to :math:`p = 2`, i.e. :math:`\sigma_b = \Gamma_b / (2\sqrt{2\ln 2})`.
+
+The integrals of Eq. :eq:`convolution` are computed with the trapezoidal rule on the wavelengths of the
+signal, so that :math:`X_b` is a weighted sum of the values :math:`X(\lambda_i)`, with weights that
+depend only on the wavelengths and on the spectral response. The weights of each band are computed once
+(:py:meth:`Spectral.band_weights <radcalnet_oc.lut.Spectral.band_weights>`) and applied to all the
+spectra of a multidimensional signal at once (time, geometry...). For ``convolve2``, the wavelengths
+where the super-Gaussian response is below a threshold (:math:`10^{-4}` by default) are ignored; a band
+value is NaN when the signal is NaN at a wavelength where the response is not ignored. A signal backed by
+dask arrays (e.g. read with :py:func:`xarray.open_mfdataset`) is convolved lazily, chunk by chunk.
 
 References
 ----------
