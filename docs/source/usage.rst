@@ -79,6 +79,14 @@ Python
    spectral = radoc.Spectral(central_wl=np.array([443., 490., 560., 665., 865.]), fwhm=20.)
    Rtoa_bands = spectral.convolve2(radcalnet_db.Rtoa).Rtoa
 
+The convolution is vectorized over all the spectra and also works on a simulation read lazily with dask,
+e.g. ``xr.open_mfdataset(files, chunks={'time': 1}).Rtoa`` (see :ref:`spectral_convolution` and the
+tutorial :doc:`notebook/sentinel3_radcalnet_oc_matchup`).
+
+When several simulations are run in the same Python session (e.g. one per month or per site), the
+parts of the atmosphere look-up table read by the first run are kept in memory
+(:py:meth:`LUT.toa_lut <radcalnet_oc.lut.LUT.toa_lut>`) and the next runs do not read the file again.
+
 The proportions of the aerosol models can be given explicitly,
 ``process.execute(aerosol_combination=[0, 0.5, 0, 0.5, 0, 0])``, or retrieved from the AERONET
 spectral aerosol optical thickness with :py:class:`~radcalnet_oc.kernel.Aerosol` (see

@@ -38,6 +38,8 @@ passive optical satellite sensors above coastal and oceanic waters.
    notebook/radcalnet_oc_solar_irradiance
    notebook/radcalnet_oc_downwelling_irradiance
    notebook/radcalnet_oc_toa_atmosphere_radiation
+   notebook/sentinel3_radcalnet_oc_matchup
+   tutorials/research/index
 
 .. toctree::
    :maxdepth: 2

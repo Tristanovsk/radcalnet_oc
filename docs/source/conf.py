@@ -15,7 +15,7 @@ import radcalnet_oc
 # -- Project information -----------------------------------------------------
 
 project = 'radcalnet_oc'
-copyright = '2026, Tristan Harmel'
+copyright = '2024-2026, Tristan Harmel'
 author = 'Tristan Harmel'
 version = radcalnet_oc.__version__
 release = radcalnet_oc.__version__

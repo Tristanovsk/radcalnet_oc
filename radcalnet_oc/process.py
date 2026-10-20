@@ -65,7 +65,9 @@ class Process():
             ``day_of_year``, ``aot550``, ``pressure``, ``tcwv``, ``tco3``, ``tcno2``...);
             if None, the clear-water template of the package is used
         :param vza: viewing zenith angles (deg), :py:class:`xarray.DataArray` with a ``vza`` dimension
-        :param azi: relative azimuth angles (deg), :py:class:`xarray.DataArray` with an ``azi`` dimension
+        :param azi: relative azimuth angles (deg), :py:class:`xarray.DataArray` with an ``azi`` dimension;
+            0 deg when the viewing direction points towards the Sun (sunglint geometry), 180 deg for the
+            backscattering geometry (radiative transfer convention of the look-up tables)
         :param central_wl: not used (the wavelengths are those of the gaseous absorption LUT)
         :param solar_database: solar spectrum used for :math:`F_0`: ``'tsis'`` (default), ``'thuillier'``,
             ``'gueymard'`` or ``'kurucz'``
