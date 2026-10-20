@@ -188,14 +188,17 @@ full atmosphere LUT, on a Linux workstation:
    * - CPU
      - one Python process (no multiprocessing)
      - NumPy may use several threads; the :py:class:`~radcalnet_oc.lut.Spectral` convolutions are
-       parallelized over the bands with numba
+       vectorized matrix products, computed chunk by chunk for dask arrays
    * - RAM
-     - about 4 GB (peak)
-     - dominated by the loading and interpolation of the look-up tables; hardly depends on the number
-       of viewing geometries
+     - about 0.5 GB (peak), 0.6 GB for 4 viewing zenith angles
+     - dominated by the look-up tables: only the aerosol models of non-null proportion and the range of
+       azimuth angles of the simulation are read
    * - Execution time
-     - about 13 s in total, 10 s for :py:meth:`~radcalnet_oc.process.Process.execute`
-     - 1 s more for 4 viewing zenith angles instead of 1
+     - about 5 s in total, 2.6 s for :py:meth:`~radcalnet_oc.process.Process.execute`; 6 s and 4 s for
+       4 viewing zenith angles
+     - with the LUT file in the system cache (the first reading from disk is longer); the next runs of
+       the same Python session reuse the tables in memory (:py:meth:`LUT.toa_lut
+       <radcalnet_oc.lut.LUT.toa_lut>`)
    * - Disk — input
      - atmosphere LUT plus about 1 MB per input time series of 50 hyperspectral measurements
      - the packaged data are installed with the package
