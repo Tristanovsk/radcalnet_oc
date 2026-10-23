@@ -331,8 +331,10 @@ class LUT:
         '''
         azis = self.aero_lut.azi.values
         azi = np.atleast_1d(azi)
-        i0 = max(int(np.searchsorted(azis, np.min(azi), side='right')) - 1, 0)
-        i1 = min(int(np.searchsorted(azis, np.max(azi), side='left')) + 1, len(azis))
+        # nodes bracketing the azimuths; at least two nodes are needed for the interpolation, also when
+        # an azimuth is a node of the table
+        i0 = min(max(int(np.searchsorted(azis, np.min(azi), side='right')) - 1, 0), len(azis) - 2)
+        i1 = max(min(int(np.searchsorted(azis, np.max(azi), side='right')) + 1, len(azis)), i0 + 2)
 
         keys = {model: (str(self.lut_file), float(wind), str(model), i0, i1) for model in models}
         missing = [model for model in models if keys[model] not in TOA_LUT_CACHE]
@@ -521,7 +523,7 @@ class SolarIrradiance():
 
         :return: solar irradiance (mW m-2 nm-1), :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
         '''
-        solar_irr = xr.open_dataset(thuillier_file).squeeze().data.drop('time') * 1e3
+        solar_irr = xr.open_dataset(thuillier_file).squeeze().data.drop_vars('time') * 1e3
         solar_irr = solar_irr.rename({'wavelength': 'wl'})
         # keep spectral range of interest UV-SWIR
         solar_irr = solar_irr[(solar_irr.wl <= self.wl_max) & (solar_irr.wl >= self.wl_min)]
