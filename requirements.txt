@@ -12,3 +12,4 @@ matplotlib
 importlib_resources
 xmltodict
 docopt
+platformdirs

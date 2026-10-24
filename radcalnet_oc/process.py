@@ -14,17 +14,15 @@ import xarray as xr
 import logging
 
 from importlib.resources import files
-import yaml
 
 from . import GaseousTransmittance, Misc, LUT, SolarIrradiance
+from .config import load_config
 
 template = files('radcalnet_oc.data.template').joinpath('template_clear_water.nc')
 # --------------------------------------------------
-# get path of other files as indicated in config.yml
+# settings of the configuration (see radcalnet_oc.config)
 # --------------------------------------------------
-configfile = files(__package__) / 'config.yml'
-with open(configfile, 'r') as file:
-    config = yaml.safe_load(file)
+config = load_config()
 
 AEROSOL_MODELS = config['settings']['aerosol_models']
 AEROSOL_COMBINATION = config['settings']['aerosol_combination']

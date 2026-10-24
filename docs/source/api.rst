@@ -42,6 +42,29 @@ Look-up tables and auxiliary data
    radcalnet_oc.lut.AuxData
    radcalnet_oc.lut.SolarIrradiance
 
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.lut.open_lut
+
+Configuration and download of the TOA look-up table
+---------------------------------------------------
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.config.load_config
+   radcalnet_oc.config.toa_lut_path
+   radcalnet_oc.config.trans_lut_path
+   radcalnet_oc.config.default_data_root
+   radcalnet_oc.config.ensure_toa_lut
+   radcalnet_oc.config.download_toa_lut
+   radcalnet_oc.config.auto_download_enabled
+   radcalnet_oc.config.init_user_config
+   radcalnet_oc.config.main
+
 Atmosphere
 ----------
 

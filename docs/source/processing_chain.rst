@@ -68,8 +68,9 @@ Inputs
        template shipped with the package is used.
    * - Atmosphere TOA look-up table
      - 1..1 (mandatory)
-     - NetCDF file ``toa_lut`` in the ``lutdata`` directory of ``config.yml`` (see :doc:`installation`).
-       If it is not found, a light version shipped with the package is used, with a lower accuracy.
+     - NetCDF file ``toa_lut`` in the ``lutdata`` folder of the configuration, downloaded from Zenodo
+       if missing (see :doc:`installation`). If it is not available, a light version shipped with the
+       package is used, with a lower accuracy.
    * - Packaged auxiliary data
      - 1..1 (mandatory)
      - Irradiance transmittance LUT, gaseous absorption LUTs, solar spectra (TSIS-1, Thuillier,
@@ -230,7 +231,8 @@ Data Types
    * - Atmosphere TOA LUT
      - Radiative transfer simulations for the OPAC aerosol models and wind speeds
      - global
-     - ``toa_lut_opac_wind_v3.nc`` (``toa_lut`` in ``config.yml``); light version
+     - ``toa_lut_opac_wind_v3.nc`` (``toa_lut`` in ``config.yml``, Zenodo
+       `10.5281/zenodo.23394202 <https://doi.org/10.5281/zenodo.23394202>`__); light version
        ``toa_lut_opac_ultra_light.nc`` in the package
    * - Transmittance LUT
      - Irradiance transmittances for the OPAC aerosol models and wind speeds

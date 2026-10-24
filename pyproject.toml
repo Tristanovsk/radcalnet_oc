@@ -11,8 +11,15 @@ authors = [{ name = "Tristan Harmel", email = "tristan.harmel@gmail.com" }]
 license = { file = "LICENSE" }
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
+    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
 keywords = ["Sentinel-2","Landsat-8","Landsat-9", "EO satellite"]
 requires-python = ">=3.9"
@@ -20,7 +27,10 @@ dynamic = ["version", "dependencies"]
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["radcalnet_oc", "radcalnet_oc.*"]
 
+# small data shipped with the package; the full TOA LUT (about 900 MB) is not: it is downloaded from
+# Zenodo (radcalnet_oc.config.ensure_toa_lut)
 [tool.setuptools.package-data]
 "radcalnet_oc"= ['*.yml',
                  'data/lut/gases/*.nc',
@@ -35,6 +45,7 @@ where = ["."]
 
 [project.scripts]
 radcalnet_oc = "radcalnet_oc.run:main"
+radcalnet_oc_config = "radcalnet_oc.config:main"
 
 #dynamic = ["dependencies"]
 [tool.setuptools.dynamic]
@@ -42,7 +53,7 @@ version = { attr = "radcalnet_oc.__version__" }
 dependencies = { file = ["requirements.txt"] }
 
 [project.optional-dependencies]
-dev = ["black", "bumpver", "isort", "pip-tools", "pytest"]
+dev = ["black", "bumpver", "isort", "pip-tools", "pytest", "build", "twine"]
 docs = [
     "sphinx>=7",
     "sphinx-book-theme>=1.1",
@@ -56,3 +67,9 @@ docs = [
 [project.urls]
 Homepage = "https://github.com/Tristanovsk/radcalnet_oc"
 Documentation = "https://radcalnet-oc.readthedocs.io"
+Source = "https://github.com/Tristanovsk/radcalnet_oc"
+Changelog = "https://github.com/Tristanovsk/radcalnet_oc/blob/main/CHANGELOG.md"
+"LUTs (Zenodo)" = "https://doi.org/10.5281/zenodo.23394202"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
