@@ -5,6 +5,20 @@ All notable changes to radcalnet_oc are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `Process.execute` and `LUT.lut_preparation` failed (`IndexError`) with an aerosol combination varying
+  with time, e.g. retrieved for each measurement with `kernel.Aerosol` (regression of 1.0.0, from the
+  skipping of the aerosol models of null proportion).
+
+### Added
+- Tutorial *From AERONET-OC to top of atmosphere*: the whole chain on one day of the AAOT station
+  (aerosol mixture retrieval, TOA simulation for several viewing angles, 10 nm bands, propagation of
+  the uncertainty of $R_{rs}$ and of the AOT), with its input file.
+- The example notebooks of the `notebook` folder are moved to `docs/source/tutorials/examples` (not
+  rendered); the `notebook` folder is no longer tracked.
+
 ## [1.0.1] - 2026-10-24
 
 ### Changed
@@ -83,6 +97,7 @@ First release published on PyPI (`pip install radcalnet_oc`).
 
 - Initial version.
 
+[Unreleased]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.1...HEAD
 [1.0.1]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Tristanovsk/radcalnet_oc/releases/tag/v1.0.0
 [0.0.1]: https://github.com/Tristanovsk/radcalnet_oc/releases/tag/v0.0.1
