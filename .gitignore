@@ -14,3 +14,6 @@ docs/_build/
 # IDE
 .idea/
 .vscode/
+
+# Working notebooks (examples copied to docs/source/tutorials/examples)
+/notebook/

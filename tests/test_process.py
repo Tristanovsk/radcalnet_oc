@@ -68,6 +68,23 @@ def test_aerosol_combination_argument():
     np.testing.assert_array_equal(process.radcalnet_db.aerosol_combination.values, [0, 0, 0, 1, 0, 0])
 
 
+def test_aerosol_combination_varying_with_time():
+    """A combination per time (e.g. retrieved with kernel.Aerosol) gives, at each time, the same result as
+    the combination of this time used for the whole series."""
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=[0, 1, 2])
+    combs = [[0, 1., 0, 0, 0, 0], [0, 0, 0.5, 0.5, 0, 0], [0, 1., 0, 0, 0, 0]]   # (no WASO in the light LUT)
+    comb = xr.DataArray(combs, coords={'time': input_db.time, 'model': radcalnet_oc.lut.AEROSOL_MODELS})
+    kwargs = dict(input_db=input_db, vza=angles('vza', [0., 10.]), azi=angles('azi', [90.]))
+    process = Process(**kwargs)
+    process.execute(aerosol_combination=comb)
+    rtoa = process.radcalnet_db.Rtoa
+    for it in [0, 1]:
+        constant = Process(**kwargs)
+        constant.execute(aerosol_combination=combs[it])
+        expected = constant.radcalnet_db.Rtoa.isel(time=it)
+        np.testing.assert_allclose(rtoa.isel(time=it).transpose(*expected.dims), expected, rtol=1e-4)
+
+
 # ------------------------------------
 # command line
 # ------------------------------------

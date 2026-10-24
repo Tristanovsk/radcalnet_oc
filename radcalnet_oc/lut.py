@@ -271,7 +271,10 @@ class LUT:
         self.aerosol_combination=aerosol_combination
 
         # the models of null proportion do not contribute to the mixture: they are not read nor interpolated
-        models = aerosol_combination.model.values[aerosol_combination.values != 0]
+        # (for a combination varying with time, the models of null proportion at all times)
+        other_dims = [dim for dim in aerosol_combination.dims if dim != 'model']
+        used = (aerosol_combination != 0).any(other_dims) if other_dims else aerosol_combination != 0
+        models = aerosol_combination.model.values[used.values]
         if len(models) == 0:
             models = aerosol_combination.model.values
         aerosol_combination = aerosol_combination.sel(model=models)
