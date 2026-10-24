@@ -3,12 +3,12 @@
   <img alt="radcalnet_oc" src="https://raw.githubusercontent.com/Tristanovsk/radcalnet_oc/main/docs/source/_static/radcalnet-oc-logo.png" width="260">
 </picture>
 
-[![PyPI](https://img.shields.io/pypi/v/radcalnet_oc)](https://pypi.org/project/radcalnet_oc/)
-[![Python](https://img.shields.io/pypi/pyversions/radcalnet_oc?logo=python&logoColor=white)](https://pypi.org/project/radcalnet_oc/)
-[![CI](https://github.com/Tristanovsk/radcalnet_oc/actions/workflows/ci.yml/badge.svg)](https://github.com/Tristanovsk/radcalnet_oc/actions/workflows/ci.yml)
-[![Documentation](https://readthedocs.org/projects/radcalnet-oc/badge/?version=latest)](https://radcalnet-oc.readthedocs.io)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![LUT DOI](https://img.shields.io/badge/LUT-10.5281%2Fzenodo.23394202-blue)](https://doi.org/10.5281/zenodo.23394202)
+[![PyPI](https://img.shields.io/pypi/v/radcalnet-oc?logo=pypi&logoColor=white)](https://pypi.org/project/radcalnet-oc/)
+[![Python](https://img.shields.io/pypi/pyversions/radcalnet-oc?logo=python&logoColor=white)](https://pypi.org/project/radcalnet-oc/)
+[![CI](https://img.shields.io/github/actions/workflow/status/Tristanovsk/radcalnet_oc/ci.yml?branch=main&label=CI&logo=github)](https://github.com/Tristanovsk/radcalnet_oc/actions/workflows/ci.yml)
+[![Documentation](https://img.shields.io/readthedocs/radcalnet-oc?logo=readthedocs&logoColor=white)](https://radcalnet-oc.readthedocs.io)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![LUT DOI](https://img.shields.io/badge/LUT%20DOI-10.5281%2Fzenodo.23394202-blue?logo=zenodo&logoColor=white)](https://doi.org/10.5281/zenodo.23394202)
 
 # radcalnet_oc
 
@@ -39,7 +39,7 @@ API reference).
 
 ## Installation
 
-Python >= 3.10 is recommended (3.10 and 3.12 tested), e.g. in a conda environment:
+Python >= 3.10 is required (3.10, 3.11 and 3.12 tested), e.g. in a conda environment:
 
 ```bash
 conda create -n radcalnet_oc python=3.12
