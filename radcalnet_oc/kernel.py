@@ -11,27 +11,18 @@ import xarray as xr
 
 from scipy.optimize import least_squares
 
-import yaml
-from importlib.resources import files
 import logging
+
+from .config import load_config
 
 opj = os.path.join
 
 
-# ------------------------------------
-# get path of packaged files
-# ------------------------------------
-LUT_FILE_BACKUP = files('radcalnet_oc.data.lut.atmo').joinpath('toa_lut_opac_ultra_light.nc')
-
 # --------------------------------------------------
-# get path of other files as indicated in config.yml
+# settings of the configuration (see radcalnet_oc.config)
 # --------------------------------------------------
-configfile = files(__package__) / 'config.yml'
-with open(configfile, 'r') as file:
-    config = yaml.safe_load(file)
+config = load_config()
 
-LUTDATA = config['path']['lutdata']
-TOALUT = config['path']['toa_lut']
 AEROSOL_MODELS = config['settings']['aerosol_models']
 AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 NETCDF_ENGINE = config['processor']['netcdf_engine']

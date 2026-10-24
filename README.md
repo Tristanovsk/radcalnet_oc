@@ -14,34 +14,37 @@ Principle
 
 ## Installation
 
-These instructions will get you a copy of the project up and running on
-your local machine for development and testing purposes. See deployment
-for notes on how to deploy the project on a live system.
+Python >= 3.9 is required (3.11 or 3.12 recommended), e.g. in a conda environment:
 
-### Download the LUT files
+    conda create python=3.12 -n radcalnet_oc
+    conda activate radcalnet_oc
 
-click on
-[lutdata](https://drive.google.com/drive/folders/1N0-FtW-PTPblR4z-82fFrUTekMd8e3Vz?usp=sharing)
-to download and save in your desired path (your_LUT_PATH)
+Install the package from PyPI, or from a clone of this repository:
 
-### Installation with conda environment
+    pip install radcalnet_oc
+    pip install .                # from the repository
 
-    conda activate "name of your conda env"
+### Look-up table (LUT)
 
-Python \>= 3.9 is recommended, example:
+The radiative transfer TOA look-up table of the atmosphere (`toa_lut_opac_wind_v3.nc`, about 900 MB)
+is not part of the package: it is downloaded from [Zenodo](https://doi.org/10.5281/zenodo.23394202)
+(checksum verified) the first time the LUTs are loaded, into `~/.local/share/radcalnet_oc/lut` by
+default. It is the LUT of [GRS](https://github.com/CNES/GRSprocessor): if you already have it, point
+radcalnet_oc to its folder instead.
 
-    conda create python=3.12 -n your_env
-    conda activate your_env
+    radcalnet_oc_config                         # configuration in use and LUT check
+    radcalnet_oc_config --download              # download the LUT now
+    radcalnet_oc_config --init /path/to/lut     # use an existing LUT folder (e.g. the GRS one)
 
-Set the `config.yml` file:
+The LUT folder can also be set with the environment variable `RADCALNET_OC_DATA_ROOT`; the automatic
+download is switched off with `RADCALNET_OC_NO_DOWNLOAD=1`. Without the LUT, a light version shipped
+with the package is used, with a lower accuracy.
 
-    path:
-      lutdata: your_LUT_PATH
+Version history: [CHANGELOG.md](CHANGELOG.md).
 
-Finally, install grs with:
+### Tests
 
-``` 
-pip install .
-```
+    pip install ".[dev]"
+    pytest
 
 

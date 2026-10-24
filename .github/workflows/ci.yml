@@ -1,4 +1,5 @@
 # Checks run on each push and pull request:
+# - tests: unit tests (pytest) with the light TOA LUT of the package, nothing downloaded
 # - package: build the sdist and the wheel, check their metadata and content, install the wheel in
 #   a clean environment and run the command line on a packaged template (pip pipeline)
 # - docs: build the documentation as Read the Docs does, warnings and broken references are errors
@@ -10,7 +11,33 @@ on:
   pull_request:
   workflow_dispatch:
 
+# the full TOA LUT (about 900 MB) is never downloaded by the checks: the light LUT of the package is used
+env:
+  RADCALNET_OC_NO_DOWNLOAD: "1"
+
 jobs:
+  tests:
+    name: tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the package with the dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[dev]"
+
+      - name: Run the unit tests
+        run: pytest -ra
+
   package:
     name: package (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -45,6 +72,8 @@ jobs:
                       'radcalnet_oc/data/template/template_clear_water.nc']
           missing = [f for f in required if f not in names]
           assert not missing, f'missing in the wheel: {missing}'
+          unwanted = [f for f in names if f.startswith('tests/') or f.endswith('toa_lut_opac_wind_v3.nc')]
+          assert not unwanted, f'tests or full TOA LUT in the wheel: {unwanted}'
           print(f'{len(names)} files in the wheel, required data files present')
           EOF
 
@@ -54,11 +83,13 @@ jobs:
           /tmp/venv/bin/pip install dist/*.whl
 
       - name: Run the command line on a packaged template
-        # outside the repository, so that the installed package is used; the atmosphere LUT of
-        # config.yml is not available: the light LUT of the package is used
+        # outside the repository, so that the installed package is used; the full TOA LUT is not
+        # installed (and not downloaded): the light LUT of the package is used
         working-directory: /tmp
         run: |
           /tmp/venv/bin/radcalnet_oc --version
+          # configuration printed; exit status 1: the full TOA LUT is not installed
+          if /tmp/venv/bin/radcalnet_oc_config; then echo "missing TOA LUT not detected"; exit 1; fi
           TEMPLATE=$(/tmp/venv/bin/python -c "from importlib.resources import files; print(files('radcalnet_oc.data.template') / 'template_clear_water.nc')")
           /tmp/venv/bin/radcalnet_oc "$TEMPLATE" -o /tmp/out.nc --vza 0,10 --azi 90 --bands 443,560,865 --fwhm 20
           /tmp/venv/bin/python - <<'EOF'

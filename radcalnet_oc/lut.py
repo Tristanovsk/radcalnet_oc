@@ -19,7 +19,8 @@ import matplotlib.pyplot as plt
 
 import logging
 from importlib.resources import files
-import yaml
+
+from .config import load_config, ensure_toa_lut, toa_lut_path, trans_lut_path, LUT_FILE_BACKUP
 
 opj = os.path.join
 
@@ -35,20 +36,16 @@ tsis_file = files('radcalnet_oc.data.auxdata').joinpath(
     'hybrid_reference_spectrum_p1nm_resolution_c2022-11-30_with_unc.nc')
 sunglint_eps_file = files('radcalnet_oc.data.auxdata').joinpath('mean_rglint_small_angles_vza_le_12_sza_le_60.txt')
 rayleigh_file = files('radcalnet_oc.data.auxdata').joinpath('rayleigh_bodhaine.txt')
-LUT_FILE_BACKUP = files('radcalnet_oc.data.lut.atmo').joinpath('toa_lut_opac_ultra_light.nc')
 
 # --------------------------------------------------
-# get path of other files as indicated in config.yml
+# get path of other files from the configuration (see radcalnet_oc.config)
 # --------------------------------------------------
-configfile = files(__package__) / 'config.yml'
-with open(configfile, 'r') as file:
-    config = yaml.safe_load(file)
+config = load_config()
 
 LUTDATA = config['path']['lutdata']
 TOALUT = config['path']['toa_lut']
-TRANSLUT = config['path']['trans_lut']
-TRANSLUT = files('radcalnet_oc.data.lut.atmo').joinpath(TRANSLUT)
-CAMS_PATH = config['path']['trans_lut']
+TRANSLUT = trans_lut_path()
+CAMS_PATH = config['path']['cams']
 NCPU = config['processor']['ncpu']
 NETCDF_ENGINE = config['processor']['netcdf_engine']
 
@@ -60,6 +57,24 @@ AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 # range, up to 90 MB each
 TOA_LUT_CACHE = {}
 TOA_LUT_CACHE_SIZE = 12
+
+# look-up table files opened once per process and shared by the LUT objects: opening a file again while
+# the garbage collector closes a previous handle of the same file crashes netCDF4/HDF5
+OPEN_LUTS = {}
+
+
+def open_lut(path):
+    '''
+    Open a look-up table file, once per process (``OPEN_LUTS``).
+
+    :param path: path of the NetCDF file
+    :return: shallow copy of the lazily loaded :py:class:`xarray.Dataset`: its variables can be replaced
+        without changing the shared dataset
+    '''
+    key = (str(path), NETCDF_ENGINE)
+    if key not in OPEN_LUTS:
+        OPEN_LUTS[key] = xr.open_dataset(path, engine=NETCDF_ENGINE)
+    return OPEN_LUTS[key].copy()
 
 
 @njit(fastmath=True)
@@ -149,12 +164,13 @@ class LUT:
 
     def __init__(self,
                  wl=np.arange(350, 2500, 10),
-                 lut_file=opj(LUTDATA, TOALUT),
+                 lut_file=None,
                  trans_lut_file=TRANSLUT):
         '''
         :param wl: wavelengths (nm) used by :py:meth:`lut_preparation_all_models` and for the auxiliary data
-        :param lut_file: path of the TOA look-up table (by default ``lutdata/toa_lut`` of ``config.yml``);
-            if not found, the light look-up table of the package is used
+        :param lut_file: path of the TOA look-up table; by default ``lutdata/toa_lut`` of the configuration,
+            downloaded from Zenodo if missing (:py:func:`~radcalnet_oc.config.ensure_toa_lut`); if not
+            found, the light look-up table of the package is used
         :param trans_lut_file: path of the irradiance transmittance look-up table (by default the one of the
             package named ``trans_lut`` in ``config.yml``)
         '''
@@ -164,6 +180,8 @@ class LUT:
 
         # get path of necessary look-up tables
 
+        if lut_file is None:
+            lut_file = ensure_toa_lut() or toa_lut_path()
         self.lut_file = lut_file
         self.trans_lut_file = trans_lut_file
         self.dirdata = config['path']['lutdata']
@@ -183,18 +201,20 @@ class LUT:
         '''
 
         logging.info('loading look-up tables')
-        self.trans_lut = xr.open_dataset(self.trans_lut_file, engine=NETCDF_ENGINE)
+        self.trans_lut = open_lut(self.trans_lut_file)
 
 
         # convert wavelength in nanometer
         self.trans_lut['wl'] = self.trans_lut['wl'] * 1000
         self.trans_lut['wl'].attrs['description'] = 'wavelength of simulation (nanometer)'
         try:
-            self.aero_lut = xr.open_dataset(self.lut_file, engine=NETCDF_ENGINE)
-        except:
-            logging.info('LUT file ' + self.lut_file + ' not found, please download and save it the proper directory')
-            logging.info('LUT has been replaced with light dataset that might produce inaccuracies')
-            self.aero_lut = xr.open_dataset(LUT_FILE_BACKUP, engine=NETCDF_ENGINE)
+            self.aero_lut = open_lut(self.lut_file)
+        except (FileNotFoundError, OSError):
+            logging.warning(f'LUT file {self.lut_file} not found: the light LUT of the package is used, with '
+                            'a lower accuracy (download the LUT with `radcalnet_oc_config --download`)')
+            # the light LUT is the one in use (also for the keys of TOA_LUT_CACHE)
+            self.lut_file = LUT_FILE_BACKUP
+            self.aero_lut = open_lut(LUT_FILE_BACKUP)
 
         # convert wavelength in nanometer
         self.aero_lut['wl'] = self.aero_lut['wl'] * 1000
@@ -204,8 +224,8 @@ class LUT:
         # get normalized aot for aerosol model fitting
         self.naot_lut = self.aero_lut.aot.interp(aot_ref=0.1) / 0.1
 
-        self.gas_lut = xr.open_dataset(self.abs_gas_file, engine=NETCDF_ENGINE)
-        self.Twv_lut = xr.open_dataset(self.water_vapor_transmittance_file, engine=NETCDF_ENGINE)
+        self.gas_lut = open_lut(self.abs_gas_file)
+        self.Twv_lut = open_lut(self.water_vapor_transmittance_file)
 
     def lut_preparation(self,
                         wind=2,
@@ -505,7 +525,9 @@ class SolarIrradiance():
 
         :return: solar irradiance (mW m-2 nm-1), :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
         '''
-        tsis = xr.open_dataset(tsis_file)
+        # loaded in memory and closed: see OPEN_LUTS
+        with xr.open_dataset(tsis_file) as tsis:
+            tsis = tsis.load()
         tsis = tsis.set_index(wavelength='Vacuum Wavelength').rename(
             {'wavelength': 'wl'})  # set_coords('Vacuum Wavelength')
         # convert
@@ -523,7 +545,9 @@ class SolarIrradiance():
 
         :return: solar irradiance (mW m-2 nm-1), :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
         '''
-        solar_irr = xr.open_dataset(thuillier_file).squeeze().data.drop_vars('time') * 1e3
+        with xr.open_dataset(thuillier_file) as solar_irr:
+            solar_irr = solar_irr.load()
+        solar_irr = solar_irr.squeeze().data.drop_vars('time') * 1e3
         solar_irr = solar_irr.rename({'wavelength': 'wl'})
         # keep spectral range of interest UV-SWIR
         solar_irr = solar_irr[(solar_irr.wl <= self.wl_max) & (solar_irr.wl >= self.wl_min)]
