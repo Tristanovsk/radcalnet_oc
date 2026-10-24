@@ -39,7 +39,7 @@ API reference).
 
 ## Installation
 
-Python >= 3.10 is recommended (3.10 and 3.12 tested), e.g. in a conda environment:
+Python >= 3.10 is required (3.10, 3.11 and 3.12 tested), e.g. in a conda environment:
 
 ```bash
 conda create -n radcalnet_oc python=3.12

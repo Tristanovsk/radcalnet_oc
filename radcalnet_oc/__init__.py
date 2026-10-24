@@ -6,7 +6,7 @@ The version history is given in CHANGELOG.md (History page of the documentation)
 '''
 
 __package__ = 'radcalnet_oc'
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 
 from .lut import LUT, AuxData, SolarIrradiance, Spectral
 from .kernel import Aerosol, Misc, GaseousTransmittance, Radiometry

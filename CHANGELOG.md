@@ -5,6 +5,15 @@ All notable changes to radcalnet_oc are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-10-24
+
+### Changed
+- Python >= 3.10 required (was >= 3.9, not supported by the xarray versions the code needs); the CI
+  tests Python 3.10, 3.11 and 3.12.
+
+### Removed
+- Unused light transmittance LUT `transmittance_lut_opac_wind_light_v2.nc` (0.5 MB) from the package.
+
 ## [1.0.0] - 2026-10-24
 
 First release published on PyPI (`pip install radcalnet_oc`).
@@ -74,5 +83,6 @@ First release published on PyPI (`pip install radcalnet_oc`).
 
 - Initial version.
 
+[1.0.1]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Tristanovsk/radcalnet_oc/releases/tag/v1.0.0
 [0.0.1]: https://github.com/Tristanovsk/radcalnet_oc/releases/tag/v0.0.1

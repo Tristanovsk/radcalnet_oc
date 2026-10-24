@@ -4,7 +4,7 @@ Installation
 Python environment
 ------------------
 
-Python >= 3.9 is required (3.11 or 3.12 recommended). With conda:
+Python >= 3.10 is required (3.10, 3.11 and 3.12 are tested). With conda:
 
 .. code-block:: bash
 
