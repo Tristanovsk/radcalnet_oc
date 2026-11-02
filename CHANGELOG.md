@@ -5,7 +5,7 @@ All notable changes to radcalnet_oc are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.2] - 2026-11-02
 
 ### Fixed
 - `Process.execute` and `LUT.lut_preparation` failed (`IndexError`) with an aerosol combination varying
@@ -97,7 +97,7 @@ First release published on PyPI (`pip install radcalnet_oc`).
 
 - Initial version.
 
-[Unreleased]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.1...HEAD
+[1.0.2]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Tristanovsk/radcalnet_oc/releases/tag/v1.0.0
 [0.0.1]: https://github.com/Tristanovsk/radcalnet_oc/releases/tag/v0.0.1
