@@ -79,6 +79,11 @@ Python
    spectral = radoc.Spectral(central_wl=np.array([443., 490., 560., 665., 865.]), fwhm=20.)
    Rtoa_bands = spectral.convolve2(radcalnet_db.Rtoa).Rtoa
 
+   # or with the tabulated spectral response functions of the instrument,
+   # an xarray.DataArray of dimensions (band, wl), wavelengths in nm
+   spectral = radoc.Spectral.from_srf(srf)
+   Rtoa_bands = spectral.convolve2(radcalnet_db.Rtoa).Rtoa
+
 The convolution is vectorized over all the spectra and also works on a simulation read lazily with dask,
 e.g. ``xr.open_mfdataset(files, chunks={'time': 1}).Rtoa`` (see :ref:`spectral_convolution` and the
 tutorial :doc:`notebook/sentinel3_radcalnet_oc_matchup`).

@@ -97,6 +97,110 @@ def test_convolution_multidimensional():
     np.testing.assert_allclose(bands.Rtoa.values, 1, rtol=1e-6)
 
 
+def _trapezoid_convolution(wl, signal, rsr):
+    """Reference band value of Eq. (convolution), trapezoidal rule on the signal wavelengths."""
+    return np.trapezoid(signal * rsr, wl) / np.trapezoid(rsr, wl)
+
+
+@pytest.mark.parametrize('expon', [None, 2., 3., 4.5])
+def test_convolution_matches_trapezoid(expon):
+    """The weight matrix gives the trapezoidal-rule convolution with the modelled responses."""
+    wl = np.arange(350, 1100, 0.7)
+    signal = 0.1 + 0.05 * np.sin(wl / 30.) - 0.04 * np.exp(-((wl - 761) / 1.5) ** 2)
+    spectral = Spectral(central_wl=np.array([443., 761., 865.]), fwhm=np.array([10., 5., 40.]))
+    da = xr.DataArray(signal, coords={'wl': wl}, dims='wl', name='R')
+    if expon is None:
+        bands = spectral.convolve(da).values
+        sigmas = [Gamma2sigma(f) for f in spectral.fwhm.values]
+        refs = [_trapezoid_convolution(wl, signal, gaussian(wl, mu, s))
+                for mu, s in zip(spectral.central_wl, sigmas)]
+    else:
+        bands = spectral.convolve2(da, expon=expon, threshold=0.).values
+        refs = [_trapezoid_convolution(wl, signal, super_gaussian(
+            wl, mu=mu, sigma=super_gaussian_fwhm2sigma(f, expon), expon=expon))
+            for mu, f in zip(spectral.central_wl, spectral.fwhm.values)]
+    np.testing.assert_allclose(bands, refs, rtol=1e-6)
+
+
+def test_convolution_threshold_relative_to_peak():
+    """The threshold is a fraction of the peak response: the window grows with the FWHM."""
+    wl = np.arange(350, 2500, 0.5)
+    for fwhm in [5., 50., 300.]:
+        rsr = Spectral(central_wl=np.array([1600.]), fwhm=fwhm).responses(wl, expon=3, threshold=1e-4)[:, 0]
+        kept = wl[rsr > 0]
+        # half width at which exp(-z^3 / 2) = 1e-4
+        sigma = super_gaussian_fwhm2sigma(fwhm, 3)
+        expected = sigma * (2 * np.log(1e4)) ** (1 / 3)
+        assert abs((kept.max() - kept.min()) / 2 - expected) <= 0.5
+
+
+def test_convolution_from_srf():
+    """Tabulated responses (from_srf) give the same band values as the modelled responses they sample;
+    centroid, FWHM and band names are taken from the table."""
+    wl = np.arange(350, 1100, 0.5)
+    signal = xr.DataArray(0.1 + 0.05 * np.sin(wl / 30.), coords={'wl': wl}, dims='wl', name='R')
+    model = Spectral(central_wl=np.array([490., 865.]), fwhm=np.array([20., 40.]))
+    wl_srf = np.arange(400, 1000., 0.5)
+    values = model.responses(wl_srf, expon=3).T * 0.8
+    values[0, wl_srf > 600] = np.nan        # band tabulated on a shorter range, padded with NaN
+    srf = xr.DataArray(values[:, ::-1], coords={'band': ['B2', 'B8A'], 'wl': wl_srf[::-1]},
+                       dims=('band', 'wl'))
+    spectral = Spectral.from_srf(srf)
+    np.testing.assert_allclose(spectral.central_wl, [490., 865.], atol=1e-6)
+    np.testing.assert_allclose(spectral.fwhm.values, [20., 40.], rtol=1e-3)
+    bands = spectral.convolve2(signal)
+    np.testing.assert_array_equal(bands.band.values, ['B2', 'B8A'])
+    np.testing.assert_allclose(bands.values, model.convolve2(signal, expon=3).values, rtol=1e-5)
+
+
+def test_convolution_from_srf_asymmetric():
+    """For an asymmetric response, the central wavelength is the response-weighted mean."""
+    wl_srf = np.arange(500, 650., 0.1)
+    response = np.where(wl_srf < 560, np.exp(-((wl_srf - 560) / 5) ** 2), np.exp(-((wl_srf - 560) / 15) ** 2))
+    srf = xr.DataArray(response[None], coords={'wl': wl_srf}, dims=('band', 'wl'))
+    spectral = Spectral.from_srf(srf)
+    expected = 560 + (15 - 5) / np.sqrt(np.pi)          # mean of the two half-Gaussians
+    np.testing.assert_allclose(spectral.central_wl, expected, atol=1e-3)
+    np.testing.assert_allclose(spectral.fwhm.values, np.sqrt(np.log(2)) * (5 + 15), rtol=1e-3)
+    assert spectral.band is None
+
+
+def test_convolution_nan_only_in_bands_where_response_is_not_null():
+    wl = np.arange(350, 1100, 1.)
+    values = np.ones((3, wl.size))
+    values[:, wl > 1090] = np.nan                       # far from the bands
+    values[1, (wl > 860) & (wl < 870)] = np.nan         # within the 865 nm band, second spectrum only
+    signal = xr.DataArray(values, coords={'time': range(3), 'wl': wl}, dims=('time', 'wl'), name='R')
+    bands = Spectral(central_wl=np.array([490., 865.]), fwhm=20.).convolve2(signal).R.values
+    np.testing.assert_array_equal(np.isnan(bands), [[False, False], [False, True], [False, False]])
+    np.testing.assert_allclose(bands[~np.isnan(bands)], 1, rtol=1e-6)
+
+
+def test_convolution_dask_and_cache():
+    """A dask-backed signal is convolved lazily, with the same values; the weights are cached per grid."""
+    wl = np.arange(350, 1100, 1.)
+    rng = np.random.default_rng(0)
+    signal = xr.DataArray(rng.random((6, wl.size)), coords={'time': range(6), 'wl': wl},
+                          dims=('time', 'wl'), name='R')
+    spectral = Spectral(central_wl=np.array([443., 560., 865.]), fwhm=20.)
+    lazy = spectral.convolve2(signal.chunk({'time': 2})).R
+    assert lazy.chunks is not None
+    np.testing.assert_allclose(lazy.compute().values, spectral.convolve2(signal).R.values, rtol=1e-6)
+    assert spectral.weights(wl, expon=3, threshold=1e-4) is spectral.weights(wl, expon=3, threshold=1e-4)
+    # legacy list of band weights
+    bands = spectral.band_weights(wl, expon=3, threshold=1e-4)
+    np.testing.assert_allclose(spectral.convolve_nd(signal, bands).values,
+                               spectral.convolve2(signal).R.values, rtol=1e-6)
+
+
+def test_convolution_band_outside_signal():
+    wl = np.arange(400, 900, 1.)
+    signal = xr.DataArray(np.ones(wl.size), coords={'wl': wl}, dims='wl', name='R')
+    bands = Spectral(central_wl=np.array([560., 2190.]), fwhm=20.).convolve2(signal).values
+    np.testing.assert_allclose(bands[0], 1, rtol=1e-6)
+    assert np.isnan(bands[1])
+
+
 # ------------------------------------
 # look-up tables
 # ------------------------------------

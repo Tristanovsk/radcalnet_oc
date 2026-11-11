@@ -601,17 +601,28 @@ class SolarIrradiance():
 
 class Spectral():
     '''
-    Spectral response of the bands of a satellite sensor, modelled from their central wavelength and
-    full width at half maximum (FWHM), and convolution of hyperspectral signals with these responses
-    (see :ref:`spectral_convolution`).
+    Spectral response of the bands of a satellite sensor and convolution of hyperspectral signals with
+    these responses (see :ref:`spectral_convolution`).
+
+    The responses are either modelled from the central wavelength and the full width at half maximum
+    (FWHM) of the bands (Gaussian or super-Gaussian functions), or tabulated responses of the instrument
+    (:py:meth:`from_srf`).
 
     Example::
 
         spectral = Spectral(central_wl=np.array([443., 490., 560., 665., 865.]), fwhm=20.)
         Rtoa_bands = spectral.convolve2(radcalnet_db.Rtoa)
 
+        # tabulated spectral response functions, DataArray of dimensions (band, wl)
+        spectral = Spectral.from_srf(srf)
+        Rtoa_bands = spectral.convolve(radcalnet_db.Rtoa)
+
     :ivar fwhm: FWHM of the bands (nm), :py:class:`xarray.DataArray` with the central wavelengths as
         ``wl`` coordinate
+    :ivar srf: tabulated responses normalized to a maximum of 1, array (band, ``srf_wl``), or None for
+        modelled responses
+    :ivar srf_wl: wavelengths of ``srf`` (nm), or None
+    :ivar band: names of the bands (``band`` coordinate of the outputs), or None
     '''
 
     def __init__(self,
@@ -622,6 +633,7 @@ class Spectral():
         :param fwhm: full width at half maximum of the bands (nm), scalar (same for all the bands) or numpy
             array
         '''
+        central_wl = np.atleast_1d(np.asarray(central_wl, dtype=np.float64))
         self.central_wl = central_wl
         if not isinstance(fwhm, np.ndarray):
             fwhm = np.array([fwhm] * len(central_wl))
@@ -630,162 +642,254 @@ class Spectral():
                             attrs={
                                 'definition': 'full width at half maximum of spectral responses modeled as gaussian distributions'})
         self.fwhm = fwhm
+        self.srf = None
+        self.srf_wl = None
+        self.band = None
+        # band weights per signal grid (see weights) and matrices prepared for the matrix products
+        self._weights_cache = {}
+        self._operators = {}
 
-    def plot_rsr(self,
-                 expon=None):
+    @classmethod
+    def from_srf(cls,
+                 srf,
+                 wl_dim='wl',
+                 band_dim='band',
+                 central_wl=None):
+        r'''
+        Spectral responses of the bands from the tabulated spectral response functions (SRF) of an
+        instrument, e.g. those published by the space agencies for Sentinel-2/MSI, Sentinel-3/OLCI or
+        PACE/OCI.
+
+        The responses are interpolated (linearly) onto the wavelengths of the signal to convolve, and are
+        null outside their tabulated range; NaN values are taken as null responses (e.g. bands tabulated on
+        different wavelength ranges and padded with NaN).
+
+        :param srf: spectral responses, :py:class:`xarray.DataArray` with a band dimension ``band_dim`` and
+            a wavelength dimension ``wl_dim`` (nm)
+        :param wl_dim: name of the wavelength dimension of ``srf``
+        :param band_dim: name of the band dimension of ``srf``; its coordinate (e.g. band names), if any,
+            is kept as ``band`` coordinate of the convolved signals
+        :param central_wl: central wavelengths of the bands (nm), used as ``wl`` coordinate of the convolved
+            signals; by default the response-weighted mean wavelength
+            :math:`\int \lambda S_b\, d\lambda / \int S_b\, d\lambda`
+        :return: :py:class:`Spectral` object; ``fwhm`` holds the FWHM of the tabulated responses
         '''
-        Plot the spectral response functions of the bands, normalized to a maximum of 1.
+        srf = srf.transpose(band_dim, wl_dim)
+        order = np.argsort(srf[wl_dim].values)
+        wl = srf[wl_dim].values[order].astype(np.float64)
+        values = np.nan_to_num(srf.values[:, order].astype(np.float64), nan=0.)
+        values = np.clip(values, 0., None)
+        peak = values.max(axis=1)
+        if np.any(peak <= 0):
+            raise ValueError('null spectral response for band(s) {}'.format(np.flatnonzero(peak <= 0)))
+        values = values / peak[:, None]
 
-        :param expon: None for the Gaussian responses used by :py:meth:`convolve`, or the exponent of
-            the super-Gaussian responses used by :py:meth:`convolve2` (3 by default in ``convolve2``)
-        :return: :py:class:`matplotlib.figure.Figure`
+        if central_wl is None:
+            central_wl = np.trapezoid(values * wl, wl, axis=1) / np.trapezoid(values, wl, axis=1)
+        fwhm = np.array([cls._fwhm(wl, s) for s in values])
+
+        spectral = cls(central_wl=np.asarray(central_wl, dtype=np.float64), fwhm=fwhm)
+        spectral.fwhm.attrs['definition'] = 'full width at half maximum of the tabulated spectral responses'
+        spectral.srf = values
+        spectral.srf_wl = wl
+        if band_dim in srf.coords:
+            spectral.band = srf[band_dim].values
+        return spectral
+
+    @staticmethod
+    def _fwhm(wl, response):
         '''
-        wl_ref = np.linspace(350, 2550, 10000)
-        fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(10, 4))
+        Full width at half maximum of a response normalized to a maximum of 1, between the first and the last
+        crossings of 0.5 (linear interpolation).
+        '''
+        above = np.flatnonzero(response >= 0.5)
+        i0, i1 = above[0], above[-1]
+        left, right = wl[i0], wl[i1]
+        if i0 > 0:
+            left = np.interp(0.5, [response[i0 - 1], response[i0]], [wl[i0 - 1], wl[i0]])
+        if i1 < len(wl) - 1:
+            right = np.interp(0.5, [response[i1 + 1], response[i1]], [wl[i1 + 1], wl[i1]])
+        return right - left
 
-        for mu, fwhm in zip(self.fwhm.wl.values, self.fwhm.values):
-            if expon is None:
-                rsr = gaussian(wl_ref, float(mu), Gamma2sigma(float(fwhm)))
+    def responses(self,
+                  wl_signal,
+                  expon=None,
+                  threshold=None):
+        '''
+        Spectral responses of the bands on the wavelengths of the signal, normalized to a maximum of 1.
+
+        :param wl_signal: wavelengths of the signal (nm), 1-D array
+        :param expon: exponent of the super-Gaussian responses (None or 2 for Gaussian responses); not used
+            for tabulated responses (:py:meth:`from_srf`)
+        :param threshold: the responses below this fraction of their maximum are set to zero (None: no
+            threshold)
+        :return: array (wavelength, band)
+        '''
+        wl_signal = np.asarray(wl_signal, dtype=np.float64)
+        threshold = 0. if threshold is None else float(threshold)
+        if self.srf is not None:
+            rsr = np.stack([np.interp(wl_signal, self.srf_wl, s, left=0., right=0.) for s in self.srf],
+                           axis=1)
+            return np.where(rsr > threshold, rsr, 0.)
+
+        expon = 2. if expon is None else float(expon)
+        mu = self.fwhm.wl.values.astype(np.float64)
+        sigma = np.maximum(self.fwhm.values.astype(np.float64) / 2 * (2 * np.log(2)) ** (-1 / expon), 1e-15)
+        # super_gaussian (Eq. super_gaussian) divided by its maximum, exp(-z^p / 2) with z = |x - mu| / sigma,
+        # computed where it is above the threshold, |x - mu| < sigma (-2 ln(threshold))^(1/p); exp(-700) ~
+        # 1e-304 bounds the window without threshold
+        cut = 700. if threshold <= 0 else min(-np.log(threshold), 700.)
+        half_width = sigma * (2 * cut) ** (1 / expon)
+        order = np.argsort(wl_signal, kind='stable')
+        wl_sorted = wl_signal[order]
+        start = np.searchsorted(wl_sorted, mu - half_width, side='left')
+        stop = np.searchsorted(wl_sorted, mu + half_width, side='right')
+        rsr = np.zeros((len(wl_signal), len(mu)))
+        for ii in range(len(mu)):
+            z = np.abs(wl_sorted[start[ii]:stop[ii]] - mu[ii]) / sigma[ii]
+            if expon == 2:
+                zp = z * z
+            elif expon == 3:
+                zp = z * z * z
             else:
-                rsr = super_gaussian(wl_ref, mu=float(mu), sigma=super_gaussian_fwhm2sigma(float(fwhm), expon),
-                                     expon=expon)
-            axs.plot(wl_ref, rsr / rsr.max(), '-k', lw=0.5, alpha=0.4)
-        axs.set_xlabel('Wavelength (nm)')
-        axs.set_ylabel('Relative spectral response')
+                zp = z ** expon
+            rsr[start[ii]:stop[ii], ii] = np.exp(-0.5 * zp)
+        rsr = np.where(rsr > threshold, rsr, 0.)
+        if np.any(order != np.arange(len(order))):
+            rsr[order] = rsr.copy()
+        return rsr
 
-        return fig
-
-    @staticmethod
-    @njit(parallel=True)
-    def convolve_(
-            wl_signal,
-            signal,
-            wl,
-            fwhm,
-    ):
+    def weights(self,
+                wl_signal,
+                expon=None,
+                threshold=None):
         '''
-        Convolution of a spectrum with Gaussian spectral responses (numba function).
+        Matrix of the integration weights of the spectral responses on the wavelengths of the signal.
+
+        The convolution of Eq. :eq:`convolution`, computed with the trapezoidal rule, is linear in the
+        signal: the band values are the matrix product of the signal with weights that depend only on the
+        wavelengths, ``signal @ weights``. The matrix is computed once per wavelength grid (it is cached)
+        and applied to all the spectra (:py:meth:`convolve_nd`).
 
         :param wl_signal: wavelengths of the signal (nm), 1-D array
-        :param signal: spectrum to convolve, 1-D array at ``wl_signal``
-        :param wl: central wavelengths of the bands (nm)
-        :param fwhm: full width at half maximum of the bands (nm)
-        :return: band values, float32 array
+        :param expon: exponent of the super-Gaussian responses (None for Gaussian responses); not used for
+            tabulated responses
+        :param threshold: the responses below this fraction of their maximum are set to zero (None: no
+            threshold)
+        :return: array (wavelength, band); a column is NaN when the response of the band does not overlap
+            the signal
         '''
-        Nwl = len(wl)
-        signal_ = np.full((Nwl), np.nan, dtype=np.float32)
-        for ii in prange(len(fwhm)):
-            sig = Gamma2sigma(fwhm[ii])
-            rsr = gaussian(wl_signal, wl[ii], sig)
-            signal_[ii] = np.trapezoid((signal * rsr), wl_signal) / np.trapezoid(rsr, wl_signal)
-        return signal_
+        wl_signal = np.asarray(wl_signal, dtype=np.float64)
+        threshold = 0. if threshold is None else float(threshold)
+        key = (wl_signal.tobytes(), None if self.srf is not None else expon, threshold)
+        if key in self._weights_cache:
+            return self._weights_cache[key]
+
+        rsr = self.responses(wl_signal, expon=expon, threshold=threshold)
+
+        # responses truncated by the wavelength range of the signal: the band value is then normalized
+        # on the part of the response within the range
+        edge = max(threshold, 1e-3)
+        truncated = (rsr[0] > edge) | (rsr[-1] > edge)
+        if np.any(truncated):
+            logging.warning('spectral response of the band(s) at %s nm truncated by the wavelength range of '
+                            'the signal (%g-%g nm)', self.fwhm.wl.values[truncated],
+                            wl_signal.min(), wl_signal.max())
+
+        # trapezoidal rule coefficients
+        dwl = np.abs(np.diff(wl_signal)) / 2
+        coef = np.zeros_like(wl_signal)
+        coef[:-1] += dwl
+        coef[1:] += dwl
+        weights = rsr * coef[:, None]
+        norm = weights.sum(axis=0)
+        valid = norm > 0
+        weights /= np.where(valid, norm, 1.)
+        weights[:, ~valid] = np.nan
+
+        weights.setflags(write=False)
+        self._weights_cache[key] = weights
+        self._operators[id(weights)] = (weights,) + self._operator(weights)
+        return weights
 
     @staticmethod
-    @njit(parallel=True)
-    def convolve2_(
-            wl_signal,
-            signal,
-            wl,
-            fwhm,
-            expon=2.,
-            threshold=1e-6
-    ):
+    def _operator(weights):
         '''
-        Convolution of a spectrum with super-Gaussian spectral responses (numba function).
-
-        :param wl_signal: wavelengths of the signal (nm), 1-D array
-        :param signal: spectrum to convolve, 1-D array at ``wl_signal``
-        :param wl: central wavelengths of the bands (nm)
-        :param fwhm: full width at half maximum of the bands (nm)
-        :param expon: exponent of the super-Gaussian function (2 for a Gaussian function)
-        :param threshold: values of the spectral response below this threshold are ignored, to speed up the
-            computation
-        :return: band values, float32 array
+        Matrices used by :py:meth:`convolve_nd` for a weight matrix: weights without NaN in float64 and
+        float32, mask of the non-null weights and mask of the bands without overlap with the signal.
         '''
-
-        Nwl = len(wl)
-        response = np.full((Nwl), np.nan, dtype=np.float32)
-        for ii in prange(len(fwhm)):
-            sig = super_gaussian_fwhm2sigma(fwhm[ii], expon)
-            rsr = super_gaussian(wl_signal, mu=wl[ii], sigma=sig, expon=expon)
-
-            # remove values above a given threshold to speed up computation
-            idx = rsr > threshold
-            wl_signal_ =wl_signal[idx]
-            signal_ = signal[idx]
-            rsr = rsr[idx]
-
-            response[ii] = np.trapezoid((signal_ * rsr), wl_signal_) / np.trapezoid(rsr, wl_signal_)
-        return response
+        invalid = np.isnan(weights).any(axis=0)
+        matrix = np.where(np.isnan(weights), 0., weights)
+        matrices = {np.dtype(np.float64): matrix, np.dtype(np.float32): matrix.astype(np.float32)}
+        return matrices, (matrix != 0).astype(np.float32), invalid
 
     def band_weights(self,
                      wl_signal,
                      expon=None,
                      threshold=None):
         '''
-        Integration weights of the spectral response of each band on the wavelengths of the signal.
-
-        The convolution of Eq. :eq:`convolution`, computed with the trapezoidal rule, is linear in the
-        signal: the band value is the dot product of the signal with weights that depend only on the
-        wavelengths. The weights are computed once and applied to all the spectra
-        (:py:meth:`convolve_nd`), which gives the same results as :py:meth:`convolve_` and
-        :py:meth:`convolve2_`.
+        Integration weights of the spectral response of each band, restricted to the wavelengths where the
+        response is not null (see :py:meth:`weights`).
 
         :param wl_signal: wavelengths of the signal (nm), 1-D array
-        :param expon: None for the Gaussian responses of :py:meth:`convolve`, or the exponent of the
-            super-Gaussian responses of :py:meth:`convolve2`
-        :param threshold: values of the spectral response below this threshold are ignored (super-Gaussian
-            responses only)
+        :param expon: exponent of the super-Gaussian responses (None for Gaussian responses)
+        :param threshold: the responses below this fraction of their maximum are set to zero
         :return: list of ``(start, stop, weights)`` per band: the band value is
             ``signal[start:stop] @ weights``; ``weights`` is None when the response does not overlap the
             signal (band value NaN)
         '''
-        wl_signal = np.asarray(wl_signal, dtype=np.float64)
         bands = []
-        for mu, fwhm in zip(self.fwhm.wl.values, self.fwhm.values):
-            if expon is None:
-                rsr = gaussian(wl_signal, float(mu), Gamma2sigma(float(fwhm))).astype(np.float64)
-                start, stop = 0, len(wl_signal)
-            else:
-                rsr = super_gaussian(wl_signal, mu=float(mu),
-                                     sigma=super_gaussian_fwhm2sigma(float(fwhm), expon), expon=expon)
-                idx = np.flatnonzero(rsr > threshold)
-                if len(idx) == 0:
-                    bands.append((0, 0, None))
-                    continue
-                # the response is unimodal: the wavelengths above the threshold are contiguous
-                start, stop = idx[0], idx[-1] + 1
-            rsr = rsr[start:stop]
-            # trapezoidal rule coefficients
-            dwl = np.diff(wl_signal[start:stop]) / 2
-            coef = np.zeros_like(rsr)
-            coef[:-1] += dwl
-            coef[1:] += dwl
-            norm = np.sum(rsr * coef)
-            bands.append((start, stop, rsr * coef / norm if norm > 0 else None))
+        for w in self.weights(wl_signal, expon=expon, threshold=threshold).T:
+            if np.isnan(w).any():
+                bands.append((0, 0, None))
+                continue
+            idx = np.flatnonzero(w)
+            start, stop = idx[0], idx[-1] + 1
+            bands.append((start, stop, w[start:stop]))
         return bands
 
     def convolve_nd(self,
                     signal,
-                    bands):
+                    weights):
         '''
-        Apply the band weights of :py:meth:`band_weights` to each spectrum of a multidimensional signal.
+        Apply the weights of :py:meth:`weights` to each spectrum of a multidimensional signal.
 
-        The computation is vectorized over all the spectra; for a dask-backed signal it is lazy and done
-        chunk by chunk (the ``wl`` dimension is gathered in a single chunk).
+        The computation is a single matrix product over all the spectra and the bands; for a dask-backed
+        signal it is lazy and done chunk by chunk (the ``wl`` dimension is gathered in a single chunk). A band
+        value is NaN when the signal is NaN at a wavelength where the response of the band is not null.
 
         :param signal: spectral signal, :py:class:`xarray.DataArray` with a ``wl`` dimension (nm) and any
             other dimensions
-        :param bands: band weights returned by :py:meth:`band_weights`
+        :param weights: weight matrix returned by :py:meth:`weights` (or list returned by
+            :py:meth:`band_weights`)
         :return: :py:class:`xarray.DataArray` with the central wavelengths of the bands as ``wl`` coordinate
         '''
+        if isinstance(weights, list):
+            matrix = np.zeros((signal.sizes['wl'], len(weights)))
+            for ii, (start, stop, w) in enumerate(weights):
+                matrix[:, ii] = np.nan if w is None else 0.
+                if w is not None:
+                    matrix[start:stop, ii] = w
+            weights = matrix
+        operator = self._operators.get(id(weights))
+        if operator is None or operator[0] is not weights:
+            operator = (weights,) + self._operator(weights)
+        _, matrices, nonzero, invalid = operator
 
         def apply_weights(sig):
             # sig: numpy array with the wavelengths on the last axis
-            out = np.full(sig.shape[:-1] + (len(bands),), np.nan, dtype=np.float32)
-            for ii, (start, stop, weights) in enumerate(bands):
-                if weights is not None:
-                    out[..., ii] = sig[..., start:stop] @ weights
+            dtype = np.dtype(np.float64) if sig.dtype == np.float64 else np.dtype(np.float32)
+            sig = sig.astype(dtype, copy=False)
+            out = sig @ matrices[dtype]
+            # non-finite values of the signal propagate to all the bands (0 * NaN): they are set to zero and
+            # only the bands whose response is not null at these wavelengths are set to NaN
+            if not np.isfinite(out).all():
+                bad = ~np.isfinite(sig)
+                if bad.any():
+                    out = np.where(bad, 0, sig) @ matrices[dtype]
+                    out[(bad.astype(np.float32) @ nonzero) > 0] = np.nan
+            out = out.astype(np.float32, copy=False)
+            out[..., invalid] = np.nan
             return out
 
         if signal.chunks is not None:
@@ -797,37 +901,64 @@ class Spectral():
             output_core_dims=[['wl_band']],
             dask='parallelized',
             output_dtypes=[np.float32],
-            dask_gufunc_kwargs={'output_sizes': {'wl_band': len(bands)}},
+            dask_gufunc_kwargs={'output_sizes': {'wl_band': invalid.size}},
         )
-        return signal_int.rename(wl_band='wl').assign_coords(wl=self.fwhm.wl.values)
+        signal_int = signal_int.rename(wl_band='wl').assign_coords(wl=self.fwhm.wl.values)
+        if self.band is not None:
+            signal_int = signal_int.assign_coords(band=('wl', self.band))
+        return signal_int
+
+    def plot_rsr(self,
+                 expon=None):
+        '''
+        Plot the spectral response functions of the bands, normalized to a maximum of 1.
+
+        :param expon: None for the Gaussian responses used by :py:meth:`convolve`, or the exponent of
+            the super-Gaussian responses used by :py:meth:`convolve2` (3 by default in ``convolve2``); not
+            used for tabulated responses
+        :return: :py:class:`matplotlib.figure.Figure`
+        '''
+        if self.srf is not None:
+            wl_ref = self.srf_wl
+            rsr = self.srf.T
+        else:
+            wl_ref = np.linspace(350, 2550, 10000)
+            rsr = self.responses(wl_ref, expon=expon)
+        fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(10, 4))
+        axs.plot(wl_ref, rsr, '-k', lw=0.5, alpha=0.4)
+        axs.set_xlabel('Wavelength (nm)')
+        axs.set_ylabel('Relative spectral response')
+
+        return fig
 
     def convolve2(self,
                   signal,
                   name='signal',
                   expon=3,
                   threshold=1e-4,
-                  info={}):
+                  info=None):
         '''
-        Convolve a signal with super-Gaussian spectral responses of the bands, Eq. :eq:`convolution`.
+        Convolve a signal with super-Gaussian spectral responses of the bands, Eq. :eq:`convolution`, or
+        with the tabulated responses (:py:meth:`from_srf`).
 
         :param signal: spectral signal, :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
         :param name: name of the output variable if ``signal`` has no name
-        :param expon: exponent of the super-Gaussian function (2 for a Gaussian function)
-        :param threshold: values of the spectral response below this threshold are ignored, to speed up the
-            computation
+        :param expon: exponent of the super-Gaussian function (2 for a Gaussian function); not used for
+            tabulated responses
+        :param threshold: the responses below this fraction of their maximum are ignored
         :param info: not used (the attributes of ``signal`` are kept)
         :return: band values: :py:class:`xarray.DataArray` for a 1-D signal, :py:class:`xarray.Dataset` with
             one variable for a multidimensional signal; the ``wl`` coordinate gives the central wavelengths
         '''
 
-        attrs=signal.attrs
-        name=signal.name if signal.name is not None else name
-        bands = self.band_weights(signal.wl.values, expon=expon, threshold=threshold)
+        attrs = signal.attrs
+        name = signal.name if signal.name is not None else name
+        weights = self.weights(signal.wl.values, expon=expon, threshold=threshold)
         if signal.ndim == 1:
-            signal_int = self.convolve_nd(signal.reset_coords(drop=True), bands).rename(name)
+            signal_int = self.convolve_nd(signal.reset_coords(drop=True), weights).rename(name)
         else:
             # to handle multidimensional xarray: convolution of each spectrum
-            signal_int = self.convolve_nd(signal, bands).to_dataset(name=name)
+            signal_int = self.convolve_nd(signal, weights).to_dataset(name=name)
         signal_int.attrs = attrs
 
         return signal_int
@@ -835,23 +966,27 @@ class Spectral():
     def convolve(self,
                  signal,
                  name='signal',
-                 info={}):
+                 info=None,
+                 threshold=None):
         '''
-        Convolve a signal with Gaussian spectral responses of the bands, Eq. :eq:`convolution`.
+        Convolve a signal with Gaussian spectral responses of the bands, Eq. :eq:`convolution`, or with the
+        tabulated responses (:py:meth:`from_srf`).
 
         :param signal: spectral signal, :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
         :param name: name of the output variable
         :param info: attributes of the output
+        :param threshold: the responses below this fraction of their maximum are ignored (None: whole
+            responses)
         :return: band values, :py:class:`xarray.DataArray` (with an extra ``variable`` dimension of size 1
             for a multidimensional signal); the ``wl`` coordinate gives the central wavelengths
         '''
 
-        bands = self.band_weights(signal.wl.values)
+        weights = self.weights(signal.wl.values, threshold=threshold)
         if signal.ndim == 1:
-            signal_int = self.convolve_nd(signal.reset_coords(drop=True), bands).rename(name)
+            signal_int = self.convolve_nd(signal.reset_coords(drop=True), weights).rename(name)
         else:
             # to handle multidimensional xarray: convolution of each spectrum
-            signal_int = self.convolve_nd(signal, bands).to_dataset(name=name).to_dataarray()
-        signal_int.attrs = info
+            signal_int = self.convolve_nd(signal, weights).to_dataset(name=name).to_dataarray()
+        signal_int.attrs = {} if info is None else info
 
         return signal_int
