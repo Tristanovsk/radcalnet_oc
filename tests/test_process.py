@@ -52,6 +52,28 @@ def test_output_values(clear_water):
     assert (db.Ratm.sel(wl=443, method='nearest') > db.Ratm.sel(wl=865, method='nearest')).all()
 
 
+def test_two_way_gaseous_transmittance(clear_water):
+    """With the REPTRAN table, the Sun-surface-sensor transmittance is the product of the one-way ones."""
+    p = clear_water
+    product = p.Tg_d * p.Tg_u
+    np.testing.assert_allclose(p.Tg_du.transpose(*product.dims), product, rtol=1e-10, atol=1e-14)
+
+
+def test_o2_line_by_line(clear_water):
+    """Line-by-line O2: same signal outside the O2 bands, shallower bands than with REPTRAN."""
+    process = Process(vza=angles('vza', [0., 10.]), azi=angles('azi', [90.]), o2_model='lbl')
+    process.execute()
+    lbl, rep = process.radcalnet_db, clear_water.radcalnet_db
+    assert process.gas_trans.o2_model == 'lbl'
+    for lo, hi in [(400, 680), (705, 750), (780, 900)]:
+        np.testing.assert_allclose(lbl.Rtoa.sel(wl=slice(lo, hi)), rep.Rtoa.sel(wl=slice(lo, hi)), rtol=1e-10)
+        np.testing.assert_allclose(lbl.Ed.sel(wl=slice(lo, hi)), rep.Ed.sel(wl=slice(lo, hi)), rtol=1e-10)
+    for lo, hi in [(686, 696), (759, 770)]:
+        assert float(lbl.Ed.sel(wl=slice(lo, hi)).mean()) > float(rep.Ed.sel(wl=slice(lo, hi)).mean())
+        assert float(lbl.Rtoa.sel(wl=slice(lo, hi)).mean()) > float(rep.Rtoa.sel(wl=slice(lo, hi)).mean())
+    assert np.isfinite(lbl.Rtoa).all()
+
+
 def test_turbid_water_brighter_in_red():
     """More water-leaving signal in the red for the turbid template than for the clear-water one."""
     rtoa = {}
@@ -100,6 +122,13 @@ def test_command_line(tmp_path):
         assert ds.attrs['source'] == f'radcalnet_oc {radcalnet_oc.__version__}'
 
 
+def test_command_line_o2_model(tmp_path):
+    output = tmp_path / 'out_lbl.nc'
+    assert run.main([str(CLEAR_WATER), '-o', str(output), '--o2_model', 'lbl']) == 0
+    with xr.open_dataset(output) as ds:
+        assert np.isfinite(ds.Rtoa.sel(wl=slice(686, 696))).all()
+
+
 def test_command_line_no_clobber(tmp_path):
     output = tmp_path / 'out.nc'
     output.write_text('existing')
@@ -108,7 +137,8 @@ def test_command_line_no_clobber(tmp_path):
 
 
 @pytest.mark.parametrize('args', [['--aerosol_combination', '0.5,0.5'],
-                                  ['--bands', '443,560', '--fwhm', '10,20,30']])
+                                  ['--bands', '443,560', '--fwhm', '10,20,30'],
+                                  ['--o2_model', 'hitran']])
 def test_command_line_errors(tmp_path, args):
     output = tmp_path / 'bad.nc'
     assert run.main([str(CLEAR_WATER), '-o', str(output), *args]) == 1

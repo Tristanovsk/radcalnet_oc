@@ -29,6 +29,9 @@ zenodo:
 settings:
   aerosol_combination: [0, 0.5, 0, 0.5, 0.,0.]
   aerosol_models: ['ARCT_rh70', 'COAV_rh70', 'DESE_rh70', 'MACL_rh70', 'URBA_rh70', 'WASO_rh0']
+  # absorption of O2: 'reptran' (REPTRAN fine table, as for the other gases) or 'lbl' (line by line in the
+  # O2-B and O2-A bands, 683-702 and 755-775 nm; recommended for sub-nanometre resolution, e.g. FLEX)
+  o2_model: 'reptran'
 
 processor:
   ncpu: 8

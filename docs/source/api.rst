@@ -74,6 +74,7 @@ Atmosphere
    :nosignatures:
 
    radcalnet_oc.kernel.GaseousTransmittance
+   radcalnet_oc.kernel.O2LineByLine
    radcalnet_oc.kernel.Gases
    radcalnet_oc.kernel.Aerosol
    radcalnet_oc.kernel.Misc
