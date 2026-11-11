@@ -3,7 +3,7 @@
 Usage:
   radcalnet_oc <input_file> [--output <output_file>] [--vza angles] [--azi angles]
    [--aerosol_combination props] [--solar_database name] [--rrs_name name] [--o2_model model]
-   [--bands wavelengths] [--fwhm fwhm] [--expon expon] [--no_clobber]
+   [--gas_coupling coupling] [--bands wavelengths] [--fwhm fwhm] [--expon expon] [--no_clobber]
   radcalnet_oc -h | --help
   radcalnet_oc -v | --version
 
@@ -26,6 +26,10 @@ Options:
   --rrs_name name  Name of the remote-sensing reflectance variable in <input_file> [default: Rrs]
   --o2_model model  Absorption of O2: reptran, or lbl (line by line in the O2-B and O2-A bands, for
                    sub-nanometre resolution); default: settings: o2_model of the configuration
+  --gas_coupling coupling  Gaseous transmittance of the scattered light: decoupled (air mass of the
+                   direct beam), or effective_air_mass (correction of the absorption-scattering
+                   coupling in the O2 and H2O bands of 684-990 nm); default: settings: gas_coupling
+                   of the configuration
   --bands wavelengths  Central wavelengths (nm) of sensor bands, comma-separated: the band-averaged
                    Rtoa, Ratm, Ed, E0 and Rrs are added to the output (variables <name>_bands,
                    dimension wl_band)
@@ -96,7 +100,8 @@ def main(argv=None):
         process = Process(input_db=input_db, vza=vza, azi=azi,
                           solar_database=args['--solar_database'],
                           Rrs_name=args['--rrs_name'],
-                          o2_model=args['--o2_model'])
+                          o2_model=args['--o2_model'],
+                          gas_coupling=args['--gas_coupling'])
         if aerosol_combination is None:
             process.execute()
         else:

@@ -8,6 +8,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- Coupling of the gaseous absorption with the scattering, option `gas_coupling='effective_air_mass'` of
+  `Process` (`--gas_coupling effective_air_mass` on the command line, `settings: gas_coupling` in the
+  configuration; default `'decoupled'`, unchanged). In the O2-B, O2-A and H2O windows of 684-990 nm, the
+  transmittances of the path reflectance, of the water-leaving term and of the irradiance are computed for
+  effective air masses eta*m (eta about 0.5-0.6 for the path reflectance, 1.02-1.04 for the other terms)
+  fitted on SOS-ABS coupled simulations: class `kernel.GasCoupling`, table `data/auxdata/gas_coupling_eta.csv`,
+  `GaseousTransmittance.get_coupled_transmittance`, and the attributes `Tg_atm`, `Tg_w`, `Tg_Ed` of
+  `Process`. Research tutorial *Gaseous transmittance: coupling with scattering* and the scripts
+  `scripts/sos_abs_coupling` (SOS-ABS LUTs with the `sosabs` package, analysis).
 - Line-by-line O2 absorption in the O2-B (682.6-701.8 nm) and O2-A (754.7-775.2 nm) bands, option
   `o2_model='lbl'` of `GaseousTransmittance` and `Process` (`--o2_model lbl` on the command line,
   `settings: o2_model` in the configuration; default `'reptran'`, unchanged). The REPTRAN fine table used

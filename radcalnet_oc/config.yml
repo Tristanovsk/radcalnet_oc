@@ -32,6 +32,10 @@ settings:
   # absorption of O2: 'reptran' (REPTRAN fine table, as for the other gases) or 'lbl' (line by line in the
   # O2-B and O2-A bands, 683-702 and 755-775 nm; recommended for sub-nanometre resolution, e.g. FLEX)
   o2_model: 'reptran'
+  # gaseous transmittance of the scattered light: 'decoupled' (air mass of the direct beam for all the terms)
+  # or 'effective_air_mass' (air masses of the path reflectance, water-leaving term and irradiance corrected
+  # for the absorption-scattering coupling in the O2 and H2O bands of 684-990 nm, radcalnet_oc.kernel.GasCoupling)
+  gas_coupling: 'decoupled'
 
 processor:
   ncpu: 8

@@ -17,3 +17,6 @@ docs/_build/
 
 # Working notebooks (examples copied to docs/source/tutorials/examples)
 /notebook/
+
+# SOS-ABS coupling LUTs (link to a local data directory)
+/scripts/sos_abs_coupling/data

@@ -15,7 +15,8 @@ import logging
 
 from importlib.resources import files
 
-from . import GaseousTransmittance, Misc, LUT, SolarIrradiance
+from . import GaseousTransmittance, GasCoupling, Misc, LUT, SolarIrradiance
+from .kernel import GAS_COUPLING, GAS_COUPLINGS
 from .config import load_config
 
 template = files('radcalnet_oc.data.template').joinpath('template_clear_water.nc')
@@ -56,7 +57,8 @@ class Process():
                  central_wl=np.arange(350, 2500, 1),
                  solar_database='tsis',
                  Rrs_name='Rrs',
-                 o2_model=None
+                 o2_model=None,
+                 gas_coupling=None
                  ):
         '''
         :param input_db: time series of the surface measurements, :py:class:`xarray.Dataset` with a
@@ -74,6 +76,11 @@ class Process():
         :param o2_model: absorption of O2, ``'reptran'`` or ``'lbl'`` (line by line in the O2-B and O2-A
             bands, see :py:class:`~radcalnet_oc.kernel.GaseousTransmittance`); by default
             ``settings: o2_model`` of the configuration (``'reptran'``)
+        :param gas_coupling: gaseous transmittance of the scattered light: ``'decoupled'`` (air mass of the
+            direct beam, :math:`1/\mu_0 + 1/\mu_v` for ``Ratm`` and the water-leaving term, :math:`1/\mu_0` for
+            ``Ed``) or ``'effective_air_mass'`` (air masses corrected for the absorption-scattering coupling
+            in the O2 and H2O bands of 684-990 nm, see :py:class:`~radcalnet_oc.kernel.GasCoupling`); by
+            default ``settings: gas_coupling`` of the configuration (``'decoupled'``)
         '''
 
         if input_db is None:
@@ -104,6 +111,11 @@ class Process():
 
         logging.info('get gaseous transmittance object')
         self.gas_trans = GaseousTransmittance(lut.gas_lut, o2_model=o2_model)
+
+        self.gas_coupling = GAS_COUPLING if gas_coupling is None else gas_coupling
+        if self.gas_coupling not in GAS_COUPLINGS:
+            raise ValueError(f'gas_coupling must be one of {GAS_COUPLINGS}, not {self.gas_coupling!r}')
+        self.coupling = GasCoupling() if self.gas_coupling == 'effective_air_mass' else None
 
         logging.info('set input parameters')
         self.set_param(Rrs_name=Rrs_name)
@@ -142,6 +154,11 @@ class Process():
         ``Tg_d * Tg_u`` for the REPTRAN table; with the line-by-line O2 (``o2_model='lbl'``) it is the
         transmittance of the whole path averaged in the cells of the LUT, which is not the product of the
         one-way averages since the lines are narrower than the cells.
+
+        Also sets the transmittances applied to each term of the signal: ``Tg_Ed`` (downwelling irradiance),
+        ``Tg_atm`` (path reflectance ``Ratm``) and ``Tg_w`` (water-leaving term). They are ``Tg_d``,
+        ``Tg_du`` and ``Tg_du`` with ``gas_coupling='decoupled'``, and the transmittances for the effective
+        air masses of :py:class:`~radcalnet_oc.kernel.GasCoupling` with ``'effective_air_mass'``.
         '''
         input_db = self.input_db
         self.gas_trans.gas_tc['h2o'] = input_db.tcwv
@@ -159,6 +176,16 @@ class Process():
 
         self.gas_trans.air_mass = 1. / self.mu0 + 1. / self.muv
         self.Tg_du = self.gas_trans.get_gaseous_transmittance()
+
+        if self.coupling is None:
+            self.Tg_Ed, self.Tg_atm, self.Tg_w = self.Tg_d, self.Tg_du, self.Tg_du
+        else:
+            aot = self.aot550
+            m0, m = 1. / self.mu0, 1. / self.mu0 + 1. / self.muv
+            gt, cp = self.gas_trans, self.coupling
+            self.Tg_Ed = gt.get_coupled_transmittance(m0, 'Ed', aot, cp)
+            self.Tg_atm = gt.get_coupled_transmittance(m, 'atm', aot, cp)
+            self.Tg_w = gt.get_coupled_transmittance(m, 'w', aot, cp)
 
     def get_direct_transmittance(self,
                                  aot,
@@ -231,7 +258,7 @@ class Process():
         #                        aerosol_combination=aerosol_combination)
         self.get_irradiance_transmittance()
 
-        self.Ed = self.Tra_d * self.Tg_d * self.mu0 * self.F0 * self.D2
+        self.Ed = self.Tra_d * self.Tg_Ed * self.mu0 * self.F0 * self.D2
 
     def lut_preparation(self, aerosol_combination=AEROSOL_COMBINATION):
         '''
@@ -274,21 +301,22 @@ class Process():
 
         Ratm = self.lut.Rdiff_lut.squeeze().interp(aot_ref=self.aot550
                                                    ).interp(wl=self.full_wl, method='quadratic')
-        # Sun-surface-sensor gaseous transmittance (Tg_d * Tg_u, computed for the whole path, see
-        # get_gas_transmittance)
-        Ratm = self.Tg_du * Ratm
+        # Sun-surface-sensor gaseous transmittance (Tg_d * Tg_u, computed for the whole path, or with the
+        # effective air mass of the path reflectance, see get_gas_transmittance)
+        Ratm = self.Tg_atm * Ratm
         self.Ratm = Ratm
 
         E0 = self.mu0 * self.F0 * self.D2
         self.E0 = E0
-        Ed = self.Tra_d * self.Tg_d * E0
+        Ed = self.Tra_d * self.Tg_Ed * E0
         # Ed = Ed.dropna('wl')
 
         Rrs = self.Rrs.interp(wl=self.full_wl).fillna(0)
         self.Lw_boa = Rrs * Ed
 
-        # = tra_u Tg_u Lw_boa, with the gaseous transmittance of the whole Sun-surface-sensor path
-        Lw_toa = self.tra_u * self.Tg_du * self.Tra_d * E0 * Rrs
+        # = tra_u Tg_u Lw_boa, with the gaseous transmittance of the whole Sun-surface-sensor path (or with
+        # the effective air mass of the water-leaving term)
+        Lw_toa = self.tra_u * self.Tg_w * self.Tra_d * E0 * Rrs
         Lw_toa = Lw_toa.fillna(0)
 
         Rtoa = np.pi * Lw_toa / E0 + Ratm

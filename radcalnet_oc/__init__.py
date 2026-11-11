@@ -9,7 +9,7 @@ __package__ = 'radcalnet_oc'
 __version__ = '1.0.2'
 
 from .lut import LUT, AuxData, SolarIrradiance, Spectral
-from .kernel import Aerosol, Misc, GaseousTransmittance, Radiometry
+from .kernel import Aerosol, Misc, GaseousTransmittance, GasCoupling, Radiometry
 from .process import Process
 from .aeronet_oc import Aeronet
 from .coxmunk import Sunglint

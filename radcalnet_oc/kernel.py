@@ -32,6 +32,11 @@ NETCDF_ENGINE = config['processor']['netcdf_engine']
 O2_MODELS = ('reptran', 'lbl')
 O2_MODEL = config['settings'].get('o2_model', 'reptran')
 O2_LBL_FILE = files('radcalnet_oc.data.lut.gases') / 'o2_lbl_tau.nc'
+# coupling of the gaseous absorption with the scattering: 'decoupled' (direct-beam air mass for all the
+# terms) or 'effective_air_mass' (GasCoupling)
+GAS_COUPLINGS = ('decoupled', 'effective_air_mass')
+GAS_COUPLING = config['settings'].get('gas_coupling', 'decoupled')
+GAS_COUPLING_FILE = files('radcalnet_oc.data.auxdata') / 'gas_coupling_eta.csv'
 
 class Aerosol:
     '''
@@ -223,8 +228,9 @@ class O2LineByLine:
         ok = (idx >= 0) & (idx < len(wl))
         self.tau = tau.values.astype(float)[ok]
         idx = idx[ok]
-        # the table wavelengths are increasing: the points of a cell are contiguous
-        self.starts = np.r_[0, np.flatnonzero(np.diff(idx)) + 1]
+        # the table wavelengths are increasing: the points of a cell are contiguous (no cell when the grid
+        # does not cover the bands)
+        self.starts = np.r_[0, np.flatnonzero(np.diff(idx)) + 1] if len(idx) else np.zeros(0, dtype=int)
         self.cells = idx[self.starts]
         self.counts = np.diff(np.r_[self.starts, len(idx)])
         self.mask = np.zeros(len(wl), dtype=bool)
@@ -242,10 +248,69 @@ class O2LineByLine:
         factor = np.asarray(factor, dtype=float)
         flat = factor.reshape(-1)
         out = np.ones((flat.size, self.nwl))
-        for i in range(0, flat.size, self.block):
+        for i in range(0, flat.size if len(self.cells) else 0, self.block):
             t = np.exp(-flat[i:i + self.block, None] * self.tau[None, :])
             out[i:i + self.block, self.cells] = np.add.reduceat(t, self.starts, axis=1) / self.counts
         return out.reshape(factor.shape + (self.nwl,))
+
+
+class GasCoupling:
+    r'''
+    Effective air mass of the gaseous transmittance of the scattered light, per absorption window.
+
+    The transmittance :math:`T_g(m)` of the direct beam is exact for the direct light only. The photons
+    scattered by the molecules and aerosols above the absorbers shortcut part of the path (less absorption
+    for the path reflectance, especially for the water vapour, in the lowest kilometres), while the skylight
+    reaching the surface has longer paths than the direct beam (more absorption for the water-leaving term
+    and the irradiance). Coupled absorption-scattering simulations (SOS-ABS, correlated k, see the research
+    tutorial *Gaseous transmittance: coupling with scattering*) give, for each term, the effective air mass
+    :math:`\eta\, m` such that :math:`T_g(\eta\, m)` is the effective transmittance of the term, with
+
+    .. math:: \eta = c_0 + c_1\,(m - 2) + c_2\,(\tau_{550} - 0.1)
+
+    and the terms ``'atm'`` (path reflectance, :math:`m = 1/\mu_0 + 1/\mu_v`), ``'w'`` (water-leaving term,
+    same :math:`m`) and ``'Ed'`` (downwelling irradiance, :math:`m = 1/\mu_0`). :math:`m` and
+    :math:`\tau_{550}` are clipped to the ranges of the simulations. The table is read from
+    ``data/auxdata/gas_coupling_eta.csv``.
+
+    :ivar table: :py:class:`pandas.DataFrame` of the coefficients (columns ``window``, ``wl_min``,
+        ``wl_max``, ``term``, ``c0``, ``c1``, ``c2``, ``m_min``, ``m_max``, ``aot_min``, ``aot_max``)
+    '''
+    TERMS = ('atm', 'w', 'Ed')
+
+    def __init__(self, file=GAS_COUPLING_FILE):
+        '''
+        :param file: table of the coefficients
+        '''
+        import pandas as pd
+        with open(file) as f:
+            self.table = pd.read_csv(f, comment='#')
+
+    @property
+    def windows(self):
+        '''Absorption windows: dict ``{name: (wl_min, wl_max)}`` (nm).'''
+        t = self.table.drop_duplicates('window')
+        return {r.window: (float(r.wl_min), float(r.wl_max)) for r in t.itertuples()}
+
+    def eta(self, term, window, air_mass, aot550):
+        r'''
+        Ratio :math:`\eta` of the effective to the geometric air mass.
+
+        :param term: ``'atm'``, ``'w'`` or ``'Ed'``
+        :param window: name of the absorption window (see :py:attr:`windows`)
+        :param air_mass: geometric air mass :math:`m` of the term
+        :param aot550: aerosol optical thickness at 550 nm
+        :return: :math:`\eta`, broadcast of ``air_mass`` and ``aot550``
+        '''
+        if term not in self.TERMS:
+            raise ValueError(f'term must be one of {self.TERMS}, not {term!r}')
+        r = self.table[(self.table.window == window) & (self.table.term == term)]
+        if len(r) != 1:
+            raise KeyError(f'no coefficients for window {window!r} and term {term!r}')
+        r = r.iloc[0]
+        m = np.clip(air_mass, r.m_min, r.m_max)
+        aot = np.clip(aot550, r.aot_min, r.aot_max)
+        return r.c0 + r.c1 * (m - 2) + r.c2 * (aot - 0.1)
 
 
 class GaseousTransmittance(Gases):
@@ -290,6 +355,7 @@ class GaseousTransmittance(Gases):
         if self.o2_model not in O2_MODELS:
             raise ValueError(f'o2_model must be one of {O2_MODELS}, not {self.o2_model!r}')
         self._o2_lbl = None
+        self._windows = {}
 
     @property
     def o2_lbl(self):
@@ -376,6 +442,51 @@ class GaseousTransmittance(Gases):
                 Tg_tot = Tg_tot * self.Tgas_o2_lbl()
 
         return Tg_tot
+
+    # gases whose transmittance is corrected by GasCoupling (with the background gases: O2, O4, CO2, CO);
+    # O3 and NO2, mostly above the scatterers, and CH4 keep the direct-beam air mass
+    COUPLED_GASES = ['h2o']
+    UNCOUPLED_GASES = ['ch4', 'no2', 'o3']
+
+    def _window(self, wl_min, wl_max):
+        """GaseousTransmittance on the wavelengths of an absorption window (built once)."""
+        key = (wl_min, wl_max)
+        if key not in self._windows:
+            self._windows[key] = GaseousTransmittance(self.gas_lut.sel(wl=slice(wl_min, wl_max)),
+                                                      o2_model=self.o2_model)
+        return self._windows[key]
+
+    def get_coupled_transmittance(self, air_mass, term, aot550, coupling):
+        r'''
+        Effective gaseous transmittance of a term of the signal, with the absorption-scattering coupling.
+
+        In each absorption window of ``coupling``, the transmittance of the water vapour and of the background
+        gases (O2...) is computed for the effective air mass :math:`\eta\, m`
+        (:py:meth:`GasCoupling.eta`); elsewhere, and for the other gases, the air mass :math:`m` is used, as
+        in :py:meth:`get_gaseous_transmittance`. ``pressure`` and ``gas_tc`` are set before the call.
+
+        :param air_mass: geometric air mass :math:`m` of the term
+        :param term: ``'atm'``, ``'w'`` or ``'Ed'`` (see :py:class:`GasCoupling`)
+        :param aot550: aerosol optical thickness at 550 nm
+        :param coupling: :py:class:`GasCoupling` object
+        :return: transmittance at the wavelengths of the gaseous LUT
+        '''
+        self.air_mass = air_mass
+        Tg = self.get_gaseous_transmittance()
+        parts = []
+        for name, (wl_min, wl_max) in coupling.windows.items():
+            sub = self._window(wl_min, wl_max)
+            sub.pressure, sub.pressure_gas_ref = self.pressure, self.pressure_gas_ref
+            sub.gas_tc, sub.coef_abs_scat = self.gas_tc, self.coef_abs_scat
+            sub.air_mass = air_mass
+            Tg_other = sub.get_gaseous_transmittance(gases=self.UNCOUPLED_GASES, background=False)
+            sub.air_mass = coupling.eta(term, name, air_mass, aot550) * air_mass
+            Tg_coupled = sub.get_gaseous_transmittance(gases=self.COUPLED_GASES, background=True)
+            parts.append(Tg_other * Tg_coupled)
+        if not parts:
+            return Tg
+        out = xr.concat(parts, 'wl').combine_first(Tg)
+        return out.transpose(*[d for d in Tg.dims if d in out.dims], ...)
 
 
 class Misc:

@@ -245,6 +245,41 @@ and the transmittance of the Sun-surface-sensor path in Eq. :eq:`rtoa` is comput
 cell averages (both are equal for the REPTRAN table). Outside the two bands, O\ :sub:`2` comes from
 REPTRAN. The default remains ``'reptran'``.
 
+.. _methods-gas-coupling:
+
+Coupling of absorption and scattering
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Eq. :eq:`tgas` is exact for the direct beam only. The scattered photons follow other paths: the photons
+scattered by the molecules and aerosols above the absorbers shortcut part of the path (less absorption for
+the path reflectance, especially for the water vapour, concentrated in the lowest kilometres), while the
+skylight reaching the surface has longer paths than the direct beam (more absorption for the water-leaving
+term and the irradiance). With ``gas_coupling='effective_air_mass'``
+(:py:class:`~radcalnet_oc.process.Process`, ``--gas_coupling effective_air_mass`` on the command line, or
+``settings: gas_coupling`` of the configuration), the transmittance of each term is computed for an
+effective air mass :math:`\eta\, m` in the absorption windows of 684-698 (O\ :sub:`2`-B), 712-736, 808-836
+and 890-990 nm (H\ :sub:`2`\ O) and 757-772 nm (O\ :sub:`2`-A):
+
+.. math::
+   :label: eta
+
+   \eta = c_0 + c_1\,(m - 2) + c_2\,(\tau_{550} - 0.1),
+
+with :math:`m = 1/\mu_0 + 1/\mu_v` for the path reflectance (:math:`\eta_{atm} \approx 0.5`-:math:`0.6`)
+and the water-leaving term (:math:`\eta_w \approx 1.02`-:math:`1.04`), and :math:`m = 1/\mu_0` for the
+irradiance (:math:`\eta_{Ed} \approx 1.02`-:math:`1.04`). The coefficients, per window and term
+(:py:class:`~radcalnet_oc.kernel.GasCoupling`, table ``data/auxdata/gas_coupling_eta.csv``), are fitted on
+SOS-ABS simulations coupling the absorption (correlated k, 5 cm\ :sup:`-1`) and the scattering (see the
+research tutorial :doc:`tutorials/research/radcalnet_oc_gaseous_coupling`); :math:`m` and
+:math:`\tau_{550}` are clipped to the ranges of the simulations (:math:`m` 2.16-3.91 for the path terms,
+1.15-2 for the irradiance, :math:`\tau_{550}` 0.05-0.2). The correction applies to H\ :sub:`2`\ O and the
+background gases (O\ :sub:`2`...); O\ :sub:`3`, NO\ :sub:`2` and CH\ :sub:`4` keep the geometric air
+mass, as all the gases outside the windows. In the bands, it increases the TOA reflectance by a few
+percent (O\ :sub:`2`-B) to tens of percent (O\ :sub:`2`-A, 820 nm) and more in the saturated 940 nm band,
+mostly through the path reflectance. The parameterization comes from a single water vapour column
+(2 g cm\ :sup:`-2`), two solar angles and two aerosol loads of maritime aerosols, and is not yet the
+default (``'decoupled'``).
+
 When only the altitude :math:`z` (in m) of a site is known, the pressure is estimated from
 the sea-level pressure :math:`P_{sl}` with the barometric formula
 

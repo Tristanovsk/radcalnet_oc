@@ -9,3 +9,4 @@ the top-of-atmosphere signal that are not included in the simulations, and other
    :caption: Research
 
    radcalnet_oc_sunglint
+   radcalnet_oc_gaseous_coupling

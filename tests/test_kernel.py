@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from radcalnet_oc import Aerosol, GaseousTransmittance, Misc, Radiometry
+from radcalnet_oc import Aerosol, GaseousTransmittance, GasCoupling, Misc, Radiometry
 from radcalnet_oc.config import LUT_FILE_BACKUP
 from radcalnet_oc.kernel import AEROSOL_MODELS, O2_MODELS, O2LineByLine
 from radcalnet_oc.lut import LUT
@@ -137,6 +137,50 @@ def test_o2_lbl_pressure_air_mass_and_dimensions(gas_lut):
     np.testing.assert_allclose(gas.Tgas_o2_lbl().isel(time=2), t)
     with pytest.raises(ValueError):
         GaseousTransmittance(gas_lut, o2_model='hitran')
+
+
+# ------------------------------------
+# absorption-scattering coupling
+# ------------------------------------
+def test_gas_coupling_table():
+    cp = GasCoupling()
+    assert set(cp.windows) == {'O2-B', 'H2O-720', 'O2-A', 'H2O-820', 'H2O-940'}
+    for w in cp.windows:
+        # path reflectance: shorter effective path; water-leaving term and irradiance: longer
+        assert 0.3 < cp.eta('atm', w, 3., 0.1) < 0.8
+        assert 1. < cp.eta('w', w, 3., 0.1) < 1.1
+        assert 1. < cp.eta('Ed', w, 1.5, 0.1) < 1.1
+    # clipped to the ranges of the simulations
+    assert cp.eta('atm', 'O2-A', 100., 5.) == cp.eta('atm', 'O2-A', 3.9115, 0.2)
+    eta = cp.eta('w', 'O2-A', xr.DataArray([2.5, 3.], dims='vza'), xr.DataArray([0.1, 0.2], dims='time'))
+    assert eta.dims == ('vza', 'time')
+    with pytest.raises(ValueError):
+        cp.eta('toa', 'O2-A', 2., 0.1)
+    with pytest.raises(KeyError):
+        cp.eta('atm', 'H2O-1380', 2., 0.1)
+
+
+@pytest.mark.parametrize('o2_model', O2_MODELS)
+def test_coupled_transmittance(gas_lut, o2_model):
+    gas = GaseousTransmittance(gas_lut, o2_model=o2_model)
+    cp = GasCoupling()
+    m = xr.DataArray([2.5, 3.5], coords={'vza': [0, 1]}, dims='vza')
+    gas.air_mass = m
+    tg = gas.get_gaseous_transmittance()
+    t_atm = gas.get_coupled_transmittance(m, 'atm', 0.1, cp)
+    t_w = gas.get_coupled_transmittance(m, 'w', 0.1, cp)
+    assert t_atm.dims == tg.dims and t_atm.sizes == tg.sizes
+    inside = xr.zeros_like(tg.wl, dtype=bool)
+    for a, b in cp.windows.values():
+        inside = inside | ((tg.wl >= a) & (tg.wl <= b))
+    # unchanged outside the windows, less (more) absorption for the path (water) term inside
+    np.testing.assert_allclose(t_atm.where(~inside, 1.), tg.where(~inside, 1.), rtol=1e-12)
+    np.testing.assert_allclose(t_w.where(~inside, 1.), tg.where(~inside, 1.), rtol=1e-12)
+    absorbing = inside & (tg < 0.9)
+    assert (t_atm > tg).where(absorbing, True).all()
+    assert (t_w < tg).where(absorbing, True).all()
+    # the air mass of the object is the geometric one after the call
+    assert gas.air_mass is m
 
 
 # ------------------------------------

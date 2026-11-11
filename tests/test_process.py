@@ -74,6 +74,32 @@ def test_o2_line_by_line(clear_water):
     assert np.isfinite(lbl.Rtoa).all()
 
 
+@pytest.mark.parametrize('o2_model', ['reptran', 'lbl'])
+def test_gas_coupling(clear_water, o2_model):
+    """Effective air masses: same signal outside the absorption windows; brighter TOA reflectance (path
+    reflectance less absorbed) and lower irradiance (longer skylight paths) in the bands."""
+    kwargs = dict(vza=angles('vza', [0., 10.]), azi=angles('azi', [90.]), o2_model=o2_model)
+    dec = Process(**kwargs)
+    dec.execute()
+    assert dec.gas_coupling == 'decoupled'
+    assert dec.Tg_atm is dec.Tg_du and dec.Tg_Ed is dec.Tg_d
+    process = Process(gas_coupling='effective_air_mass', **kwargs)
+    process.execute()
+    eff, ref = process.radcalnet_db, dec.radcalnet_db
+    assert np.isfinite(eff.Rtoa).all()
+    for lo, hi in [(400, 680), (700, 710), (740, 755), (840, 885), (1000, 1100)]:
+        for name in ('Rtoa', 'Ratm', 'Ed'):
+            np.testing.assert_allclose(eff[name].sel(wl=slice(lo, hi)), ref[name].sel(wl=slice(lo, hi)),
+                                       rtol=1e-10)
+    for lo, hi in [(686, 696), (759, 770), (815, 830), (930, 950)]:
+        band = slice(lo, hi)
+        assert float(eff.Ratm.sel(wl=band).mean()) > float(ref.Ratm.sel(wl=band).mean())
+        assert float(eff.Rtoa.sel(wl=band).mean()) > float(ref.Rtoa.sel(wl=band).mean())
+        assert float(eff.Ed.sel(wl=band).mean()) < float(ref.Ed.sel(wl=band).mean())
+    with pytest.raises(ValueError):
+        Process(gas_coupling='coupled')
+
+
 def test_turbid_water_brighter_in_red():
     """More water-leaving signal in the red for the turbid template than for the clear-water one."""
     rtoa = {}
@@ -129,6 +155,13 @@ def test_command_line_o2_model(tmp_path):
         assert np.isfinite(ds.Rtoa.sel(wl=slice(686, 696))).all()
 
 
+def test_command_line_gas_coupling(tmp_path):
+    output = tmp_path / 'out_eta.nc'
+    assert run.main([str(CLEAR_WATER), '-o', str(output), '--gas_coupling', 'effective_air_mass']) == 0
+    with xr.open_dataset(output) as ds:
+        assert np.isfinite(ds.Rtoa.sel(wl=slice(890, 990))).all()
+
+
 def test_command_line_no_clobber(tmp_path):
     output = tmp_path / 'out.nc'
     output.write_text('existing')
@@ -138,7 +171,8 @@ def test_command_line_no_clobber(tmp_path):
 
 @pytest.mark.parametrize('args', [['--aerosol_combination', '0.5,0.5'],
                                   ['--bands', '443,560', '--fwhm', '10,20,30'],
-                                  ['--o2_model', 'hitran']])
+                                  ['--o2_model', 'hitran'],
+                                  ['--gas_coupling', 'coupled']])
 def test_command_line_errors(tmp_path, args):
     output = tmp_path / 'bad.nc'
     assert run.main([str(CLEAR_WATER), '-o', str(output), *args]) == 1
