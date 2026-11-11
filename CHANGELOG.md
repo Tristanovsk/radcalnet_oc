@@ -19,6 +19,26 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   and used for the path reflectance and the water-leaving signal at TOA. It equals `Tg_d * Tg_u` with
   REPTRAN (results unchanged); with the line-by-line O2 it is the cell average of the whole path, since the
   lines are narrower than the cells of the LUT.
+- `Spectral.from_srf`: convolution with the tabulated spectral response functions of an instrument
+  (DataArray `(band, wl)`, interpolated onto the signal wavelengths; central wavelength = response-weighted
+  mean; band names kept as `band` coordinate of the outputs).
+- `Spectral.weights` (weight matrix of all the bands, cached per wavelength grid) and `Spectral.responses`.
+- Warning when the response of a band is truncated by the wavelength range of the signal.
+
+### Changed
+- `Spectral` convolutions use a single matrix product for all the bands, with the weights and prepared
+  matrices cached per wavelength grid: 3-4 times faster for repeated convolutions on the same grid
+  (e.g. the band variables of `run.py`), same results for `convolve` (Gaussian, < 2e-7).
+- The `threshold` of `Spectral.convolve2` is a fraction of the peak response (it was an absolute value
+  of the area-normalized response, i.e. a larger fraction of the peak for wider bands: 0.06 % at 5 nm FWHM,
+  1 % at 100 nm, 3 % at 300 nm). Band values change by less than 2e-5 for FWHM up to 30 nm, and by up to
+  4e-4 (50 nm) and 1e-3 (180 nm) for the wide bands.
+- `Spectral.convolve`: a NaN of the signal only gives NaN for the bands whose Gaussian response is not
+  null at this wavelength (within about 37 sigma of the band center), as for `convolve2`; a NaN anywhere
+  in the signal gave NaN for all the bands before.
+
+### Removed
+- `Spectral.convolve_` and `Spectral.convolve2_` (numba per-band loops, not used since the band weights).
 
 ## [1.0.2] - 2026-11-02
 

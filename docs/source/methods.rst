@@ -506,9 +506,16 @@ function :math:`S_b` of each band :math:`b` of the satellite sensor:
 
    X_b = \frac{\int X(\lambda)\, S_b(\lambda)\, d\lambda}{\int S_b(\lambda)\, d\lambda}.
 
-When the actual spectral responses are not available, they are modelled from the central
-wavelength :math:`\lambda_b` and the full width at half maximum :math:`\Gamma_b` with a
-super-Gaussian function of exponent :math:`p`:
+The tabulated spectral response functions of the instrument, when available (e.g. those published by the
+space agencies for Sentinel-2/MSI, Sentinel-3/OLCI or PACE/OCI), are used with
+:py:meth:`Spectral.from_srf <radcalnet_oc.lut.Spectral.from_srf>`: they are linearly interpolated onto
+the wavelengths of the signal (and null outside their tabulated range), so that the fine spectral structure
+of the signal (e.g. the O\ :sub:`2` and H\ :sub:`2`\ O absorption bands) is kept. The central wavelength of
+a band is then the response-weighted mean wavelength,
+:math:`\lambda_b = \int \lambda\, S_b\, d\lambda / \int S_b\, d\lambda`.
+
+Otherwise, the responses are modelled from the central wavelength :math:`\lambda_b` and the full width at
+half maximum :math:`\Gamma_b` with a super-Gaussian function of exponent :math:`p`:
 
 .. math::
    :label: super_gaussian
@@ -522,12 +529,15 @@ The Gaussian case corresponds to :math:`p = 2`, i.e. :math:`\sigma_b = \Gamma_b 
 
 The integrals of Eq. :eq:`convolution` are computed with the trapezoidal rule on the wavelengths of the
 signal, so that :math:`X_b` is a weighted sum of the values :math:`X(\lambda_i)`, with weights that
-depend only on the wavelengths and on the spectral response. The weights of each band are computed once
-(:py:meth:`Spectral.band_weights <radcalnet_oc.lut.Spectral.band_weights>`) and applied to all the
-spectra of a multidimensional signal at once (time, geometry...). For ``convolve2``, the wavelengths
-where the super-Gaussian response is below a threshold (:math:`10^{-4}` by default) are ignored; a band
-value is NaN when the signal is NaN at a wavelength where the response is not ignored. A signal backed by
-dask arrays (e.g. read with :py:func:`xarray.open_mfdataset`) is convolved lazily, chunk by chunk.
+depend only on the wavelengths and on the spectral response. The weights of all the bands form a matrix
+(:py:meth:`Spectral.weights <radcalnet_oc.lut.Spectral.weights>`), computed once per wavelength grid
+and applied to all the spectra of a multidimensional signal (time, geometry...) with a single matrix
+product. For ``convolve2``, the wavelengths where the response is below a fraction of its maximum
+(:math:`10^{-4}` by default, the same for all the bands whatever their width) are ignored; a band value is
+NaN when the signal is NaN at a wavelength where the response is not ignored. A warning is issued when the
+response of a band is truncated by the wavelength range of the signal: the band value is then normalized on
+the part of the response within this range. A signal backed by dask arrays (e.g. read with
+:py:func:`xarray.open_mfdataset`) is convolved lazily, chunk by chunk.
 
 References
 ----------
