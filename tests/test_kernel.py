@@ -6,7 +6,7 @@ import xarray as xr
 
 from radcalnet_oc import Aerosol, GaseousTransmittance, Misc, Radiometry
 from radcalnet_oc.config import LUT_FILE_BACKUP
-from radcalnet_oc.kernel import AEROSOL_MODELS
+from radcalnet_oc.kernel import AEROSOL_MODELS, O2_MODELS, O2LineByLine
 from radcalnet_oc.lut import LUT
 
 
@@ -79,6 +79,64 @@ def test_gaseous_transmittance_air_mass_and_column(gas_lut):
 
 def test_gaseous_transmittance_zenith_angle(gas_lut):
     assert GaseousTransmittance(gas_lut, zenith_angle=60).air_mass == pytest.approx(2)
+
+
+# ------------------------------------
+# line-by-line O2
+# ------------------------------------
+def equivalent_width(tg, lo, hi):
+    """Equivalent width (nm) of a band of the transmittance (continuum 1)."""
+    t = tg.sel(wl=slice(lo, hi))
+    return float(np.trapezoid(1 - t.values, t.wl.values))
+
+
+def test_o2_lbl_table(gas_lut):
+    lbl = O2LineByLine(gas_lut.wl.values)
+    wl = gas_lut.wl.values[lbl.mask]
+    # cells of the O2-B and O2-A bands only
+    assert wl.min() == pytest.approx(682.6, abs=0.1) and wl.max() == pytest.approx(775.2, abs=0.1)
+    assert not lbl.mask[(gas_lut.wl.values > 702) & (gas_lut.wl.values < 754)].any()
+    np.testing.assert_allclose(lbl.transmittance(0.), 1.)
+    t1, t2 = lbl.transmittance(1.), lbl.transmittance(2.)
+    assert ((t2 <= t1 + 1e-12) & (t1 <= 1) & (t2 >= 0)).all()
+    # cell average of exp(-tau), not exp(-mean tau): the two-way transmittance is above the product of the one-way
+    assert (t2 >= t1 ** 2 - 1e-12).all() and (t2 > 1.5 * t1 ** 2)[lbl.mask].any()
+    assert lbl.transmittance(np.ones((2, 3))).shape == (2, 3, gas_lut.wl.size)
+
+
+def test_o2_lbl_against_reptran(gas_lut):
+    """Equivalent widths of the line-by-line bands (air mass 1.155, 1013 hPa): O2-B 0.82 nm, O2-A 3.42 nm;
+    the REPTRAN table used as a spectrum (on its grid) gives about twice (O2-B) and 1.3 times (O2-A) these values."""
+    tg = {}
+    for model in O2_MODELS:
+        gas = GaseousTransmittance(gas_lut, zenith_angle=30, o2_model=model)
+        gas.pressure = 1013.
+        tg[model] = gas.Tgas_background()
+        if model == 'lbl':
+            tg[model] = tg[model] * gas.Tgas_o2_lbl()
+    assert equivalent_width(tg['lbl'], 685, 697) == pytest.approx(0.82, abs=0.02)
+    assert equivalent_width(tg['lbl'], 758, 772) == pytest.approx(3.42, abs=0.05)
+    assert equivalent_width(tg['reptran'], 685, 697) > 1.8 * equivalent_width(tg['lbl'], 685, 697)
+    assert equivalent_width(tg['reptran'], 758, 772) > 1.2 * equivalent_width(tg['lbl'], 758, 772)
+    # same transmittance outside the bands
+    for lo, hi in [(400, 680), (705, 750), (780, 2500)]:
+        np.testing.assert_allclose(tg['lbl'].sel(wl=slice(lo, hi)), tg['reptran'].sel(wl=slice(lo, hi)), rtol=1e-12)
+
+
+def test_o2_lbl_pressure_air_mass_and_dimensions(gas_lut):
+    gas = GaseousTransmittance(gas_lut, o2_model='lbl')
+    gas.pressure, gas.air_mass = 1013., 2.
+    t = gas.Tgas_o2_lbl()
+    gas.pressure, gas.air_mass = 2026., 1.
+    np.testing.assert_allclose(gas.Tgas_o2_lbl(), t)
+    # time series of air masses and pressures, as in Process
+    gas.air_mass = xr.DataArray([1., 1.5, 2.], coords={'time': [0, 1, 2]}, dims='time')
+    gas.pressure = xr.DataArray([1013., 1013., 1013.], coords={'time': [0, 1, 2]}, dims='time')
+    tg = gas.get_gaseous_transmittance()
+    assert set(tg.dims) == {'time', 'wl'}
+    np.testing.assert_allclose(gas.Tgas_o2_lbl().isel(time=2), t)
+    with pytest.raises(ValueError):
+        GaseousTransmittance(gas_lut, o2_model='hitran')
 
 
 # ------------------------------------

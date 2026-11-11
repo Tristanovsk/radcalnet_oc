@@ -211,6 +211,40 @@ The total gaseous transmittance is the product of all contributions,
 
    T_g = T_{bg} \prod_{g \in \{H_2O,\,O_3,\,NO_2,\,CH_4\}} T_g .
 
+.. _methods-o2-lbl:
+
+Line-by-line O\ :sub:`2` bands
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The gaseous look-up table comes from the REPTRAN "fine" parameterization of libRadtran: optical
+thicknesses at representative wavelengths, built to integrate the absorption over spectral bands. Used
+point by point as a spectrum, it spreads the saturated lines of the O\ :sub:`2`-B (687 nm) and
+O\ :sub:`2`-A (760 nm) bands over its 0.04-0.06 nm cells and makes these bands too deep: at an air mass of
+1.155, the equivalent width of O\ :sub:`2`-B is 1.53 nm against 0.82 nm line by line, and 4.42 nm against
+3.42 nm for O\ :sub:`2`-A. This matters at sub-nanometre resolution (e.g. FLEX-FLORIS, 0.3 nm in the
+O\ :sub:`2` bands, and the retrieval of the fluorescence in-filling); band-averaged signals of broad bands
+are much less affected.
+
+With ``o2_model='lbl'`` (:py:class:`~radcalnet_oc.kernel.GaseousTransmittance`,
+:py:class:`~radcalnet_oc.process.Process`, ``--o2_model lbl`` on the command line, or
+``settings: o2_model`` of the configuration), the O\ :sub:`2` absorption in 682.6-701.8 and 754.7-775.2 nm
+is computed line by line: vertical optical thickness :math:`\tau_{O_2}` from the HITRAN lines of the three
+main isotopologues (Voigt profiles, AFGL midlatitude summer profile, 0.004 cm\ :sup:`-1` step, no line
+mixing and no collision-induced absorption; table ``o2_lbl_tau.nc`` built by
+``scripts/make_o2_lbl_lut.py``), scaled with the surface pressure. As the lines are narrower than the cells
+of the look-up table, the transmittance is averaged in each cell:
+
+.. math::
+   :label: tg_o2_lbl
+
+   T_{O_2}(\lambda_i) = \left\langle \exp\left[-m\, \frac{P}{P_{lbl}}\, \tau_{O_2}(\lambda)\right]
+   \right\rangle_{\lambda \in \text{cell } i},
+
+and the transmittance of the Sun-surface-sensor path in Eq. :eq:`rtoa` is computed with the total air mass
+:math:`1/\mu_0 + 1/\mu_v` rather than as the product :math:`T_g^{\downarrow} T_g^{\uparrow}` of the
+cell averages (both are equal for the REPTRAN table). Outside the two bands, O\ :sub:`2` comes from
+REPTRAN. The default remains ``'reptran'``.
+
 When only the altitude :math:`z` (in m) of a site is known, the pressure is estimated from
 the sea-level pressure :math:`P_{sl}` with the barometric formula
 

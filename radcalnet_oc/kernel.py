@@ -6,6 +6,8 @@ miscellaneous radiometric utilities (see :doc:`/methods`).
 
 
 import os, sys
+from importlib.resources import files
+
 import numpy as np
 import xarray as xr
 
@@ -26,6 +28,10 @@ config = load_config()
 AEROSOL_MODELS = config['settings']['aerosol_models']
 AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 NETCDF_ENGINE = config['processor']['netcdf_engine']
+# absorption of O2: 'reptran' (REPTRAN fine table) or 'lbl' (line by line in the O2-B and O2-A bands)
+O2_MODELS = ('reptran', 'lbl')
+O2_MODEL = config['settings'].get('o2_model', 'reptran')
+O2_LBL_FILE = files('radcalnet_oc.data.lut.gases') / 'o2_lbl_tau.nc'
 
 class Aerosol:
     '''
@@ -185,6 +191,63 @@ class Gases():
                               'h2o': 1.}
 
 
+class O2LineByLine:
+    r'''
+    Line-by-line O2 transmittance in the O2-B (683-702 nm) and O2-A (755-775 nm) bands, averaged in the cells
+    of a wavelength grid.
+
+    The table ``o2_lbl_tau.nc`` of the package gives the vertical absorption optical thickness :math:`\tau_{O_2}`
+    of O2 from the HITRAN lines (Voigt profiles, AFGL midlatitude summer profile, surface pressure
+    :math:`P_{lbl}` = 1013 hPa, step 0.004 cm-1; built by ``scripts/make_o2_lbl_lut.py``). The lines are much
+    narrower than the cells of the gaseous LUT (0.04-0.06 nm), so the transmittance of a path is averaged in
+    each cell, :math:`\langle \exp(-f\,\tau_{O_2}) \rangle` with :math:`f = c_{O_2}\, m\, P/P_{lbl}`, rather than
+    computed from a mean optical thickness. Paths combined in a product (e.g. Sun-surface-sensor) must therefore
+    be computed with their total air mass, not as the product of one-way transmittances.
+
+    :ivar mask: cells of the grid covered by the table (:py:class:`numpy.ndarray` of booleans)
+    '''
+
+    def __init__(self, wl, file=O2_LBL_FILE, block=32):
+        '''
+        :param wl: wavelengths of the grid (nm), increasing
+        :param file: line-by-line optical thickness table
+        :param block: number of paths computed at once (memory: block x 187 502 values)
+        '''
+        with xr.open_dataarray(file) as tau:
+            tau = tau.load()
+        self.p_ref = float(tau.attrs['surface_pressure'])
+        self.attrs = tau.attrs
+        wl = np.asarray(wl, dtype=float)
+        edges = np.r_[wl[0] - (wl[1] - wl[0]) / 2, 0.5 * (wl[1:] + wl[:-1]), wl[-1] + (wl[-1] - wl[-2]) / 2]
+        idx = np.digitize(tau.wl.values, edges) - 1
+        ok = (idx >= 0) & (idx < len(wl))
+        self.tau = tau.values.astype(float)[ok]
+        idx = idx[ok]
+        # the table wavelengths are increasing: the points of a cell are contiguous
+        self.starts = np.r_[0, np.flatnonzero(np.diff(idx)) + 1]
+        self.cells = idx[self.starts]
+        self.counts = np.diff(np.r_[self.starts, len(idx)])
+        self.mask = np.zeros(len(wl), dtype=bool)
+        self.mask[self.cells] = True
+        self.nwl = len(wl)
+        self.block = block
+
+    def transmittance(self, factor):
+        r'''
+        Cell-averaged transmittance :math:`\langle \exp(-f\,\tau_{O_2}) \rangle` (1 outside the bands).
+
+        :param factor: :math:`f = c_{O_2}\, m\, P/P_{lbl}`, scalar or array
+        :return: array of shape ``factor.shape + (len(wl),)``
+        '''
+        factor = np.asarray(factor, dtype=float)
+        flat = factor.reshape(-1)
+        out = np.ones((flat.size, self.nwl))
+        for i in range(0, flat.size, self.block):
+            t = np.exp(-flat[i:i + self.block, None] * self.tau[None, :])
+            out[i:i + self.block, self.cells] = np.add.reduceat(t, self.starts, axis=1) / self.counts
+        return out.reshape(factor.shape + (self.nwl,))
+
+
 class GaseousTransmittance(Gases):
     r'''
     Direct transmittance of the absorbing gases (see :doc:`/methods`).
@@ -200,21 +263,40 @@ class GaseousTransmittance(Gases):
         gas_trans.gas_tc['h2o'] = 25.        # kg m-2
         gas_trans.air_mass = 1 / mu0
         Tg = gas_trans.get_gaseous_transmittance()
+
+    With ``o2_model='lbl'``, the O2 absorption of the O2-B and O2-A bands is computed line by line
+    (:py:class:`O2LineByLine`) in place of the REPTRAN table, which is a band parameterization: used as a
+    spectrum at sub-nanometre resolution, it makes these bands about twice too deep. Outside these bands
+    REPTRAN is used for O2 too.
     '''
 
     def __init__(self,
                  gas_lut: xr.DataArray,
-                 zenith_angle=0
+                 zenith_angle=0,
+                 o2_model=None
                  ):
         r'''
         :param gas_lut: look-up table of the normalized absorption optical thickness of the gases
             (:py:class:`xarray.Dataset`, e.g. ``LUT().gas_lut``)
         :param zenith_angle: zenith angle of the path (solar or viewing, deg), used to set the air mass
             :math:`m = 1/\cos\theta`
+        :param o2_model: absorption of O2, ``'reptran'`` or ``'lbl'`` (line by line in the O2-B and O2-A
+            bands); by default ``settings: o2_model`` of the configuration (``'reptran'``)
         '''
         Gases.__init__(self)
         self.air_mass = 1. / np.cos(np.radians(zenith_angle))
         self.gas_lut = gas_lut
+        self.o2_model = O2_MODEL if o2_model is None else o2_model
+        if self.o2_model not in O2_MODELS:
+            raise ValueError(f'o2_model must be one of {O2_MODELS}, not {self.o2_model!r}')
+        self._o2_lbl = None
+
+    @property
+    def o2_lbl(self):
+        '''Line-by-line O2 on the wavelengths of the gaseous LUT (:py:class:`O2LineByLine`, loaded once).'''
+        if self._o2_lbl is None:
+            self._o2_lbl = O2LineByLine(self.gas_lut.wl.values)
+        return self._o2_lbl
 
     def Tgas_background(self):
         '''
@@ -224,12 +306,35 @@ class GaseousTransmittance(Gases):
         :return: transmittance at the wavelengths of the gaseous LUT (also stored in ``Tg_bg``)
         '''
         gl = self.gas_lut
+        o2 = gl.o2
+        if self.o2_model == 'lbl':
+            # O2-B and O2-A computed line by line (Tgas_o2_lbl)
+            o2 = o2.where(~xr.DataArray(self.o2_lbl.mask, coords={'wl': gl.wl}, dims='wl'), 0.)
         self.ot_air = self.pressure / self.pressure_gas_ref * \
                       (gl.co + self.coef_abs_scat['co2'] * gl.co2 +
-                       self.coef_abs_scat['o2'] * gl.o2 +
+                       self.coef_abs_scat['o2'] * o2 +
                        self.coef_abs_scat['o4'] * gl.o4)
         self.Tg_bg = np.exp(- self.air_mass * self.ot_air)
         return self.Tg_bg
+
+    def Tgas_o2_lbl(self):
+        r'''
+        Line-by-line transmittance of O2 in the O2-B and O2-A bands (1 elsewhere), averaged in the cells of
+        the gaseous LUT, for the air mass and the surface pressure of the object (see
+        :py:class:`O2LineByLine`).
+
+        :return: transmittance at the wavelengths of the gaseous LUT, :py:class:`xarray.DataArray` with the
+            dimensions of ``air_mass`` and ``pressure`` followed by ``wl``
+        '''
+        lbl = self.o2_lbl
+        factor = self.coef_abs_scat['o2'] * self.air_mass * self.pressure / lbl.p_ref
+        wl = self.gas_lut.wl
+        if isinstance(factor, xr.DataArray):
+            return xr.apply_ufunc(lbl.transmittance, factor, output_core_dims=[['wl']]).assign_coords(wl=wl)
+        factor = np.asarray(factor, dtype=float)
+        if factor.ndim > 0:
+            raise ValueError('air_mass and pressure must be scalars or xarray.DataArray with o2_model="lbl"')
+        return xr.DataArray(lbl.transmittance(factor), coords={'wl': wl}, dims='wl')
 
     def Tgas(self,
              gas_name,
@@ -252,7 +357,8 @@ class GaseousTransmittance(Gases):
         Total direct transmittance of the absorbing gases, product of the transmittance of each gas.
 
         :param gases: names of the variable gases to include
-        :param background: if True, include the background gases (:py:meth:`Tgas_background`)
+        :param background: if True, include the background gases (:py:meth:`Tgas_background`); with
+            ``o2_model='lbl'`` also the line-by-line O2 bands (:py:meth:`Tgas_o2_lbl`)
         :return: transmittance at the wavelengths of the gaseous LUT
         '''
 
@@ -266,6 +372,8 @@ class GaseousTransmittance(Gases):
 
         if background:
             Tg_tot = Tg_tot * self.Tgas_background()
+            if self.o2_model == 'lbl':
+                Tg_tot = Tg_tot * self.Tgas_o2_lbl()
 
         return Tg_tot
 

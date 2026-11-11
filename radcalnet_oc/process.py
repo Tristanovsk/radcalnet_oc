@@ -55,7 +55,8 @@ class Process():
                  azi=xr.DataArray([0], coords={'azi': [0]}, dims='azi'),
                  central_wl=np.arange(350, 2500, 1),
                  solar_database='tsis',
-                 Rrs_name='Rrs'
+                 Rrs_name='Rrs',
+                 o2_model=None
                  ):
         '''
         :param input_db: time series of the surface measurements, :py:class:`xarray.Dataset` with a
@@ -70,6 +71,9 @@ class Process():
         :param solar_database: solar spectrum used for :math:`F_0`: ``'tsis'`` (default), ``'thuillier'``,
             ``'gueymard'`` or ``'kurucz'``
         :param Rrs_name: name of the remote-sensing reflectance variable in ``input_db``
+        :param o2_model: absorption of O2, ``'reptran'`` or ``'lbl'`` (line by line in the O2-B and O2-A
+            bands, see :py:class:`~radcalnet_oc.kernel.GaseousTransmittance`); by default
+            ``settings: o2_model`` of the configuration (``'reptran'``)
         '''
 
         if input_db is None:
@@ -99,7 +103,7 @@ class Process():
         self.F0 = solar_irr.__dict__[solar_database].interp(wl=full_wl)
 
         logging.info('get gaseous transmittance object')
-        self.gas_trans = GaseousTransmittance(lut.gas_lut)
+        self.gas_trans = GaseousTransmittance(lut.gas_lut, o2_model=o2_model)
 
         logging.info('set input parameters')
         self.set_param(Rrs_name=Rrs_name)
@@ -133,7 +137,11 @@ class Process():
         :math:`T_g^{\uparrow}` (:ref:`Gaseous transmittance <methods>`) from the surface pressure and the
         water vapour, ozone and nitrogen dioxide columns of the input dataset.
 
-        Sets the attributes ``Tg_d`` (air mass :math:`1/\mu_0`) and ``Tg_u`` (air mass :math:`1/\mu_v`).
+        Sets the attributes ``Tg_d`` (air mass :math:`1/\mu_0`), ``Tg_u`` (air mass :math:`1/\mu_v`) and
+        ``Tg_du`` (Sun-surface-sensor path, air mass :math:`1/\mu_0 + 1/\mu_v`). ``Tg_du`` equals
+        ``Tg_d * Tg_u`` for the REPTRAN table; with the line-by-line O2 (``o2_model='lbl'``) it is the
+        transmittance of the whole path averaged in the cells of the LUT, which is not the product of the
+        one-way averages since the lines are narrower than the cells.
         '''
         input_db = self.input_db
         self.gas_trans.gas_tc['h2o'] = input_db.tcwv
@@ -148,6 +156,9 @@ class Process():
 
         self.gas_trans.air_mass = 1. / self.muv
         self.Tg_u = self.gas_trans.get_gaseous_transmittance()
+
+        self.gas_trans.air_mass = 1. / self.mu0 + 1. / self.muv
+        self.Tg_du = self.gas_trans.get_gaseous_transmittance()
 
     def get_direct_transmittance(self,
                                  aot,
@@ -263,7 +274,9 @@ class Process():
 
         Ratm = self.lut.Rdiff_lut.squeeze().interp(aot_ref=self.aot550
                                                    ).interp(wl=self.full_wl, method='quadratic')
-        Ratm = self.Tg_d * self.Tg_u * Ratm
+        # Sun-surface-sensor gaseous transmittance (Tg_d * Tg_u, computed for the whole path, see
+        # get_gas_transmittance)
+        Ratm = self.Tg_du * Ratm
         self.Ratm = Ratm
 
         E0 = self.mu0 * self.F0 * self.D2
@@ -274,7 +287,8 @@ class Process():
         Rrs = self.Rrs.interp(wl=self.full_wl).fillna(0)
         self.Lw_boa = Rrs * Ed
 
-        Lw_toa = self.tra_u * self.Tg_u * self.Lw_boa
+        # = tra_u Tg_u Lw_boa, with the gaseous transmittance of the whole Sun-surface-sensor path
+        Lw_toa = self.tra_u * self.Tg_du * self.Tra_d * E0 * Rrs
         Lw_toa = Lw_toa.fillna(0)
 
         Rtoa = np.pi * Lw_toa / E0 + Ratm

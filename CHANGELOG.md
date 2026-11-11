@@ -5,6 +5,21 @@ All notable changes to radcalnet_oc are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Line-by-line O2 absorption in the O2-B (682.6-701.8 nm) and O2-A (754.7-775.2 nm) bands, option
+  `o2_model='lbl'` of `GaseousTransmittance` and `Process` (`--o2_model lbl` on the command line,
+  `settings: o2_model` in the configuration; default `'reptran'`, unchanged). The REPTRAN fine table used
+  as a spectrum makes these bands too deep at sub-nanometre resolution (equivalent width at air mass 1.155:
+  O2-B 1.53 against 0.82 nm, O2-A 4.42 against 3.42 nm). Table `data/lut/gases/o2_lbl_tau.nc` (1.9 MB,
+  HITRAN, Voigt profiles, AFGL midlatitude summer) built by `scripts/make_o2_lbl_lut.py`; class
+  `kernel.O2LineByLine`.
+- `Process.Tg_du`: gaseous transmittance of the Sun-surface-sensor path, computed with the total air mass
+  and used for the path reflectance and the water-leaving signal at TOA. It equals `Tg_d * Tg_u` with
+  REPTRAN (results unchanged); with the line-by-line O2 it is the cell average of the whole path, since the
+  lines are narrower than the cells of the LUT.
+
 ## [1.0.2] - 2026-11-02
 
 ### Fixed
