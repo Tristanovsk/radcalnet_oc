@@ -33,7 +33,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   tutorial *Gaseous transmittance: coupling with scattering*.
 - Line-by-line O2 absorption in the O2-B (682.6-701.8 nm) and O2-A (754.7-775.2 nm) bands, option
   `o2_model='lbl'` of `GaseousTransmittance` and `Process` (`--o2_model lbl` on the command line,
-  `settings: o2_model` in the configuration; default `'reptran'`, unchanged). The REPTRAN fine table used
+  `settings: o2_model` in the configuration; default `'lbl'`, see Changed). The REPTRAN fine table used
   as a spectrum makes these bands too deep at sub-nanometre resolution (equivalent width at air mass 1.155:
   O2-B 1.53 against 0.82 nm, O2-A 4.42 against 3.42 nm). Table `data/lut/gases/o2_lbl_tau.nc` (1.9 MB,
   HITRAN, Voigt profiles, AFGL midlatitude summer) built by `scripts/make_o2_lbl_lut.py`; class
@@ -55,6 +55,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   10 nm bands, 5 nm in O2-B, OLCI widths in O2-A): band TOA reflectance +7 to +12 % in O2-B, +4 to +63 % in
   O2-A, +17 to +31 % at 822 and 900 nm, x2.1 to x3.0 at 940 nm; irradiance -0.2 to -1.6 %.
   `gas_coupling='decoupled'` gives the previous results.
+- The O2 absorption is computed line by line by default (`settings: o2_model: 'lbl'`), closer to the CKD of
+  the coupling fit (2 % against 9-18 % more absorbing for REPTRAN). Only the O2-B (682.6-701.8 nm) and O2-A
+  (754.7-775.2 nm) bands change; for the clear-water template (with the path-length coupling) the mean TOA
+  reflectance increases by +7 to +10 % in 686-696 nm and +14 to +16 % in 759-770 nm (+33 to +39 % in the
+  O2-A head, 760-762 nm), the irradiance by +9 to +10 % and +15 to +16 %. Processing about 15 % slower.
+  `o2_model='reptran'` gives the previous O2 absorption.
 - `Spectral` convolutions use a single matrix product for all the bands, with the weights and prepared
   matrices cached per wavelength grid: 3-4 times faster for repeated convolutions on the same grid
   (e.g. the band variables of `run.py`), same results for `convolve` (Gaussian, < 2e-7).

@@ -30,7 +30,7 @@ AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 NETCDF_ENGINE = config['processor']['netcdf_engine']
 # absorption of O2: 'reptran' (REPTRAN fine table) or 'lbl' (line by line in the O2-B and O2-A bands)
 O2_MODELS = ('reptran', 'lbl')
-O2_MODEL = config['settings'].get('o2_model', 'reptran')
+O2_MODEL = config['settings'].get('o2_model', 'lbl')
 O2_LBL_FILE = files('radcalnet_oc.data.lut.gases') / 'o2_lbl_tau.nc'
 # coupling of the gaseous absorption with the scattering (GasCoupling): 'path_length' (photon path-length model,
 # default), 'effective_air_mass' (per-window effective air masses) or 'decoupled' (direct-beam air mass for all
@@ -538,7 +538,7 @@ class GaseousTransmittance(Gases):
         :param zenith_angle: zenith angle of the path (solar or viewing, deg), used to set the air mass
             :math:`m = 1/\cos\theta`
         :param o2_model: absorption of O2, ``'reptran'`` or ``'lbl'`` (line by line in the O2-B and O2-A
-            bands); by default ``settings: o2_model`` of the configuration (``'reptran'``)
+            bands); by default ``settings: o2_model`` of the configuration (``'lbl'``)
         '''
         Gases.__init__(self)
         self.air_mass = 1. / np.cos(np.radians(zenith_angle))

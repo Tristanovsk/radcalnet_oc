@@ -25,6 +25,14 @@ def clear_water():
     return process
 
 
+@pytest.fixture(scope='module')
+def clear_water_reptran():
+    """As clear_water, with the REPTRAN O2 absorption (default before version 1.1)."""
+    process = Process(vza=angles('vza', [0., 10.]), azi=angles('azi', [90.]), o2_model='reptran')
+    process.execute()
+    return process
+
+
 def test_light_lut_in_use(clear_water):
     assert clear_water.lut.lut_file == LUT_FILE_BACKUP
 
@@ -52,19 +60,18 @@ def test_output_values(clear_water):
     assert (db.Ratm.sel(wl=443, method='nearest') > db.Ratm.sel(wl=865, method='nearest')).all()
 
 
-def test_two_way_gaseous_transmittance(clear_water):
+def test_two_way_gaseous_transmittance(clear_water_reptran):
     """With the REPTRAN table, the Sun-surface-sensor transmittance is the product of the one-way ones."""
-    p = clear_water
+    p = clear_water_reptran
     product = p.Tg_d * p.Tg_u
     np.testing.assert_allclose(p.Tg_du.transpose(*product.dims), product, rtol=1e-10, atol=1e-14)
 
 
-def test_o2_line_by_line(clear_water):
-    """Line-by-line O2: same signal outside the O2 bands, shallower bands than with REPTRAN."""
-    process = Process(vza=angles('vza', [0., 10.]), azi=angles('azi', [90.]), o2_model='lbl')
-    process.execute()
-    lbl, rep = process.radcalnet_db, clear_water.radcalnet_db
-    assert process.gas_trans.o2_model == 'lbl'
+def test_o2_line_by_line(clear_water, clear_water_reptran):
+    """Line-by-line O2 (default): same signal outside the O2 bands, shallower bands than with REPTRAN."""
+    lbl, rep = clear_water.radcalnet_db, clear_water_reptran.radcalnet_db
+    assert clear_water.gas_trans.o2_model == 'lbl'
+    assert clear_water_reptran.gas_trans.o2_model == 'reptran'
     for lo, hi in [(400, 680), (705, 750), (780, 900)]:
         np.testing.assert_allclose(lbl.Rtoa.sel(wl=slice(lo, hi)), rep.Rtoa.sel(wl=slice(lo, hi)), rtol=1e-10)
         np.testing.assert_allclose(lbl.Ed.sel(wl=slice(lo, hi)), rep.Ed.sel(wl=slice(lo, hi)), rtol=1e-10)

@@ -225,7 +225,7 @@ O\ :sub:`2`-A (760 nm) bands over its 0.04-0.06 nm cells and makes these bands t
 O\ :sub:`2` bands, and the retrieval of the fluorescence in-filling); band-averaged signals of broad bands
 are much less affected.
 
-With ``o2_model='lbl'`` (:py:class:`~radcalnet_oc.kernel.GaseousTransmittance`,
+With ``o2_model='lbl'`` (default; :py:class:`~radcalnet_oc.kernel.GaseousTransmittance`,
 :py:class:`~radcalnet_oc.process.Process`, ``--o2_model lbl`` on the command line, or
 ``settings: o2_model`` of the configuration), the O\ :sub:`2` absorption in 682.6-701.8 and 754.7-775.2 nm
 is computed line by line: vertical optical thickness :math:`\tau_{O_2}` from the HITRAN lines of the three
@@ -310,8 +310,8 @@ coupled simulations, the residual band error of the TOA reflectance is about 1-3
 percentile 2.5-11 %) except in the 940 nm band (6 %, 95th percentile 27 %), and below 1 % for the irradiance
 and the water-leaving term. The absorption tables themselves also differ from the CKD of the simulations:
 REPTRAN is 9-18 % more absorbing in the O\ :sub:`2` bands (2 % with ``o2_model='lbl'``, except 16 % less in
-the O\ :sub:`2`-A head) and 2-14 % in the H\ :sub:`2`\ O bands, so that ``o2_model='lbl'`` is recommended
-with the correction. The default is the photon path-length model below (``gas_coupling='path_length'``);
+the O\ :sub:`2`-A head) and 2-14 % in the H\ :sub:`2`\ O bands, so that ``o2_model='lbl'``, the default, is recommended
+with the correction (``o2_model='reptran'`` gives the O\ :sub:`2` absorption of the versions before 1.1). The default is the photon path-length model below (``gas_coupling='path_length'``);
 ``'decoupled'`` gives the results of the versions before 1.1.
 
 Photon path-length model

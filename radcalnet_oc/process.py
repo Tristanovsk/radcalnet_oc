@@ -75,7 +75,7 @@ class Process():
         :param Rrs_name: name of the remote-sensing reflectance variable in ``input_db``
         :param o2_model: absorption of O2, ``'reptran'`` or ``'lbl'`` (line by line in the O2-B and O2-A
             bands, see :py:class:`~radcalnet_oc.kernel.GaseousTransmittance`); by default
-            ``settings: o2_model`` of the configuration (``'reptran'``)
+            ``settings: o2_model`` of the configuration (``'lbl'``)
         :param gas_coupling: gaseous transmittance of the scattered light: ``'decoupled'`` (air mass of the
             direct beam, :math:`1/\mu_0 + 1/\mu_v` for ``Ratm`` and the water-leaving term, :math:`1/\mu_0` for
             ``Ed``), ``'effective_air_mass'`` (effective air masses or single-scattering blend per absorption
