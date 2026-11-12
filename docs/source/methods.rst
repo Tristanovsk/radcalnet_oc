@@ -311,12 +311,13 @@ percentile 2.5-11 %) except in the 940 nm band (6 %, 95th percentile 27 %), and 
 and the water-leaving term. The absorption tables themselves also differ from the CKD of the simulations:
 REPTRAN is 9-18 % more absorbing in the O\ :sub:`2` bands (2 % with ``o2_model='lbl'``, except 16 % less in
 the O\ :sub:`2`-A head) and 2-14 % in the H\ :sub:`2`\ O bands, so that ``o2_model='lbl'`` is recommended
-with the correction. The default remains ``'decoupled'``.
+with the correction. The default is the photon path-length model below (``gas_coupling='path_length'``);
+``'decoupled'`` gives the results of the versions before 1.1.
 
 Photon path-length model
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-With ``gas_coupling='path_length'``, the correction follows the equivalence theorem: for an absorber of
+With ``gas_coupling='path_length'`` (default), the correction follows the equivalence theorem: for an absorber of
 optical thickness :math:`\tau` along the geometric path, the transmittance of a term is the Laplace transform
 of the distribution of the absorber paths crossed by its photons. With a Gamma distribution of mean
 :math:`\eta` times the geometric path and relative variance :math:`s^2`,

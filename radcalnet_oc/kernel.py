@@ -32,10 +32,11 @@ NETCDF_ENGINE = config['processor']['netcdf_engine']
 O2_MODELS = ('reptran', 'lbl')
 O2_MODEL = config['settings'].get('o2_model', 'reptran')
 O2_LBL_FILE = files('radcalnet_oc.data.lut.gases') / 'o2_lbl_tau.nc'
-# coupling of the gaseous absorption with the scattering: 'decoupled' (direct-beam air mass for all the
-# terms) or 'effective_air_mass' (GasCoupling)
+# coupling of the gaseous absorption with the scattering (GasCoupling): 'path_length' (photon path-length model,
+# default), 'effective_air_mass' (per-window effective air masses) or 'decoupled' (direct-beam air mass for all
+# the terms)
 GAS_COUPLINGS = ('decoupled', 'effective_air_mass', 'path_length')
-GAS_COUPLING = config['settings'].get('gas_coupling', 'decoupled')
+GAS_COUPLING = config['settings'].get('gas_coupling', 'path_length')
 GAS_COUPLING_FILE = files('radcalnet_oc.data.auxdata') / 'gas_coupling_eta.csv'
 GAS_COUPLING_PPLD_FILE = files('radcalnet_oc.data.auxdata') / 'gas_coupling_ppld.csv'
 S2_MIN = 1e-4  # minimum relative variance of the photon path-length distribution

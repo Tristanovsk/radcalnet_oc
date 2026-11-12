@@ -80,7 +80,7 @@ def test_gas_coupling(clear_water, o2_model, coupling):
     """Effective air masses: same signal outside the absorption windows; brighter TOA reflectance (path
     reflectance less absorbed) and lower irradiance (longer skylight paths) in the bands."""
     kwargs = dict(vza=angles('vza', [0., 10.]), azi=angles('azi', [90.]), o2_model=o2_model)
-    dec = Process(**kwargs)
+    dec = Process(gas_coupling='decoupled', **kwargs)
     dec.execute()
     assert dec.gas_coupling == 'decoupled'
     assert dec.Tg_atm is dec.Tg_du and dec.Tg_Ed is dec.Tg_d
@@ -100,6 +100,12 @@ def test_gas_coupling(clear_water, o2_model, coupling):
         assert float(eff.Ed.sel(wl=band).mean()) < float(ref.Ed.sel(wl=band).mean())
     with pytest.raises(ValueError):
         Process(gas_coupling='coupled')
+
+
+def test_default_gas_coupling(clear_water):
+    """The photon path-length model is the default coupling of the gaseous absorption with the scattering."""
+    assert clear_water.gas_coupling == 'path_length'
+    assert set(clear_water.coupling.table.form) == {'ppld'}
 
 
 def test_turbid_water_brighter_in_red():

@@ -81,7 +81,7 @@ class Process():
             ``Ed``), ``'effective_air_mass'`` (effective air masses or single-scattering blend per absorption
             window, computed at 5 cm-1) or ``'path_length'`` (photon path-length model, channel by channel),
             in the O2 and H2O bands of 684-990 nm, see :py:class:`~radcalnet_oc.kernel.GasCoupling`; by
-            default ``settings: gas_coupling`` of the configuration (``'decoupled'``)
+            default ``settings: gas_coupling`` of the configuration (``'path_length'``)
         '''
 
         if input_db is None:

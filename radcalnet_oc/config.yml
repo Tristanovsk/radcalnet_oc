@@ -33,9 +33,10 @@ settings:
   # O2-B and O2-A bands, 683-702 and 755-775 nm; recommended for sub-nanometre resolution, e.g. FLEX)
   o2_model: 'reptran'
   # gaseous transmittance of the scattered light in the O2 and H2O bands of 684-990 nm (radcalnet_oc.kernel.GasCoupling):
-  # 'decoupled' (air mass of the direct beam for all the terms), 'effective_air_mass' (effective air masses per
-  # absorption window, computed at 5 cm-1) or 'path_length' (photon path-length model, channel by channel)
-  gas_coupling: 'decoupled'
+  # 'path_length' (photon path-length model, channel by channel; default), 'effective_air_mass' (effective air
+  # masses per absorption window, computed at 5 cm-1) or 'decoupled' (air mass of the direct beam for all the
+  # terms, as before version 1.1)
+  gas_coupling: 'path_length'
 
 processor:
   ncpu: 8

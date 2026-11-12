@@ -19,7 +19,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `O2LineByLine.transmittance_path_length`.
 - Coupling of the gaseous absorption with the scattering, option `gas_coupling='effective_air_mass'` of
   `Process` (`--gas_coupling effective_air_mass` on the command line, `settings: gas_coupling` in the
-  configuration; default `'decoupled'`, unchanged). In seven windows of the O2-B, O2-A and H2O bands of
+  configuration). In seven windows of the O2-B, O2-A and H2O bands of
   684-990 nm, the transmittances of the path reflectance, of the water-leaving term and of the irradiance
   are corrected with an effective air mass or, for the path reflectance in the O2-A head and the 940 nm
   core, a single-scattering blend, with coefficients depending on the air mass, the aerosol optical
@@ -49,6 +49,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Warning when the response of a band is truncated by the wavelength range of the signal.
 
 ### Changed
+- The gaseous transmittance of the scattered light uses the photon path-length model by default
+  (`settings: gas_coupling: 'path_length'`): the TOA reflectance, the path reflectance and the irradiance change in
+  the O2 and H2O bands of 684-990 nm and are unchanged elsewhere. For the clear-water template (REPTRAN O2,
+  10 nm bands, 5 nm in O2-B, OLCI widths in O2-A): band TOA reflectance +7 to +12 % in O2-B, +4 to +63 % in
+  O2-A, +17 to +31 % at 822 and 900 nm, x2.1 to x3.0 at 940 nm; irradiance -0.2 to -1.6 %.
+  `gas_coupling='decoupled'` gives the previous results.
 - `Spectral` convolutions use a single matrix product for all the bands, with the weights and prepared
   matrices cached per wavelength grid: 3-4 times faster for repeated convolutions on the same grid
   (e.g. the band variables of `run.py`), same results for `convolve` (Gaussian, < 2e-7).
