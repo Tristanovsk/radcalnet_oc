@@ -8,6 +8,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- Photon path-length model of the gaseous transmittance of the scattered light, option
+  `gas_coupling='path_length'` (`--gas_coupling path_length`): per absorption window and term,
+  T = (1 + s2 eta tau)^(-1/s2) with tau = -ln Tg(m) of the channel (Gamma distribution of the absorber paths,
+  equivalence theorem), applied channel by channel to REPTRAN and line by line to the O2 bands with
+  `o2_model='lbl'`, no smoothing needed. Coefficients `data/auxdata/gas_coupling_ppld.csv` fitted by
+  `scripts/sos_abs_coupling/ppld.py` on the SOS-ABS simulations (CKD intervals decomposed into exponential
+  sums); evaluation `scripts/sos_abs_coupling/ppld_eval.py`. `kernel.path_length_transmittance`,
+  `GasCoupling.path_length`, `GaseousTransmittance.get_path_length_transmittance`,
+  `O2LineByLine.transmittance_path_length`.
 - Coupling of the gaseous absorption with the scattering, option `gas_coupling='effective_air_mass'` of
   `Process` (`--gas_coupling effective_air_mass` on the command line, `settings: gas_coupling` in the
   configuration; default `'decoupled'`, unchanged). In seven windows of the O2-B, O2-A and H2O bands of

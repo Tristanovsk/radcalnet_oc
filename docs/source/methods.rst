@@ -313,6 +313,32 @@ REPTRAN is 9-18 % more absorbing in the O\ :sub:`2` bands (2 % with ``o2_model='
 the O\ :sub:`2`-A head) and 2-14 % in the H\ :sub:`2`\ O bands, so that ``o2_model='lbl'`` is recommended
 with the correction. The default remains ``'decoupled'``.
 
+Photon path-length model
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+With ``gas_coupling='path_length'``, the correction follows the equivalence theorem: for an absorber of
+optical thickness :math:`\tau` along the geometric path, the transmittance of a term is the Laplace transform
+of the distribution of the absorber paths crossed by its photons. With a Gamma distribution of mean
+:math:`\eta` times the geometric path and relative variance :math:`s^2`,
+
+.. math::
+   :label: tg_ppld
+
+   T = \left(1 + s^2\, \eta\, \tau\right)^{-1/s^2}, \qquad \tau = -\ln T_g(m),
+
+which tends to :math:`T_g(\eta m)` when :math:`s^2 \to 0` and decreases as a power law in the saturated lines.
+:math:`\eta` and :math:`s^2` are linear in :math:`m - 2`, :math:`\tau_{550} - 0.1` and :math:`\ln(U/2)` per
+absorption window and term (table ``data/auxdata/gas_coupling_ppld.csv``, :py:meth:`~radcalnet_oc.kernel.GasCoupling.path_length`).
+They are fitted on the same SOS-ABS simulations, whose CKD intervals are first decomposed into sums of
+exponentials :math:`T_g(m) = \sum_i a_i e^{-\tau_i m}` from the direct-beam transmittance at 15 air masses
+(:math:`T_{term} = \sum_i a_i (1 + s^2 \eta \tau_i m)^{-1/s^2}`, script ``scripts/sos_abs_coupling/ppld.py``).
+The model being monochromatic, it is applied channel by channel to the REPTRAN table (a channel is a single
+exponential) and, with ``o2_model='lbl'``, line by line inside each cell
+(:py:meth:`~radcalnet_oc.kernel.GaseousTransmittance.get_path_length_transmittance`): no smoothing to the
+resolution of the fit is needed, and a single form serves all the windows (path reflectance:
+:math:`\eta \approx 0.45`-:math:`0.65`, :math:`s^2 \approx 0.7`-:math:`2.3`; water-leaving term and irradiance:
+:math:`\eta \approx 1.02`-:math:`1.05`, :math:`s^2 \approx 0`-:math:`0.1`).
+
 When only the altitude :math:`z` (in m) of a site is known, the pressure is estimated from
 the sea-level pressure :math:`P_{sl}` with the barometric formula
 

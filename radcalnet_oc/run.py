@@ -27,9 +27,9 @@ Options:
   --o2_model model  Absorption of O2: reptran, or lbl (line by line in the O2-B and O2-A bands, for
                    sub-nanometre resolution); default: settings: o2_model of the configuration
   --gas_coupling coupling  Gaseous transmittance of the scattered light: decoupled (air mass of the
-                   direct beam), or effective_air_mass (correction of the absorption-scattering
-                   coupling in the O2 and H2O bands of 684-990 nm); default: settings: gas_coupling
-                   of the configuration
+                   direct beam), effective_air_mass (effective air masses per absorption window) or
+                   path_length (photon path-length model, channel by channel), in the O2 and H2O
+                   bands of 684-990 nm; default: settings: gas_coupling of the configuration
   --bands wavelengths  Central wavelengths (nm) of sensor bands, comma-separated: the band-averaged
                    Rtoa, Ratm, Ed, E0 and Rrs are added to the output (variables <name>_bands,
                    dimension wl_band)

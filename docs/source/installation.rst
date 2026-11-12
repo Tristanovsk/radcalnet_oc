@@ -76,7 +76,7 @@ Default configuration:
      aerosol_combination: [0, 0.5, 0, 0.5, 0., 0.]
      aerosol_models: ['ARCT_rh70', 'COAV_rh70', 'DESE_rh70', 'MACL_rh70', 'URBA_rh70', 'WASO_rh0']
      o2_model: 'reptran'   # or 'lbl': line-by-line O2-B and O2-A bands
-     gas_coupling: 'decoupled'   # or 'effective_air_mass': absorption-scattering coupling
+     gas_coupling: 'decoupled'   # 'effective_air_mass' or 'path_length': absorption-scattering coupling
 
    processor:
      ncpu: 8

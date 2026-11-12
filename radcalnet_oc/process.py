@@ -16,7 +16,7 @@ import logging
 from importlib.resources import files
 
 from . import GaseousTransmittance, GasCoupling, Misc, LUT, SolarIrradiance
-from .kernel import GAS_COUPLING, GAS_COUPLINGS
+from .kernel import GAS_COUPLING, GAS_COUPLINGS, GAS_COUPLING_FILE, GAS_COUPLING_PPLD_FILE
 from .config import load_config
 
 template = files('radcalnet_oc.data.template').joinpath('template_clear_water.nc')
@@ -78,8 +78,9 @@ class Process():
             ``settings: o2_model`` of the configuration (``'reptran'``)
         :param gas_coupling: gaseous transmittance of the scattered light: ``'decoupled'`` (air mass of the
             direct beam, :math:`1/\mu_0 + 1/\mu_v` for ``Ratm`` and the water-leaving term, :math:`1/\mu_0` for
-            ``Ed``) or ``'effective_air_mass'`` (air masses corrected for the absorption-scattering coupling
-            in the O2 and H2O bands of 684-990 nm, see :py:class:`~radcalnet_oc.kernel.GasCoupling`); by
+            ``Ed``), ``'effective_air_mass'`` (effective air masses or single-scattering blend per absorption
+            window, computed at 5 cm-1) or ``'path_length'`` (photon path-length model, channel by channel),
+            in the O2 and H2O bands of 684-990 nm, see :py:class:`~radcalnet_oc.kernel.GasCoupling`; by
             default ``settings: gas_coupling`` of the configuration (``'decoupled'``)
         '''
 
@@ -115,7 +116,8 @@ class Process():
         self.gas_coupling = GAS_COUPLING if gas_coupling is None else gas_coupling
         if self.gas_coupling not in GAS_COUPLINGS:
             raise ValueError(f'gas_coupling must be one of {GAS_COUPLINGS}, not {self.gas_coupling!r}')
-        self.coupling = GasCoupling() if self.gas_coupling == 'effective_air_mass' else None
+        tables = {'effective_air_mass': GAS_COUPLING_FILE, 'path_length': GAS_COUPLING_PPLD_FILE}
+        self.coupling = GasCoupling(tables[self.gas_coupling]) if self.gas_coupling in tables else None
 
         logging.info('set input parameters')
         self.set_param(Rrs_name=Rrs_name)

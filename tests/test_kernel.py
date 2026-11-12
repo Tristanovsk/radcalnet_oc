@@ -6,7 +6,8 @@ import xarray as xr
 
 from radcalnet_oc import Aerosol, GaseousTransmittance, GasCoupling, Misc, Radiometry
 from radcalnet_oc.config import LUT_FILE_BACKUP
-from radcalnet_oc.kernel import AEROSOL_MODELS, O2_MODELS, O2LineByLine
+from radcalnet_oc.kernel import (AEROSOL_MODELS, O2_MODELS, O2LineByLine, GAS_COUPLING_PPLD_FILE,
+                                 path_length_transmittance)
 from radcalnet_oc.lut import LUT
 
 
@@ -217,6 +218,62 @@ def test_coupled_transmittance(gas_lut, o2_model, resolution):
         assert (t_atm <= 1.).all() and (t_w >= 0.).all()
     # the air mass of the object is the geometric one after the call
     assert gas.air_mass is m
+
+
+def test_path_length_transmittance():
+    x = np.array([0., 0.1, 1., 5., 50.])
+    # s2 is floored at 1e-4: relative departure from exp(-x) about x**2 s2 / 2
+    np.testing.assert_allclose(path_length_transmittance(x[:4], 1e-12), np.exp(-x[:4]), rtol=2e-3)
+    t = path_length_transmittance(x, 1.)
+    np.testing.assert_allclose(t, 1 / (1 + x))
+    # a broader path distribution transmits more for the same mean path (Jensen)
+    assert (path_length_transmittance(x[1:], 2.) > np.exp(-x[1:])).all()
+
+
+def test_gas_coupling_path_length_table():
+    cp = GasCoupling(GAS_COUPLING_PPLD_FILE)
+    assert set(cp.table.form) == {'ppld'}
+    for w in cp.windows:
+        eta, s2 = cp.path_length('atm', w, 3., 0.1, 2.)
+        assert 0.3 < eta < 0.9 and s2 > 0.1, (w, eta, s2)
+        for term, m in (('w', 3.), ('Ed', 1.5)):
+            eta, s2 = cp.path_length(term, w, m, 0.1, 2.)
+            assert 1. < eta < 1.1 and 0 < s2 < 0.3, (w, term, eta, s2)
+
+
+def test_path_length_line_by_line_limit(gas_lut):
+    """eta = 1 and s2 -> 0: the path-length transmittance is the direct one, line by line included."""
+    gas = GaseousTransmittance(gas_lut.sel(wl=slice(750, 780)), o2_model='lbl')
+    m = xr.DataArray([2., 3.5], coords={'vza': [0, 1]}, dims='vza')
+    gas.air_mass = m
+    direct = gas.get_gaseous_transmittance(gases=['h2o'], background=True)
+    t = gas.get_path_length_transmittance(m, xr.ones_like(m), 1e-6, gases=['h2o'])
+    np.testing.assert_allclose(t.transpose(*direct.dims), direct, atol=2e-4)
+
+
+@pytest.mark.parametrize('o2_model', O2_MODELS)
+def test_coupled_transmittance_path_length(gas_lut, o2_model):
+    gas = GaseousTransmittance(gas_lut, o2_model=o2_model)
+    cp = GasCoupling(GAS_COUPLING_PPLD_FILE)
+    m = xr.DataArray([2.5, 3.5], coords={'vza': [0, 1]}, dims='vza')
+    aot = xr.DataArray([0.05, 0.3], coords={'time': [0, 1]}, dims='time')
+    gas.air_mass = m
+    tg = gas.get_gaseous_transmittance()
+    t_atm = gas.get_coupled_transmittance(m, 'atm', aot, cp)
+    t_w = gas.get_coupled_transmittance(m, 'w', aot, cp)
+    tg, t_atm, t_w = xr.broadcast(tg, t_atm, t_w)
+    assert np.isfinite(t_atm).all() and np.isfinite(t_w).all()
+    assert (t_atm <= 1.).all() and (t_w >= 0.).all()
+    inside = xr.zeros_like(tg.wl, dtype=bool)
+    for a, b in cp.windows.values():
+        inside = inside | ((tg.wl >= a) & (tg.wl <= b))
+    np.testing.assert_allclose(t_atm.where(~inside, 1.), tg.where(~inside, 1.), rtol=1e-12)
+    absorbing = inside & (tg < 0.9)
+    assert (t_atm > tg).where(absorbing, True).all()
+    # water-leaving term: longer mean path, but the spread of the paths transmits more than the direct beam in
+    # the saturated channels (some scattered paths cross less absorber); more absorption on average
+    assert (t_w < tg).where(absorbing & (tg > 0.3), True).all()
+    assert float(t_w.where(absorbing).mean()) < float(tg.where(absorbing).mean())
 
 
 # ------------------------------------

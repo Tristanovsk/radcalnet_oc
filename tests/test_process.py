@@ -75,7 +75,8 @@ def test_o2_line_by_line(clear_water):
 
 
 @pytest.mark.parametrize('o2_model', ['reptran', 'lbl'])
-def test_gas_coupling(clear_water, o2_model):
+@pytest.mark.parametrize('coupling', ['effective_air_mass', 'path_length'])
+def test_gas_coupling(clear_water, o2_model, coupling):
     """Effective air masses: same signal outside the absorption windows; brighter TOA reflectance (path
     reflectance less absorbed) and lower irradiance (longer skylight paths) in the bands."""
     kwargs = dict(vza=angles('vza', [0., 10.]), azi=angles('azi', [90.]), o2_model=o2_model)
@@ -83,7 +84,8 @@ def test_gas_coupling(clear_water, o2_model):
     dec.execute()
     assert dec.gas_coupling == 'decoupled'
     assert dec.Tg_atm is dec.Tg_du and dec.Tg_Ed is dec.Tg_d
-    process = Process(gas_coupling='effective_air_mass', **kwargs)
+    process = Process(gas_coupling=coupling, **kwargs)
+    assert process.coupling is not None
     process.execute()
     eff, ref = process.radcalnet_db, dec.radcalnet_db
     assert np.isfinite(eff.Rtoa).all()
