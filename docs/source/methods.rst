@@ -254,31 +254,64 @@ Eq. :eq:`tgas` is exact for the direct beam only. The scattered photons follow o
 scattered by the molecules and aerosols above the absorbers shortcut part of the path (less absorption for
 the path reflectance, especially for the water vapour, concentrated in the lowest kilometres), while the
 skylight reaching the surface has longer paths than the direct beam (more absorption for the water-leaving
-term and the irradiance). With ``gas_coupling='effective_air_mass'``
-(:py:class:`~radcalnet_oc.process.Process`, ``--gas_coupling effective_air_mass`` on the command line, or
-``settings: gas_coupling`` of the configuration), the transmittance of each term is computed for an
-effective air mass :math:`\eta\, m` in the absorption windows of 684-698 (O\ :sub:`2`-B), 712-736, 808-836
-and 890-990 nm (H\ :sub:`2`\ O) and 757-772 nm (O\ :sub:`2`-A):
+term and the irradiance). Coupled simulations (SOS-ABS, correlated k at 5 cm\ :sup:`-1`) show that the
+decoupled model underestimates the band TOA reflectance by about 4 % in the O\ :sub:`2`-B band, 10-15 % at
+720, 820 and 900 nm, 30 % in the O\ :sub:`2`-A head and 50-60 % in the 940 nm band.
+
+With ``gas_coupling='effective_air_mass'`` (:py:class:`~radcalnet_oc.process.Process`,
+``--gas_coupling effective_air_mass`` on the command line, or ``settings: gas_coupling`` of the
+configuration), the transmittance of each term is corrected in seven windows: 684-698 nm (O\ :sub:`2`-B),
+712-736 nm, 757-762.25 and 762.25-772 nm (O\ :sub:`2`-A head and P branch), 808-836 nm, 890-919.5 and
+919.5-990 nm (H\ :sub:`2`\ O). In each window and for each term, a coefficient
 
 .. math::
    :label: eta
 
-   \eta = c_0 + c_1\,(m - 2) + c_2\,(\tau_{550} - 0.1),
+   c = c_0 + c_1\,(m - 2) + c_2\,(\tau_{550} - 0.1) + c_3 \ln(U / 2\ \mathrm{g\,cm^{-2}}) + c_4\,\tau_g
 
-with :math:`m = 1/\mu_0 + 1/\mu_v` for the path reflectance (:math:`\eta_{atm} \approx 0.5`-:math:`0.6`)
-and the water-leaving term (:math:`\eta_w \approx 1.02`-:math:`1.04`), and :math:`m = 1/\mu_0` for the
-irradiance (:math:`\eta_{Ed} \approx 1.02`-:math:`1.04`). The coefficients, per window and term
-(:py:class:`~radcalnet_oc.kernel.GasCoupling`, table ``data/auxdata/gas_coupling_eta.csv``), are fitted on
-SOS-ABS simulations coupling the absorption (correlated k, 5 cm\ :sup:`-1`) and the scattering (see the
-research tutorial :doc:`tutorials/research/radcalnet_oc_gaseous_coupling`); :math:`m` and
-:math:`\tau_{550}` are clipped to the ranges of the simulations (:math:`m` 2.16-3.91 for the path terms,
-1.15-2 for the irradiance, :math:`\tau_{550}` 0.05-0.2). The correction applies to H\ :sub:`2`\ O and the
-background gases (O\ :sub:`2`...); O\ :sub:`3`, NO\ :sub:`2` and CH\ :sub:`4` keep the geometric air
-mass, as all the gases outside the windows. In the bands, it increases the TOA reflectance by a few
-percent (O\ :sub:`2`-B) to tens of percent (O\ :sub:`2`-A, 820 nm) and more in the saturated 940 nm band,
-mostly through the path reflectance. The parameterization comes from a single water vapour column
-(2 g cm\ :sup:`-2`), two solar angles and two aerosol loads of maritime aerosols, and is not yet the
-default (``'decoupled'``).
+(:math:`U` water vapour column, :math:`c_3 = 0` in the O\ :sub:`2` windows, :math:`\tau_g = -\ln T_g(m)`)
+is used either as an effective air mass ratio, :math:`T = T_g(\eta\, m)` with :math:`\eta = c`, or as the
+weight of a single-scattering blend,
+
+.. math::
+   :label: tg_blend
+
+   T = T_g(m)^{1-k}\, T_{ss}^{\,k}, \qquad T_{ss} = \frac{1 - T_g(m)}{-\ln T_g(m)}, \qquad k = c,
+
+:math:`T_{ss}` being the transmittance seen in single scattering by the light scattered uniformly along the
+absorber column (effective air mass :math:`m/2` for a weak absorption, less when it saturates). The air
+mass is :math:`m = 1/\mu_0 + 1/\mu_v` for the path reflectance (:math:`\eta_{atm} \approx 0.4`-:math:`0.7`)
+and the water-leaving term (:math:`\eta_w \approx 1.02`-:math:`1.05`), :math:`m = 1/\mu_0` for the
+irradiance. The blend is used for the path reflectance in the O\ :sub:`2`-A head and the 940 nm core, the
+effective air mass elsewhere. The coefficients (:py:class:`~radcalnet_oc.kernel.GasCoupling`, table
+``data/auxdata/gas_coupling_eta.csv``) are fitted on simulations with water vapour columns of 0.5-4
+g cm\ :sup:`-2`, solar zenith angles of 20-70°, AOT(550) of 0.05-0.4 (maritime aerosols) and viewing angles
+up to 60° away from the sunglint, the direct sunglint being removed from the path reflectance as in the
+look-up tables; outside these ranges the variables are clipped. The fits minimise the absolute error of the
+transmittance, which drives the error of band averages (scripts ``scripts/sos_abs_coupling``; analysis of
+the first version in the research tutorial :doc:`tutorials/research/radcalnet_oc_gaseous_coupling`).
+
+The coefficients are fitted on the transmittances of 5 cm\ :sup:`-1` intervals, much less saturated than
+the channels of the gaseous table of RadCalNet-OC: applied channel by channel, the blend would diverge in
+the saturated channels of the 940 nm band. :py:meth:`~radcalnet_oc.kernel.GasCoupling.correction` therefore
+smooths the transmittance to 5 cm\ :sup:`-1`, :math:`\bar T`, computes the correction :math:`\bar T^{model}`
+there and applies it to each channel keeping the interval means, by scaling the absorptance when the
+absorption decreases (path reflectance) and the transmittance when it increases:
+
+.. math::
+   :label: tg_correction
+
+   T = 1 - (1 - T_g(m))\, \frac{1 - \bar T^{model}}{1 - \bar T(m)} \quad \text{or} \quad
+   T = T_g(m)\, \frac{\bar T^{model}}{\bar T(m)}.
+
+The correction applies to H\ :sub:`2`\ O and the background gases (O\ :sub:`2`...); O\ :sub:`3`,
+NO\ :sub:`2` and CH\ :sub:`4` keep the geometric air mass, as all the gases outside the windows. Against the
+coupled simulations, the residual band error of the TOA reflectance is about 1-3 % in median (95th
+percentile 2.5-11 %) except in the 940 nm band (6 %, 95th percentile 27 %), and below 1 % for the irradiance
+and the water-leaving term. The absorption tables themselves also differ from the CKD of the simulations:
+REPTRAN is 9-18 % more absorbing in the O\ :sub:`2` bands (2 % with ``o2_model='lbl'``, except 16 % less in
+the O\ :sub:`2`-A head) and 2-14 % in the H\ :sub:`2`\ O bands, so that ``o2_model='lbl'`` is recommended
+with the correction. The default remains ``'decoupled'``.
 
 When only the altitude :math:`z` (in m) of a site is known, the pressure is estimated from
 the sea-level pressure :math:`P_{sl}` with the barometric formula

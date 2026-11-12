@@ -3,10 +3,18 @@ SOS-ABS simulations of the TOA signal over a rough sea surface (Cox-Munk) + Lamb
 with full coupling of gaseous absorption (CKD 5 cm-1, fine mode) and scattering, to assess and
 parameterise the decoupled gaseous transmittance used by radcalnet_oc.
 
-LUTs written to OUTDIR:
-  abs.nc     : TOA field with absorption      (wl, sza, aot, rho)
-  noabs.nc   : TOA field without absorption   (same grid)
-  tgdir.nc   : direct flux with/without absorption vs sza (air mass 1..10) -> Tg_dir(m) from CKD
+Usage: python make_luts.py [v1|v2] [OUTDIR] [N_WORKERS]
+
+Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v2):
+
+  v1 (research tutorial of the documentation)
+    abs.nc, noabs.nc         TOA field with / without absorption, (wl, sza, aot, albedo); H2O 2 g cm-2
+    tgdir_abs/noabs.nc       direct flux with / without absorption vs air mass (1..10) -> Tg_dir(wl, m)
+  v2 (extended: water vapour column, solar angle, aerosol load)
+    abs.nc                   (wl, H2O, sza, aot, albedo)
+    noabs.nc                 (wl, sza, aot, albedo)
+    tgdir_abs.nc             (wl, H2O, m)
+    tgdir_noabs.nc           (wl, m)
 """
 import os, sys, time
 import numpy as np
@@ -19,19 +27,29 @@ except ImportError:
     sys.path.insert(0, os.path.join(ROOT, "python"))
     import sosabs
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+SET = sys.argv[1] if len(sys.argv) > 1 else "v1"
+if SET not in ("v1", "v2"):
+    sys.exit(__doc__)
 # OUTDIR and the Mie / surface cache must be on a local disk, not in a synchronised folder (Dropbox):
-# 'data' is a link to such a directory. The cache is shared by all the workers; the surface matrix files
-# are cached per sza (older sosabs versions reused them across sza: LUTs made with them must be rebuilt).
-OUTDIR = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-CACHE = os.path.join(OUTDIR, "cache")
+# 'data' is a link to such a directory. The cache is shared by all the workers and the sets; the surface
+# matrix files are cached per sza (older sosabs versions reused them across sza: LUTs made with them must
+# be rebuilt).
+OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "data", "" if SET == "v1" else SET)
+N_WORKERS = int(sys.argv[3]) if len(sys.argv) > 3 else 32
+CACHE = os.path.join(HERE, "data", "cache")
+os.makedirs(OUTDIR, exist_ok=True)
 os.makedirs(CACHE, exist_ok=True)
 
 # absorption windows (nm, step nm)
-WINDOWS = [(684, 698, 0.5),    # O2-B
-           (712, 736, 0.5),    # H2O 720
-           (757, 772, 0.5),    # O2-A
-           (808, 836, 0.5),    # H2O 820
-           (890, 990, 1.0)]    # H2O 940
+if SET == "v1":
+    WINDOWS = [(684, 698, 0.5),    # O2-B
+               (712, 736, 0.5),    # H2O 720
+               (757, 772, 0.5),    # O2-A
+               (808, 836, 0.5),    # H2O 820
+               (890, 990, 1.0)]    # H2O 940
+else:
+    WINDOWS = [(684, 698, 0.5), (712, 736, 1.0), (757, 772, 0.5), (808, 836, 1.0), (890, 990, 1.0)]
 WL = np.unique(np.concatenate([np.arange(a, b + 1e-6, s) for a, b, s in WINDOWS])) * 1e-3
 
 ABS = {"-AP.AbsProfile.Type": 2, "-AP.SpectralResol": 5.0, "-SOS.AbsModeCKD": 1, "-AP.H2O": 2.0}
@@ -41,24 +59,33 @@ BASE = {"-ANG.Rad.NbGauss": 24, "-ANG.Aer.NbGauss": 40, "-SOS.View.Dphi": 5, "-S
         "-AP.AerProfile.Type": 1, "-AP.AerHS.HA": 2.0,
         "-AER.Model": 1, "-AER.WMO.Model": 2, "-AER.Waref": 0.55, "-AER.AOTref": 0.1,
         "-SURF.Type": 1, "-SURF.Ind": 1.33, "-SURF.Glitter.Wind": 5.0, "-SURF.Alb": 0.0}
-GRID = {"-SOS_Main.Wa": WL, "-ANG.Thetas": [30., 60.], "-AER.AOTref": [0.05, 0.2],
-        "-SURF.Alb": [0.0, 0.01, 0.03, 0.1]}
+if SET == "v1":
+    H2O = None
+    GRID = {"-SOS_Main.Wa": WL, "-ANG.Thetas": [30., 60.], "-AER.AOTref": [0.05, 0.2],
+            "-SURF.Alb": [0.0, 0.01, 0.03, 0.1]}
+else:
+    H2O = [0.5, 2.0, 4.0]
+    GRID = {"-SOS_Main.Wa": WL, "-ANG.Thetas": [20., 40., 55., 70.], "-AER.AOTref": [0.05, 0.15, 0.4],
+            "-SURF.Alb": [0.0, 0.03, 0.1]}
+GRID_ABS = GRID if H2O is None else {"-SOS_Main.Wa": WL, "-AP.H2O": H2O,
+                                     **{k: v for k, v in GRID.items() if k != "-SOS_Main.Wa"}}
 
 # direct transmittance vs air mass (cheap: one order, few angles)
 SZA_TG = np.degrees(np.arccos(1 / np.array([1., 1.25, 1.5, 1.75, 2., 2.5, 3., 3.5, 4., 5., 6., 7., 8.5, 10.])))
 TGBASE = {**BASE, "-ANG.Rad.NbGauss": 8, "-SOS.View.Dphi": 30, "-SOS.IGmax": 1, "-SURF.Type": 0}
 TGGRID = {"-SOS_Main.Wa": WL, "-ANG.Thetas": SZA_TG}
+TGGRID_ABS = TGGRID if H2O is None else {"-SOS_Main.Wa": WL, "-AP.H2O": H2O, "-ANG.Thetas": SZA_TG}
 
-jobs = [("tgdir_abs.nc", TGGRID, {**TGBASE, **ABS}),
+jobs = [("tgdir_abs.nc", TGGRID_ABS, {**TGBASE, **ABS}),
         ("tgdir_noabs.nc", TGGRID, {**TGBASE, **NOABS}),
         ("noabs.nc", GRID, {**BASE, **NOABS}),
-        ("abs.nc", GRID, {**BASE, **ABS})]
+        ("abs.nc", GRID_ABS, {**BASE, **ABS})]
 for name, grid, fixed in jobs:
     out = os.path.join(OUTDIR, name)
     if os.path.exists(out):
         print("exists:", out); continue
     t0 = time.time()
     n = int(np.prod([len(v) for v in grid.values()]))
-    print(f"{name}: {n} runs ...", flush=True)
-    sosabs.build_lut(grid=grid, fixed=fixed, outfile=out, n_workers=32, cache_dir=CACHE, verbose=False)
-    print(f"{name}: done in {time.time() - t0:.0f} s", flush=True)
+    print(f"{SET} {name}: {n} runs ...", flush=True)
+    sosabs.build_lut(grid=grid, fixed=fixed, outfile=out, n_workers=N_WORKERS, cache_dir=CACHE, verbose=False)
+    print(f"{SET} {name}: done in {time.time() - t0:.0f} s", flush=True)

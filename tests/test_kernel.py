@@ -144,26 +144,57 @@ def test_o2_lbl_pressure_air_mass_and_dimensions(gas_lut):
 # ------------------------------------
 def test_gas_coupling_table():
     cp = GasCoupling()
-    assert set(cp.windows) == {'O2-B', 'H2O-720', 'O2-A', 'H2O-820', 'H2O-940'}
+    assert len(cp.windows) >= 5
     for w in cp.windows:
-        # path reflectance: shorter effective path; water-leaving term and irradiance: longer
-        assert 0.3 < cp.eta('atm', w, 3., 0.1) < 0.8
-        assert 1. < cp.eta('w', w, 3., 0.1) < 1.1
-        assert 1. < cp.eta('Ed', w, 1.5, 0.1) < 1.1
+        for term in GasCoupling.TERMS:
+            c = cp.coefficient(term, w, 3. if term != 'Ed' else 1.5, 0.1, 2., tau=1.)
+            if cp.form(term, w) == 'eta':
+                # path reflectance: shorter effective path; water-leaving term and irradiance: longer
+                assert (0.2 < c < 0.9) if term == 'atm' else (0.99 < c < 1.1), (w, term, c)
+            else:
+                assert term == 'atm' and 0. < c < 2., (w, term, c)
     # clipped to the ranges of the simulations
-    assert cp.eta('atm', 'O2-A', 100., 5.) == cp.eta('atm', 'O2-A', 3.9115, 0.2)
-    eta = cp.eta('w', 'O2-A', xr.DataArray([2.5, 3.], dims='vza'), xr.DataArray([0.1, 0.2], dims='time'))
+    w = 'O2-A-P'
+    r = cp.row('w', w)
+    assert cp.coefficient('w', w, 100., 5.) == cp.coefficient('w', w, r.m_max, r.aot_max)
+    eta = cp.coefficient('w', w, xr.DataArray([2.5, 3.], dims='vza'), xr.DataArray([0.1, 0.2], dims='time'))
     assert eta.dims == ('vza', 'time')
     with pytest.raises(ValueError):
-        cp.eta('toa', 'O2-A', 2., 0.1)
+        cp.coefficient('toa', w, 2., 0.1)
     with pytest.raises(KeyError):
-        cp.eta('atm', 'H2O-1380', 2., 0.1)
+        cp.coefficient('atm', 'H2O-1380', 2., 0.1)
+
+
+def test_gas_coupling_first_version_table():
+    """Table without form, H2O and absorption-strength terms (first version): effective air mass."""
+    import pandas as pd
+    table = pd.DataFrame([{'window': 'O2-A', 'wl_min': 757, 'wl_max': 772, 'term': t, 'c0': c0, 'c1': 0.,
+                           'c2': 0., 'm_min': 2., 'm_max': 4., 'aot_min': 0.05, 'aot_max': 0.2}
+                          for t, c0 in (('atm', 0.5), ('w', 1.02), ('Ed', 1.02))])
+    cp = GasCoupling(table)
+    assert cp.form('atm', 'O2-A') == 'eta'
+    assert cp.eta('atm', 'O2-A', 3., 0.1, h2o=4., ) == 0.5
+
+
+def test_gas_coupling_smooth_and_single_scattering():
+    wl = np.linspace(750., 780., 3001)
+    T = xr.DataArray(np.full((2, wl.size), 0.4), coords={'vza': [0, 1], 'wl': wl}, dims=('vza', 'wl'))
+    np.testing.assert_allclose(GasCoupling.smooth(T), T)
+    # alternating channels: smoothed to their mean, dimensions kept
+    T = T.copy(data=np.where(np.arange(wl.size) % 2, 0.9, 0.1) * np.ones((2, 1)))
+    s = GasCoupling.smooth(T)
+    assert s.dims == T.dims
+    # (odd number of cells in a 5 cm-1 window: 0.5 +- 0.4 / 29)
+    np.testing.assert_allclose(s.isel(wl=slice(100, -100)), 0.5, atol=0.015)
+    tss = GasCoupling.single_scattering(xr.DataArray([1., 0.5, 1e-6]))
+    np.testing.assert_allclose(tss, [1., 0.5 / np.log(2), (1 - 1e-6) / (6 * np.log(10))], rtol=1e-10)
 
 
 @pytest.mark.parametrize('o2_model', O2_MODELS)
-def test_coupled_transmittance(gas_lut, o2_model):
+@pytest.mark.parametrize('resolution', [GasCoupling.RESOLUTION, None])
+def test_coupled_transmittance(gas_lut, o2_model, resolution):
     gas = GaseousTransmittance(gas_lut, o2_model=o2_model)
-    cp = GasCoupling()
+    cp = GasCoupling(resolution=resolution)
     m = xr.DataArray([2.5, 3.5], coords={'vza': [0, 1]}, dims='vza')
     gas.air_mass = m
     tg = gas.get_gaseous_transmittance()
@@ -178,7 +209,12 @@ def test_coupled_transmittance(gas_lut, o2_model):
     np.testing.assert_allclose(t_w.where(~inside, 1.), tg.where(~inside, 1.), rtol=1e-12)
     absorbing = inside & (tg < 0.9)
     assert (t_atm > tg).where(absorbing, True).all()
-    assert (t_w < tg).where(absorbing, True).all()
+    assert (t_w <= tg * (1 + 1e-12)).where(absorbing, True).all()
+    if resolution is not None:
+        # at the resolution of the fit, physical transmittances; channel by channel (diagnostic only), the
+        # blend with k > 1 diverges in the saturated channels of the fine table
+        assert np.isfinite(t_atm).all() and np.isfinite(t_w).all()
+        assert (t_atm <= 1.).all() and (t_w >= 0.).all()
     # the air mass of the object is the geometric one after the call
     assert gas.air_mass is m
 

@@ -10,13 +10,18 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 - Coupling of the gaseous absorption with the scattering, option `gas_coupling='effective_air_mass'` of
   `Process` (`--gas_coupling effective_air_mass` on the command line, `settings: gas_coupling` in the
-  configuration; default `'decoupled'`, unchanged). In the O2-B, O2-A and H2O windows of 684-990 nm, the
-  transmittances of the path reflectance, of the water-leaving term and of the irradiance are computed for
-  effective air masses eta*m (eta about 0.5-0.6 for the path reflectance, 1.02-1.04 for the other terms)
-  fitted on SOS-ABS coupled simulations: class `kernel.GasCoupling`, table `data/auxdata/gas_coupling_eta.csv`,
-  `GaseousTransmittance.get_coupled_transmittance`, and the attributes `Tg_atm`, `Tg_w`, `Tg_Ed` of
-  `Process`. Research tutorial *Gaseous transmittance: coupling with scattering* and the scripts
-  `scripts/sos_abs_coupling` (SOS-ABS LUTs with the `sosabs` package, analysis).
+  configuration; default `'decoupled'`, unchanged). In seven windows of the O2-B, O2-A and H2O bands of
+  684-990 nm, the transmittances of the path reflectance, of the water-leaving term and of the irradiance
+  are corrected with an effective air mass or, for the path reflectance in the O2-A head and the 940 nm
+  core, a single-scattering blend, with coefficients depending on the air mass, the aerosol optical
+  thickness and the water vapour column (`kernel.GasCoupling`, table `data/auxdata/gas_coupling_eta.csv`,
+  `GaseousTransmittance.get_coupled_transmittance`, attributes `Tg_atm`, `Tg_w`, `Tg_Ed` of `Process`).
+  The coefficients are fitted on SOS-ABS coupled simulations (CKD 5 cm-1; water vapour 0.5-4 g cm-2, solar
+  angles 20-70 deg, AOT(550) 0.05-0.4) and the correction is computed on the transmittance smoothed to
+  5 cm-1, then applied channel by channel keeping the interval means. Band TOA reflectance error against the
+  coupled simulations: from 4-57 % (decoupled) to 1-6 % in median. Scripts `scripts/sos_abs_coupling`
+  (`make_luts.py`: SOS-ABS LUTs with the `sosabs` package; `coupling.py`: analysis and fit) and research
+  tutorial *Gaseous transmittance: coupling with scattering*.
 - Line-by-line O2 absorption in the O2-B (682.6-701.8 nm) and O2-A (754.7-775.2 nm) bands, option
   `o2_model='lbl'` of `GaseousTransmittance` and `Process` (`--o2_model lbl` on the command line,
   `settings: o2_model` in the configuration; default `'reptran'`, unchanged). The REPTRAN fine table used
