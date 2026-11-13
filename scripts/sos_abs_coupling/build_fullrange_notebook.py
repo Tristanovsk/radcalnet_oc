@@ -446,7 +446,7 @@ table[['window', 'wl_min', 'wl_max', 'term', 'c0', 'c1', 'c2', 'c3', 's0', 's1',
 md(r"""
 Cost: the coupled transmittance is computed per window on the channels of the window; timing of the three terms of
 the package on the clear-water template with the present table (7 windows) and with one window per new region
-(18 windows, coefficients of the candidate table):
+(19 windows, coefficients of the candidate table):
 """)
 
 code(r"""
@@ -455,7 +455,7 @@ from radcalnet_oc.kernel import GAS_COUPLING_PPLD_FILE
 
 geo_m = xr.DataArray(np.linspace(2, 6, 20), dims='geom')
 timing = {}
-for name, cpl in (('7 windows (package)', GasCoupling(GAS_COUPLING_PPLD_FILE)), ('18 windows (candidate)', GasCoupling(table))):
+for name, cpl in (('7 windows (package)', GasCoupling(GAS_COUPLING_PPLD_FILE)), ('19 windows (candidate)', GasCoupling(table))):
     g = radoc.GaseousTransmittance(radoc.LUT().gas_lut)
     g.pressure = 1013.
     g.gas_tc['h2o'] = 20.
