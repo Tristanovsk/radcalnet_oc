@@ -8,6 +8,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- Shared AERONET-OC database (`aeronet_oc_db`, optional dependency `pip install radcalnet_oc[aeronet]`):
+  `Aeronet.read_site(site, level)` reads the up-to-date AERONET-OC file of a site, `Aeronet.open_site`
+  returns its netCDF dataset (with `Rrs_Lwn*`), and `Aeronet().aeronet_oc_site_info` comes from the database
+  catalog (all sites, Sentinel-2 tile), with the packaged table as fallback. The location of the database is
+  `$AERONET_OC_ROOT` or `~/.config/aeronet_oc_db/config.toml`. The AERONET-OC tutorials open the data from the
+  database (`aeronet_oc_db.open_site(site, level, legacy_names=True)`, `aeronet_oc_db.site_info(level='lev15')`)
+  instead of `/DATA/AERONET/netcdf/OCv3` and `info_aeronet_oc_v15_location.csv`.
 - Photon path-length model of the gaseous transmittance of the scattered light, option
   `gas_coupling='path_length'` (`--gas_coupling path_length`): per absorption window and term,
   T = (1 + s2 eta tau)^(-1/s2) with tau = -ln Tg(m) of the channel (Gamma distribution of the absorber paths,
