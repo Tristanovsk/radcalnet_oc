@@ -47,6 +47,24 @@ def test_output_content(clear_water):
     assert db.Rtoa.attrs['unit'] == '-'
 
 
+def test_wind_default(clear_water):
+    """Without wind speed in the input, the default of the configuration (2 m s-1) is used."""
+    np.testing.assert_array_equal(clear_water.radcalnet_db.wind, 2.)
+
+
+def test_wind_from_input(clear_water):
+    """The wind speed of the input is used, measurement by measurement (missing values: default)."""
+    input_db = clear_water.input_db.isel(time=slice(0, 3)).copy()
+    input_db['wind'] = ('time', [2., 8., np.nan])
+    process = Process(input_db=input_db, vza=angles('vza', [0., 10.]), azi=angles('azi', [90.]))
+    process.execute()
+    db = process.radcalnet_db
+    np.testing.assert_array_equal(db.wind, [2., 8., 2.])
+    ref = clear_water.radcalnet_db.isel(time=slice(0, 3))
+    np.testing.assert_allclose(db.Ratm.isel(time=[0, 2]), ref.Ratm.isel(time=[0, 2]), rtol=1e-6)
+    assert not np.allclose(db.Ratm.isel(time=1), ref.Ratm.isel(time=1))
+
+
 def test_output_values(clear_water):
     db = clear_water.radcalnet_db.sel(wl=slice(400, 900))
     for name in ['Rtoa', 'Ratm', 'Ed', 'E0']:

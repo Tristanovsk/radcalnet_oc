@@ -31,9 +31,9 @@ Source: `notebook/research/radcalnet_oc_gaseous_coupling_350_2500nm.ipynb` (buil
 
 ## 2. Physics and inputs (medium term)
 
-7. **Wind speed.** `LUT.lut_preparation(wind=2, ...)` selects the nearest wind node and `Process` never
-   passes the wind: the sky and sun reflection is always computed for 2 m/s. Read the wind from the input
-   (ERA5 / CAMS) and interpolate between the nodes of the LUT.
+7. ~~**Wind speed.**~~ *Done (Unreleased):* optional input variable `wind`, linear interpolation between the
+   wind nodes of the LUTs, default `settings: wind` (2 m/s). Remaining: fill `wind` from ERA5 in the input
+   preparation of the sites.
 8. **Spectral extension of Rrs.** `Process.execute` interpolates Rrs linearly between the AERONET-OC bands
    and sets it to zero outside them (`Rrs.interp(wl=full_wl).fillna(0)`); the output attribute still
    mentions an "interpolation based on InvRrs". Needed: a hyperspectral reconstruction (narrow sensor bands

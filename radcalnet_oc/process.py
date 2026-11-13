@@ -18,6 +18,7 @@ from importlib.resources import files
 from . import GaseousTransmittance, GasCoupling, Misc, LUT, SolarIrradiance
 from .kernel import GAS_COUPLING, GAS_COUPLINGS, GAS_COUPLING_FILE, GAS_COUPLING_PPLD_FILE
 from .config import load_config
+from .lut import WIND
 
 template = files('radcalnet_oc.data.template').joinpath('template_clear_water.nc')
 # --------------------------------------------------
@@ -130,7 +131,10 @@ class Process():
 
         :param Rrs_name: name of the remote-sensing reflectance variable in ``input_db``
 
-        Sets the attributes ``sza``, ``mu0``, ``muv``, ``Rrs``, ``aot550`` and ``D2``.
+        The wind speed (``wind``, m s-1, optional) sets the sea-surface roughness of the sky and Sun
+        reflection; without it, the wind speed of ``config.yml`` (``settings: wind``, 2 m s-1) is used.
+
+        Sets the attributes ``sza``, ``mu0``, ``muv``, ``Rrs``, ``aot550``, ``wind`` and ``D2``.
         '''
 
         input_db = self.input_db
@@ -141,6 +145,15 @@ class Process():
         self.Rrs = input_db[Rrs_name]
         # self.Rrs = self.Rrs.rename({"hyper_wl":"wl"})
         self.aot550 = input_db['aot550']
+        if 'wind' in input_db:
+            self.wind = input_db['wind']
+            if self.wind.isnull().any():
+                logging.warning(f'wind speed missing for {int(self.wind.isnull().sum())} measurement(s): '
+                                f'{WIND:g} m s-1 used')
+                self.wind = self.wind.fillna(WIND)
+        else:
+            self.wind = xr.full_like(self.sza, WIND, dtype=float).rename('wind')
+            self.wind.attrs = {}
 
         # get correction for Sun-Earth distance
         self.D2 = Misc.earth_sun_correction(input_db['day_of_year'])
@@ -271,7 +284,8 @@ class Process():
             (``settings: aerosol_models``), list, array or :py:class:`xarray.DataArray`
         '''
         self.sza_lut = np.sort(np.unique(np.round(self.sza, 1)))
-        self.lut.lut_preparation(sza=self.sza_lut,
+        self.lut.lut_preparation(wind=float(self.wind.mean()),
+                                 sza=self.sza_lut,
                                  vza=self.vza.values,
                                  aerosol_combination=aerosol_combination)
 
@@ -292,7 +306,8 @@ class Process():
         '''
 
         # atmospheric + sky-reflection radiance
-        self.lut.lut_preparation(sza=self.sza,
+        self.lut.lut_preparation(wind=self.wind,
+                                 sza=self.sza,
                                  vza=self.vza.values,
                                  azi=self.azi,
                                  aerosol_combination=aerosol_combination)
@@ -356,6 +371,8 @@ class Process():
         radcalnet_db = xr.merge([radcalnet_db,
                                  self.input_db[['tcwv', 'tco3', 'tcno2', 'pressure',
                                                 'aot550', 'aot865', 'ang_exp']]])
+        radcalnet_db['wind'] = self.wind.reset_coords(drop=True)
+        radcalnet_db['wind'].attrs = {'unit': 'm s-1', 'description': 'wind speed used for the sea-surface roughness'}
 
         radcalnet_db['aerosol_combination'] = self.lut.aerosol_combination
         radcalnet_db['aerosol_combination'].attrs = {'description':

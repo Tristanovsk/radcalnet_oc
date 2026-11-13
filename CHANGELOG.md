@@ -47,8 +47,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   mean; band names kept as `band` coordinate of the outputs).
 - `Spectral.weights` (weight matrix of all the bands, cached per wavelength grid) and `Spectral.responses`.
 - Warning when the response of a band is truncated by the wavelength range of the signal.
+- Wind speed: optional input variable `wind` (m s-1, per measurement, e.g. ERA5) for the roughness of the
+  sea surface; the TOA and transmittance LUTs are interpolated linearly between their wind nodes
+  (`lut.wind_weights`, 0.5-16 m s-1, clipped outside), one wind node at a time so that the memory does not
+  grow with the spread of the winds. Default `settings: wind: 2.` of the configuration (also for missing
+  values); `wind` is written in the output. With the full LUT, the results without wind input are unchanged.
 
 ### Changed
+- `LUT.lut_preparation(wind=...)` interpolates between the wind nodes instead of taking the nearest one; with
+  the light LUT of the package (nodes 0.5 and 4 m s-1), the default 2 m s-1 is now interpolated.
 - The gaseous transmittance of the scattered light uses the photon path-length model by default
   (`settings: gas_coupling: 'path_length'`): the TOA reflectance, the path reflectance and the irradiance change in
   the O2 and H2O bands of 684-990 nm and are unchanged elsewhere. For the clear-water template (REPTRAN O2,
@@ -74,6 +81,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 - `Spectral.convolve_` and `Spectral.convolve2_` (numba per-band loops, not used since the band weights).
+
+### Fixed
+- `LUT.toa_lut` failed (`KeyError`) when adding the missing tables of a call to a full cache removed tables of
+  the same call read from the cache.
 
 ## [1.0.2] - 2026-11-02
 
