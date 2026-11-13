@@ -52,8 +52,21 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   (`lut.wind_weights`, 0.5-16 m s-1, clipped outside), one wind node at a time so that the memory does not
   grow with the spread of the winds. Default `settings: wind: 2.` of the configuration (also for missing
   values); `wind` is written in the output. With the full LUT, the results without wind input are unchanged.
+- Spectral extension of Rrs beyond the range of the input (e.g. above 1150 nm), `radcalnet_oc.water.extend_rrs`:
+  semi-analytical model with the absorption of pure water (table `data/auxdata/water_coef.txt`, Pope and Fry
+  1997, Kou et al. 1993), particulate backscattering fitted on the near-infrared end of the input, joined to
+  its last values. Option `rrs_extension` of `Process` (`--rrs_extension`, `settings: rrs_extension`):
+  `'pure_water'` (default) or `'zero'`. The fitted backscattering is written in the output (`bbp_nir`).
+- Hyperspectral reconstruction of multispectral Rrs (AERONET-OC bands) with the `invRrs` model `two_modes`,
+  `radcalnet_oc.reconstruction` (optional dependency, extra `[invrrs]`), 350-1150 nm, at the geometry of the
+  measurement and at nadir, with the retrieved parameters and the fit residual; settings of the AERONET-OC
+  chain of invRrs (unweighted fit, fixed initial values, 100 evaluations).
 
 ### Changed
+- Rrs is no longer set to zero beyond the spectral range of the input (`rrs_extension='pure_water'`): Rtoa
+  increases in the short-wave infrared for turbid waters (e.g. turbid template: Rrs about 1e-3 sr-1 at
+  1240 nm) and is unchanged within the range of the input. The `Rrs` attribute `unit` is `sr-1` (was `-`) and
+  its `source` no longer mentions an interpolation by InvRrs.
 - `LUT.lut_preparation(wind=...)` interpolates between the wind nodes instead of taking the nearest one; with
   the light LUT of the package (nodes 0.5 and 4 m s-1), the default 2 m s-1 is now interpolated.
 - The gaseous transmittance of the scattered light uses the photon path-length model by default

@@ -65,6 +65,26 @@ def test_wind_from_input(clear_water):
     assert not np.allclose(db.Ratm.isel(time=1), ref.Ratm.isel(time=1))
 
 
+def test_rrs_extension():
+    """Turbid water: Rrs extended beyond the input (1150 nm) with the pure-water model; unchanged inside the
+    range of the input and zero beyond it with rrs_extension='zero'."""
+    kwargs = dict(input_db=xr.open_dataset(TURBID_WATER).isel(time=slice(0, 2)),
+                  vza=angles('vza', [0.]), azi=angles('azi', [90.]))
+    zero = Process(rrs_extension='zero', **kwargs)
+    zero.execute()
+    process = Process(**kwargs)
+    assert process.rrs_extension == 'pure_water'
+    process.execute()
+    db, dbz = process.radcalnet_db, zero.radcalnet_db
+    vnir, swir = dict(wl=slice(350, 1140)), dict(wl=slice(1160, 2500))
+    np.testing.assert_allclose(db.Rtoa.sel(**vnir), dbz.Rtoa.sel(**vnir))
+    assert float(abs(dbz.Rrs.sel(**swir)).max()) == 0 and (db.Rrs.sel(**swir) > 0).all()
+    assert (db.Rtoa.sel(wl=1240, method='nearest') > dbz.Rtoa.sel(wl=1240, method='nearest')).all()
+    assert (db.bbp_nir > 0).all() and 'bbp_nir' not in dbz
+    with pytest.raises(ValueError):
+        Process(rrs_extension='linear', **kwargs)
+
+
 def test_output_values(clear_water):
     db = clear_water.radcalnet_db.sel(wl=slice(400, 900))
     for name in ['Rtoa', 'Ratm', 'Ed', 'E0']:

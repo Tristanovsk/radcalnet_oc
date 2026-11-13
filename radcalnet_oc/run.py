@@ -3,7 +3,7 @@
 Usage:
   radcalnet_oc <input_file> [--output <output_file>] [--vza angles] [--azi angles]
    [--aerosol_combination props] [--solar_database name] [--rrs_name name] [--o2_model model]
-   [--gas_coupling coupling] [--bands wavelengths] [--fwhm fwhm] [--expon expon] [--no_clobber]
+   [--gas_coupling coupling] [--rrs_extension method] [--bands wavelengths] [--fwhm fwhm] [--expon expon] [--no_clobber]
   radcalnet_oc -h | --help
   radcalnet_oc -v | --version
 
@@ -30,6 +30,9 @@ Options:
                    direct beam), effective_air_mass (effective air masses per absorption window) or
                    path_length (photon path-length model, channel by channel), in the O2 and H2O
                    bands of 684-990 nm; default: settings: gas_coupling of the configuration
+  --rrs_extension method  Rrs beyond the spectral range of the input: pure_water (model with the
+                   absorption of pure water fitted on the near-infrared end of the input) or zero;
+                   default: settings: rrs_extension of the configuration
   --bands wavelengths  Central wavelengths (nm) of sensor bands, comma-separated: the band-averaged
                    Rtoa, Ratm, Ed, E0 and Rrs are added to the output (variables <name>_bands,
                    dimension wl_band)
@@ -101,7 +104,8 @@ def main(argv=None):
                           solar_database=args['--solar_database'],
                           Rrs_name=args['--rrs_name'],
                           o2_model=args['--o2_model'],
-                          gas_coupling=args['--gas_coupling'])
+                          gas_coupling=args['--gas_coupling'],
+                          rrs_extension=args['--rrs_extension'])
         if aerosol_combination is None:
             process.execute()
         else:

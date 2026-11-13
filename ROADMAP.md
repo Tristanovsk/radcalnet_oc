@@ -34,10 +34,10 @@ Source: `notebook/research/radcalnet_oc_gaseous_coupling_350_2500nm.ipynb` (buil
 7. ~~**Wind speed.**~~ *Done (Unreleased):* optional input variable `wind`, linear interpolation between the
    wind nodes of the LUTs, default `settings: wind` (2 m/s). Remaining: fill `wind` from ERA5 in the input
    preparation of the sites.
-8. **Spectral extension of Rrs.** `Process.execute` interpolates Rrs linearly between the AERONET-OC bands
-   and sets it to zero outside them (`Rrs.interp(wl=full_wl).fillna(0)`); the output attribute still
-   mentions an "interpolation based on InvRrs". Needed: a hyperspectral reconstruction (narrow sensor bands
-   between the AERONET-OC wavelengths) and an NIR-SWIR model for turbid sites.
+8. ~~**Spectral extension of Rrs.**~~ *Done (Unreleased):* `radcalnet_oc.reconstruction` (invRrs `two_modes`,
+   350-1150 nm, optional) and `radcalnet_oc.water.extend_rrs` (pure-water NIR-SWIR model, default beyond
+   the input). Remaining: validation of the SWIR extension against hyperspectral in situ data of turbid
+   sites (e.g. HYPERNETS), and the uncertainty of the reconstruction for the budget (item 11).
 9. **Angular dependence of the water-leaving radiance** *(to check)*: adaptation of the normalized Rrs of
    AERONET-OC to the viewing geometry of the satellite (f/Q, BRDF); no such correction found in
    `process.py`.

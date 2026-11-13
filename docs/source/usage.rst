@@ -19,8 +19,9 @@ The input is an :py:class:`xarray.Dataset` with a ``time`` dimension (one row pe
      - Description
    * - ``Rrs``
      - time, wl
-     - remote-sensing reflectance (sr\ :sup:`-1`), hyperspectral or interpolated from the
-       AERONET-OC bands
+     - remote-sensing reflectance (sr\ :sup:`-1`), hyperspectral, e.g. reconstructed from the
+       AERONET-OC bands with :py:func:`~radcalnet_oc.reconstruction.reconstruct_rrs`; interpolated
+       linearly and extended beyond its spectral range (:ref:`methods-rrs`)
    * - ``sza``
      - time
      - solar zenith angle (deg)

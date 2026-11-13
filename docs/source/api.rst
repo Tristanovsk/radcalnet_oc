@@ -48,6 +48,24 @@ Look-up tables and auxiliary data
 
    radcalnet_oc.lut.open_lut
 
+Remote-sensing reflectance
+--------------------------
+
+.. autosummary::
+   :toctree: generated
+   :template: autosummary/class.rst
+   :nosignatures:
+
+   radcalnet_oc.water.PureWater
+   radcalnet_oc.reconstruction.Reconstruction
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.water.extend_rrs
+   radcalnet_oc.reconstruction.reconstruct_rrs
+
 Configuration and download of the TOA look-up table
 ---------------------------------------------------
 

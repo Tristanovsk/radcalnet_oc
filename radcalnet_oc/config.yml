@@ -41,6 +41,10 @@ settings:
   # masses per absorption window, computed at 5 cm-1) or 'decoupled' (air mass of the direct beam for all the
   # terms, as before version 1.1)
   gas_coupling: 'path_length'
+  # remote-sensing reflectance beyond the spectral range of the input (e.g. above 1150 nm): 'pure_water'
+  # (semi-analytical model with the absorption of pure water, particulate backscattering fitted on the
+  # near-infrared end of the input; default) or 'zero' (as before version 1.1)
+  rrs_extension: 'pure_water'
 
 processor:
   ncpu: 8

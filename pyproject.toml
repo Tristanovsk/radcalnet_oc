@@ -53,6 +53,8 @@ version = { attr = "radcalnet_oc.__version__" }
 dependencies = { file = ["requirements.txt"] }
 
 [project.optional-dependencies]
+# hyperspectral reconstruction of multispectral Rrs (radcalnet_oc.reconstruction)
+invrrs = ["invRrs>=1.1"]
 dev = ["black", "bumpver", "isort", "pip-tools", "pytest", "build", "twine"]
 docs = [
     "sphinx>=7",

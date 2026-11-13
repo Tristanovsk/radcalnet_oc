@@ -19,6 +19,7 @@ from . import GaseousTransmittance, GasCoupling, Misc, LUT, SolarIrradiance
 from .kernel import GAS_COUPLING, GAS_COUPLINGS, GAS_COUPLING_FILE, GAS_COUPLING_PPLD_FILE
 from .config import load_config
 from .lut import WIND
+from .water import extend_rrs
 
 template = files('radcalnet_oc.data.template').joinpath('template_clear_water.nc')
 # --------------------------------------------------
@@ -28,6 +29,9 @@ config = load_config()
 
 AEROSOL_MODELS = config['settings']['aerosol_models']
 AEROSOL_COMBINATION = config['settings']['aerosol_combination']
+# spectral extension of Rrs beyond the range of the input: 'pure_water' or 'zero'
+RRS_EXTENSIONS = ('pure_water', 'zero')
+RRS_EXTENSION = config['settings'].get('rrs_extension', 'pure_water')
 
 
 class Process():
@@ -59,7 +63,8 @@ class Process():
                  solar_database='tsis',
                  Rrs_name='Rrs',
                  o2_model=None,
-                 gas_coupling=None
+                 gas_coupling=None,
+                 rrs_extension=None
                  ):
         '''
         :param input_db: time series of the surface measurements, :py:class:`xarray.Dataset` with a
@@ -83,7 +88,15 @@ class Process():
             window, computed at 5 cm-1) or ``'path_length'`` (photon path-length model, channel by channel),
             in the O2 and H2O bands of 684-990 nm, see :py:class:`~radcalnet_oc.kernel.GasCoupling`; by
             default ``settings: gas_coupling`` of the configuration (``'path_length'``)
+        :param rrs_extension: remote-sensing reflectance beyond the spectral range of the input:
+            ``'pure_water'`` (semi-analytical model with the absorption of pure water, fitted on the
+            near-infrared end of the input, see :py:func:`~radcalnet_oc.water.extend_rrs`) or ``'zero'``
+            (as before version 1.1); by default ``settings: rrs_extension`` of the configuration
+            (``'pure_water'``)
         '''
+        self.rrs_extension = RRS_EXTENSION if rrs_extension is None else rrs_extension
+        if self.rrs_extension not in RRS_EXTENSIONS:
+            raise ValueError(f'rrs_extension must be one of {RRS_EXTENSIONS}, not {self.rrs_extension!r}')
 
         if input_db is None:
             input_db = xr.open_dataset(template)
@@ -328,7 +341,9 @@ class Process():
         Ed = self.Tra_d * self.Tg_Ed * E0
         # Ed = Ed.dropna('wl')
 
-        Rrs = self.Rrs.interp(wl=self.full_wl).fillna(0)
+        # Rrs at the wavelengths of the simulation, extended beyond the range of the input
+        Rrs, self.bbp_nir = extend_rrs(self.Rrs, self.full_wl.values, method=self.rrs_extension)
+        Rrs = Rrs.assign_coords(wl=self.full_wl.values)
         self.Lw_boa = Rrs * Ed
 
         # = tra_u Tg_u Lw_boa, with the gaseous transmittance of the whole Sun-surface-sensor path (or with
@@ -352,9 +367,12 @@ class Process():
         # radcalnet_db['mu0'] = self.mu0.reset_coords(drop=True)
 
         radcalnet_db['Rrs'] = Rrs.reset_coords(drop=True)
-        radcalnet_db['Rrs'].attrs = {'unit': '-',
+        radcalnet_db['Rrs'].attrs = {'unit': 'sr-1',
                                      'description': 'Remote sensing reflectance',
-                                     'source': 'from AERONET-OC and spectral interpolation based on InvRrs'}
+                                     'source': f'input Rrs interpolated linearly; beyond its range: '
+                                               f'{self.rrs_extension} extension (radcalnet_oc.water.extend_rrs)'}
+        if self.rrs_extension == 'pure_water':
+            radcalnet_db['bbp_nir'] = self.bbp_nir.reset_coords(drop=True)
 
         radcalnet_db['E0'] = E0.reset_coords(drop=True)
         radcalnet_db['E0'].attrs = {'unit': 'mW m-2 nm-1',

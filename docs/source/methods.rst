@@ -133,6 +133,40 @@ All terms are computed at the full spectral resolution of the gaseous absorption
 look-up table (350--2500 nm) before being convolved with the spectral response of
 the satellite sensor (see :ref:`spectral_convolution`).
 
+.. _methods-rrs:
+
+Remote-sensing reflectance
+--------------------------
+
+The input :math:`R_{rs}` is hyperspectral, typically 350--1150 nm. It can be reconstructed from the
+multispectral AERONET-OC bands with :py:mod:`radcalnet_oc.reconstruction`: the semi-analytical model
+``two_modes`` of `invRrs` (phytoplankton, coloured dissolved and detrital matter, mineral particles of
+two size modes, Rrs-IOP relationship fitted on vector radiative transfer simulations for the geometry of
+the measurement) is fitted on the bands of each spectrum and gives the reflectance at any wavelength of
+350--1150 nm, the range of its sediment optical properties.
+
+:py:meth:`Process.execute <radcalnet_oc.process.Process.execute>` interpolates :math:`R_{rs}` linearly at
+the wavelengths of the simulation and extends it beyond the last wavelength :math:`\lambda_{max}` of the
+input (:py:func:`~radcalnet_oc.water.extend_rrs`, ``rrs_extension='pure_water'``). In the near infrared
+and the short-wave infrared, the absorption is dominated by pure water, :math:`a \simeq a_w` (Pope and
+Fry, 1997; Kou et al., 1993). With the below-surface reflectance
+:math:`r_{rs} = R_{rs}/(0.52 + 1.7 R_{rs})` and :math:`r_{rs} = g_0 u + g_1 u^2`,
+:math:`u = b_b/(a+b_b)`, :math:`g_0 = 0.0895`, :math:`g_1 = 0.1247` (Gordon et al., 1988; Lee et al.,
+2002), the particulate backscattering is retrieved on the last 100 nm of the input above 750 nm and
+assumed spectrally flat,
+
+.. math::
+
+   b_{bp} = \left\langle \frac{a_w\, u}{1-u} - b_{bw} \right\rangle_{\lambda_{max}-100}^{\lambda_{max}},
+   \qquad
+   R_{rs}(\lambda > \lambda_{max}) = k\, R_{rs}\!\left(u = \frac{b_{bw} + b_{bp}}{a_w + b_{bw} + b_{bp}}\right),
+
+with :math:`k` (bounded to 0.5--2) joining the model to the mean of the last 10 nm of the input. Below the
+first wavelength of the input, its first value is kept. Cut at 900 nm, the turbid-water template is
+recovered at 900--1150 nm within 4 % of its peak reflectance (about 10--25 % of the local values); for
+clear waters, the reflectance beyond 1000 nm is negligible. Before version 1.1, the reflectance was set to
+zero beyond the input (``rrs_extension='zero'``).
+
 Solar irradiance
 ----------------
 
@@ -639,6 +673,14 @@ References
 
 - Bodhaine, B. A., Wood, N. B., Dutton, E. G., & Slusser, J. R. (1999). On Rayleigh optical
   depth calculations. *J. Atmos. Ocean. Tech.*, 16, 1854--1861.
+- Gordon, H. R., Brown, O. B., Evans, R. H., Brown, J. W., Smith, R. C., Baker, K. S., & Clark, D. K.
+  (1988). A semianalytic radiance model of ocean color. *J. Geophys. Res.*, 93(D9), 10909--10924.
+- Kou, L., Labrie, D., & Chylek, P. (1993). Refractive indices of water and ice in the 0.65- to
+  2.5-µm spectral range. *Appl. Opt.*, 32(19), 3531--3540.
+- Lee, Z., Carder, K. L., & Arnone, R. A. (2002). Deriving inherent optical properties from water color:
+  a multiband quasi-analytical algorithm for optically deep waters. *Appl. Opt.*, 41(27), 5755--5772.
+- Pope, R. M., & Fry, E. S. (1997). Absorption spectrum (380--700 nm) of pure water. II. Integrating
+  cavity measurements. *Appl. Opt.*, 36(33), 8710--8723.
 - Bréon, F.-M., & Henriot, N. (2006). Spaceborne observations of ocean glint reflectance and
   modeling of wave slope distributions. *J. Geophys. Res.*, 111, C06005.
 - Coddington, O. M., et al. (2021). The TSIS-1 Hybrid Solar Reference Spectrum.
