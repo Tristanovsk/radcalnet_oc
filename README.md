@@ -114,7 +114,8 @@ pytest
 
 The unit tests use the light look-up table of the package and never download the full one. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the tests, the look-up tables and the release recipe, and
-[CHANGELOG.md](CHANGELOG.md) for the version history.
+[CHANGELOG.md](CHANGELOG.md) for the version history, and [ROADMAP.md](ROADMAP.md) for the planned
+improvements.
 
 ## License
 
