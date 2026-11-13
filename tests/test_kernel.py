@@ -1,6 +1,7 @@
 """Atmospheric components: aerosol model retrieval, gaseous transmittance and radiometric utilities."""
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -274,6 +275,22 @@ def test_coupled_transmittance_path_length(gas_lut, o2_model):
     # the saturated channels (some scattered paths cross less absorber); more absorption on average
     assert (t_w < tg).where(absorbing & (tg > 0.3), True).all()
     assert float(t_w.where(absorbing).mean()) < float(tg.where(absorbing).mean())
+
+
+def test_coupled_transmittance_shared_boundary(gas_lut):
+    """Contiguous windows whose common bound is a channel of the LUT: no duplicated wavelength."""
+    gas = GaseousTransmittance(gas_lut)
+    wl = gas_lut.wl.values
+    bound = float(wl[np.argmin(abs(wl - 940.))])
+    cp = GasCoupling(GAS_COUPLING_PPLD_FILE)
+    t = cp.table
+    t = t[t.window == 'H2O-940'].copy()
+    lo, hi = t.copy(), t.copy()
+    lo['window'], lo['wl_min'], lo['wl_max'] = 'lo', 919.5, bound
+    hi['window'], hi['wl_min'], hi['wl_max'] = 'hi', bound, 990.
+    cp2 = GasCoupling(pd.concat([lo, hi], ignore_index=True))
+    out = gas.get_coupled_transmittance(2.5, 'atm', 0.1, cp2)
+    assert out.get_index('wl').is_unique and out.sizes['wl'] == len(wl)
 
 
 # ------------------------------------

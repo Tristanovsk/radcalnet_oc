@@ -719,7 +719,9 @@ class GaseousTransmittance(Gases):
         self.air_mass = air_mass
         if not parts:
             return Tg
-        out = xr.concat(parts, 'wl').combine_first(Tg)
+        out = xr.concat(parts, 'wl')
+        # contiguous windows share their boundary channel (inclusive selection): keep the first window
+        out = out.isel(wl=~out.get_index('wl').duplicated()).combine_first(Tg)
         return out.transpose(*[d for d in Tg.dims if d in out.dims], ...)
 
 
