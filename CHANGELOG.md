@@ -13,6 +13,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `process.package_version`), `o2_model`, `gas_coupling`, `gas_coupling_table`, `rrs_extension`,
   `solar_database`, `default_wind`, `toa_lut` and `toa_lut_doi` (`Process.provenance`). The `source`
   attribute of the command-line output gives the same version.
+- Regression test on reference outputs (`tests/test_regression.py`): band-averaged `Rtoa`, `Ratm` and `Ed` of
+  the clear-water template with the light LUT (20 bands of 10 nm, 412-2190 nm), default settings and
+  decoupled / REPTRAN O2, against `tests/data/reference_clear_water.nc` (relative tolerance 1e-4). A
+  deliberate change of the results updates the reference with `python tests/reference.py`.
 - Shared AERONET-OC database (`aeronet_oc_db`, optional dependency `pip install radcalnet_oc[aeronet]`):
   `Aeronet.read_site(site, level)` reads the up-to-date AERONET-OC file of a site, `Aeronet.open_site`
   returns its netCDF dataset (with `Rrs_Lwn*`), and `Aeronet().aeronet_oc_site_info` comes from the database
