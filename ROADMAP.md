@@ -17,19 +17,23 @@ aerosol optical thickness. Explaining it (task 10) has the largest expected impa
 1. **Release 1.1.** The `[Unreleased]` section of `CHANGELOG.md` is complete (line-by-line O2, path-length
    coupling by default, wind, spectral extension and reconstruction of Rrs, `Spectral.from_srf`,
    `aeronet_oc_db`): ship the 684-990 nm defaults on their own, before the full-range coupling.
-2. **Traceability of the outputs.** Package version (and git commit of a development install), `o2_model`,
+2. ~~**Traceability of the outputs.**~~ *Done.* Package version (and git commit of a development install), `o2_model`,
    `gas_coupling` and coupling table, `rrs_extension`, solar spectrum, default wind, TOA LUT file and DOI as
    attributes of `Process.radcalnet_db` (today only the command line writes the version). The Sentinel-2
    matchup files of November 2026 report `1.0.2` although they were made with the development defaults.
-3. **Regression test on reference outputs.** Clear-water template, light LUT → band TOA reflectance,
+3. ~~**Regression test on reference outputs.**~~ *Done* (`tests/test_regression.py`). Clear-water template, light LUT → band TOA reflectance,
    path reflectance and irradiance compared with a reference file in CI, so that a change of the
    results (e.g. a new default) shows up as a deliberate update of the reference.
-4. **Cost of the coupled transmittance.** The 19-window table doubles it (0.9 → 1.9 s for 3 terms and 20
-   geometries). The window subsets are already cached per `GaseousTransmittance`: profile first, then
-   vectorise over the windows or the terms.
-5. **Open TODOs of `coxmunk.py`**: consistency of sigma2 with the formulation (line 104), sign of the
-   rotation (line 112), against Cox and Munk (1954); needed before relying on the glint term (tasks 10, 17).
-6. **Reproducibility of the scripts.** README of `scripts/sos_abs_coupling` (`sosabs` dependency, data
+4. **Cost of the coupled transmittance.** *Profiled (November 2026), moved to task 8:* 1.3 s (7 windows) and
+   2.4 s (19 windows) per `get_gas_transmittance` for 10 measurements and 2 viewing angles. The window
+   subsets are already cached; the time is xarray overhead (~2000 small aligned operations per call, 57
+   `get_gaseous_transmittance` calls with 19 windows), not arithmetic. Fix: compute all the windows of a term
+   at once on the union of their channels (per-channel eta and s2), in numpy. Worth ~10 % of a matchup
+   scene: done with task 8.
+5. ~~**Open TODOs of `coxmunk.py`**~~ *Done:* the isotropic sigma2 is the total mean square slope, the wind
+   direction turns counterclockwise as the viewing azimuth (tests); the wave shadowing now uses the
+   azimuths relative to the wind.
+6. ~~**Reproducibility of the scripts.**~~ *Done:* README of `scripts/sos_abs_coupling` (`sosabs` dependency, data
    `SOS_ABS_V3` ~0.7 GB, steps simulations → fit → notebook; whether the candidate CSV is tracked) and of
    `scripts/s2_toa_matchup` (L1C subsets, `aeronet_oc_db`, invRrs, outputs, `matchup_analysis.py`).
 
