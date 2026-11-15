@@ -112,6 +112,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `Spectral.convolve_` and `Spectral.convolve2_` (numba per-band loops, not used since the band weights).
 
 ### Fixed
+- `Sunglint`: the shadowing of the waves (Smith function) used the azimuths of the Sun and of the sensor
+  relative to the Sun direction instead of the wind direction, i.e. the slope variances of a wind along the
+  solar plane whatever `wazi`. Directional statistics (`cm_dir`, `bh2006`) with `wazi` other than 0 or 180
+  deg change; the isotropic statistics (`cm_iso`, used by the Sentinel-2 matchups) and `wazi=0` are unchanged
+  (`Sunglint.shadowing`). The two open questions of the module are settled and tested
+  (`tests/test_coxmunk.py`): the isotropic `sigma2` is the total mean square slope (sigma2 / 2 per axis), and
+  the wind direction turns counterclockwise from the Sun direction, as the viewing azimuth.
 - `LUT.toa_lut` failed (`KeyError`) when adding the missing tables of a call to a full cache removed tables of
   the same call read from the cache.
 

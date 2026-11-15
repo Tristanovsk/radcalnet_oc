@@ -654,6 +654,9 @@ Wave shadowing and hiding are accounted for with the Smith function (Ross & Dion
    \qquad
    \sigma^2 = \sigma_{up}^2\cos^2\phi + \sigma_{cr}^2\sin^2\phi,
 
+where :math:`\phi` is the azimuth of the direction relative to the wind (:math:`-\phi_w` for the Sun,
+:math:`\phi - \phi_w` for the sensor), and
+
 .. math::
 
    S = \frac{1}{1 + \Lambda(\nu_0) + \Lambda(\nu_v)}.
