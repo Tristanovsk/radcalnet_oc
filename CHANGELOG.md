@@ -7,6 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-15
+
 ### Added
 - Traceability of the outputs: global attributes of `Process.radcalnet_db` (and of the command-line output)
   `radcalnet_oc_version` (with the git commit of a development installation, e.g. `1.0.2+g6439281.dirty`,
@@ -214,6 +216,8 @@ First release published on PyPI (`pip install radcalnet_oc`).
 
 - Initial version.
 
+[Unreleased]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Tristanovsk/radcalnet_oc/releases/tag/v1.0.0
