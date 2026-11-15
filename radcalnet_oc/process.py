@@ -6,7 +6,10 @@ atmospheric transmittances, downwelling irradiance, water-leaving radiance, atmo
 reflectance and top-of-atmosphere reflectance.
 '''
 
+import functools
 import os
+import subprocess
+from pathlib import Path
 
 import numpy as np
 import xarray as xr
@@ -15,9 +18,9 @@ import logging
 
 from importlib.resources import files
 
-from . import GaseousTransmittance, GasCoupling, Misc, LUT, SolarIrradiance
+from . import GaseousTransmittance, GasCoupling, Misc, LUT, SolarIrradiance, __version__
 from .kernel import GAS_COUPLING, GAS_COUPLINGS, GAS_COUPLING_FILE, GAS_COUPLING_PPLD_FILE
-from .config import load_config
+from .config import load_config, LUT_FILE_BACKUP
 from .lut import WIND
 from .water import extend_rrs
 
@@ -32,6 +35,27 @@ AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 # spectral extension of Rrs beyond the range of the input: 'pure_water' or 'zero'
 RRS_EXTENSIONS = ('pure_water', 'zero')
 RRS_EXTENSION = config['settings'].get('rrs_extension', 'pure_water')
+
+
+@functools.lru_cache(maxsize=None)
+def package_version():
+    '''
+    Version of the package, with the git commit for a development installation (e.g.
+    ``1.0.2+g6439281.dirty`` for an editable install with uncommitted changes); the plain version for an
+    installed package.
+    '''
+    root = Path(__file__).resolve().parent.parent
+    if not (root / '.git').exists():
+        return __version__
+    try:
+        def git(*args):
+            return subprocess.run(['git', '-C', str(root), *args], capture_output=True, text=True,
+                                  timeout=5, check=True).stdout.strip()
+        commit = git('rev-parse', '--short', 'HEAD')
+        dirty = '.dirty' if git('status', '--porcelain', '--untracked-files=no', '--', 'radcalnet_oc') else ''
+    except (OSError, subprocess.SubprocessError):
+        return __version__
+    return f'{__version__}+g{commit}{dirty}'
 
 
 class Process():
@@ -100,6 +124,7 @@ class Process():
 
         if input_db is None:
             input_db = xr.open_dataset(template)
+        self.solar_database = solar_database
 
         self.input_db = input_db
 
@@ -132,6 +157,7 @@ class Process():
             raise ValueError(f'gas_coupling must be one of {GAS_COUPLINGS}, not {self.gas_coupling!r}')
         tables = {'effective_air_mass': GAS_COUPLING_FILE, 'path_length': GAS_COUPLING_PPLD_FILE}
         self.coupling = GasCoupling(tables[self.gas_coupling]) if self.gas_coupling in tables else None
+        self.gas_coupling_file = tables.get(self.gas_coupling)
 
         logging.info('set input parameters')
         self.set_param(Rrs_name=Rrs_name)
@@ -402,4 +428,30 @@ class Process():
         radcalnet_db['sza'] = self.sza
         radcalnet_db = radcalnet_db.set_coords('sza')
 
+        radcalnet_db.attrs.update(self.provenance())
         self.radcalnet_db = radcalnet_db.squeeze()
+
+    def provenance(self):
+        '''
+        Settings of the simulation, written as global attributes of ``radcalnet_db``: version of the package
+        (:py:func:`package_version`), O2 model, gas coupling and its coefficient table, spectral extension
+        of Rrs, solar spectrum, default wind speed and TOA look-up table (file and DOI of its Zenodo record,
+        or the light LUT of the package).
+
+        :return: dict of text and number attributes (NetCDF compatible)
+        '''
+        lut_file = Path(str(self.lut.lut_file))
+        if lut_file == Path(str(LUT_FILE_BACKUP)):
+            lut_doi = 'none (light LUT of the package)'
+        else:
+            record = (config.get('zenodo') or {}).get('record')
+            lut_doi = f'10.5281/zenodo.{record}' if record else 'unknown'
+        return {'radcalnet_oc_version': package_version(),
+                'o2_model': self.gas_trans.o2_model,
+                'gas_coupling': self.gas_coupling,
+                'gas_coupling_table': Path(str(self.gas_coupling_file)).name if self.gas_coupling_file else 'none',
+                'rrs_extension': self.rrs_extension,
+                'solar_database': self.solar_database,
+                'default_wind': float(WIND),
+                'toa_lut': lut_file.name,
+                'toa_lut_doi': lut_doi}

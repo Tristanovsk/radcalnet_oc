@@ -8,6 +8,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- Traceability of the outputs: global attributes of `Process.radcalnet_db` (and of the command-line output)
+  `radcalnet_oc_version` (with the git commit of a development installation, e.g. `1.0.2+g6439281.dirty`,
+  `process.package_version`), `o2_model`, `gas_coupling`, `gas_coupling_table`, `rrs_extension`,
+  `solar_database`, `default_wind`, `toa_lut` and `toa_lut_doi` (`Process.provenance`). The `source`
+  attribute of the command-line output gives the same version.
 - Shared AERONET-OC database (`aeronet_oc_db`, optional dependency `pip install radcalnet_oc[aeronet]`):
   `Aeronet.read_site(site, level)` reads the up-to-date AERONET-OC file of a site, `Aeronet.open_site`
   returns its netCDF dataset (with `Rrs_Lwn*`), and `Aeronet().aeronet_oc_site_info` comes from the database

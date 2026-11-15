@@ -327,7 +327,7 @@ def gather(files, site, level):
     out.attrs = dict(title=f'Sentinel-2 / RadCalNet-OC TOA matchups, {site} {level}',
                      site=site, level=level,
                      created=pd.Timestamp.now('UTC').isoformat(),
-                     radcalnet_oc=radoc.__version__, aeronet_oc_db=aeronet_oc_db.__version__,
+                     radcalnet_oc=radoc.process.package_version(), aeronet_oc_db=aeronet_oc_db.__version__,
                      glint_stats=GLINT_STATS,
                      comment='sat_*: satellite statistics in the box around the site (clear pixels, SWIR '
                              'threshold); satg_*: same without the SWIR threshold (sunglint kept); sim_*: '

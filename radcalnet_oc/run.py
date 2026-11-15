@@ -139,7 +139,7 @@ def main(argv=None):
                 if isinstance(value, (list, tuple)):
                     var.attrs[key] = ', '.join(str(v) for v in value)
         output.attrs.update({'title': 'radcalnet_oc top-of-atmosphere simulation',
-                             'source': f'radcalnet_oc {__version__}',
+                             'source': f'radcalnet_oc {output.attrs.get("radcalnet_oc_version", __version__)}',
                              'input_file': str(input_file)})
 
         output_file.parent.mkdir(parents=True, exist_ok=True)

@@ -47,6 +47,27 @@ def test_output_content(clear_water):
     assert db.Rtoa.attrs['unit'] == '-'
 
 
+def test_provenance(clear_water):
+    """The settings of the simulation are written as attributes of the output."""
+    attrs = clear_water.radcalnet_db.attrs
+    assert attrs['radcalnet_oc_version'].startswith(radcalnet_oc.__version__)
+    assert attrs['o2_model'] == 'lbl' and attrs['gas_coupling'] == 'path_length'
+    assert attrs['gas_coupling_table'] == 'gas_coupling_ppld.csv'
+    assert attrs['rrs_extension'] == 'pure_water' and attrs['solar_database'] == 'tsis'
+    assert attrs['default_wind'] == 2.
+    assert attrs['toa_lut'] == 'toa_lut_opac_ultra_light.nc'
+    assert attrs['toa_lut_doi'].startswith('none')
+
+
+def test_provenance_decoupled():
+    process = Process(input_db=xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 2)), gas_coupling='decoupled',
+                      o2_model='reptran')
+    process.execute()
+    attrs = process.radcalnet_db.attrs
+    assert attrs['gas_coupling'] == 'decoupled' and attrs['gas_coupling_table'] == 'none'
+    assert attrs['o2_model'] == 'reptran'
+
+
 def test_wind_default(clear_water):
     """Without wind speed in the input, the default of the configuration (2 m s-1) is used."""
     np.testing.assert_array_equal(clear_water.radcalnet_db.wind, 2.)
@@ -198,7 +219,8 @@ def test_command_line(tmp_path):
         assert dict(ds.Rtoa_bands.sizes) == {'time': 50, 'vza': 2, 'wl_band': 3}
         assert np.isfinite(ds.Rtoa_bands).all() and (ds.Rtoa_bands > 0).all()
         np.testing.assert_array_equal(ds.fwhm, [20, 20, 20])
-        assert ds.attrs['source'] == f'radcalnet_oc {radcalnet_oc.__version__}'
+        assert ds.attrs['source'].startswith(f'radcalnet_oc {radcalnet_oc.__version__}')
+        assert ds.attrs['gas_coupling'] == 'path_length' and ds.attrs['o2_model'] == 'lbl'
 
 
 def test_command_line_o2_model(tmp_path):
