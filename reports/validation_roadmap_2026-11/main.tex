@@ -45,16 +45,41 @@ and to the aerosol model as the priorities of the roadmap.
 \section{Scope and status of the package}
 %=====================================================================================================
 
-The TOA reflectance is simulated as
+The TOA reflectance is simulated with the gaseous absorption coupled with the scattering: the path
+reflectance and the water-leaving term have their own gaseous transmittances,
 \begin{equation}
-\Rtoa(\lambda) = T_g^{\downarrow} T_g^{\uparrow}
-\left[ \pi\, \Rrs(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda) + R_\mathrm{atm}(\lambda) \right],
+\Rtoa(\lambda) = \pi\, \Rrs(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda)\, T_g^{w}(\lambda)
++ T_g^{atm}(\lambda)\, R_\mathrm{atm}(\lambda),
+\label{eq:rtoa}
 \end{equation}
-where $R_\mathrm{atm}$ (Rayleigh, aerosol and sky reflection by the wind-roughened surface) comes from the
+given for each term $X\in\{atm, w, E_d\}$ by a photon path-length model (Gamma distribution of the absorber
+paths, equivalence theorem),
+\begin{equation}
+T_g^{X}(\lambda) = \left(1 + s_X^2\, \eta_X\, \tau_g(\lambda, m_X)\right)^{-1/s_X^2},
+\qquad \tau_g(\lambda, m) = -\ln T_g(\lambda, m),
+\label{eq:ppld}
+\end{equation}
+where $T_g(\lambda, m)$ is the direct-beam gaseous transmittance (REPTRAN, line-by-line for O$_2$) for the
+geometric air mass $m_{atm}=m_w=1/\mu_0+1/\mu_v$ or $m_{E_d}=1/\mu_0$, and $\eta_X$ (mean absorber path relative
+to the geometric one) and $s_X^2$ (its relative variance) are fitted per absorption window and term on full
+radiative transfer simulations of the coupled absorption and scattering (SOS-ABS), as functions of the air
+mass, the AOT and the water vapour column. The path reflectance sees only a fraction of the geometric path
+($\eta_{atm}\approx0.45$--$0.65$ in 684--990\,nm), the water-leaving term and the irradiance slightly more
+($\eta\approx1.02$--$1.05$). The downwelling irradiance is $E_d = T^{\downarrow}\, T_g^{E_d}\, E_0$.
+
+For $\eta_X=1$ and $s_X^2\to0$, all terms see the direct beam, $T_g^{atm}=T_g^{w}=T_g^{\downarrow}T_g^{\uparrow}$,
+and Eq.~\eqref{eq:rtoa} reduces to the factorised form of the versions before 1.1,
+$\Rtoa = T_g^{\downarrow} T_g^{\uparrow}\left[\pi\,\Rrs\,T^{\downarrow}t^{\uparrow} + R_\mathrm{atm}\right]$, which
+underestimates the band TOA reflectance by about 4\,\% (O$_2$-B), 10--15\,\% (720, 820, 900\,nm), 30\,\%
+(O$_2$-A head) and 50--60\,\% (940\,nm). The coupled model is the default in the H$_2$O and O$_2$ windows of
+684--990\,nm; elsewhere (and for O$_3$, NO$_2$, CH$_4$) $T_g^X = T_g(\lambda, m_X)$, its extension to
+350--2500\,nm being part of the roadmap.
+
+$R_\mathrm{atm}$ (Rayleigh, aerosol and sky reflection by the wind-roughened surface) comes from the
 GRS radiative transfer look-up table (\code{toa\_lut\_opac\_wind\_v3.nc}, Zenodo
-\href{https://doi.org/10.5281/zenodo.23394202}{10.5281/zenodo.23394202}), the transmittances from the
-companion transmittance LUT and the gaseous transmittances $T_g$ from REPTRAN (line-by-line for O$_2$).
-The simulation is hyperspectral (350--2500\,nm) and convolved with the sensor spectral responses.
+\href{https://doi.org/10.5281/zenodo.23394202}{10.5281/zenodo.23394202}) and the transmittances
+$T^{\downarrow}$, $t^{\uparrow}$ from the companion transmittance LUT. The simulation is hyperspectral
+(350--2500\,nm) and convolved with the sensor spectral responses.
 
 \paragraph{Grid of the TOA LUT.} 6 OPAC aerosol models (ARCT, COAV, DESE, MACL, URBA at 70\,\% RH, WASO dry),
 10 reference AOT nodes (0--1.5), 6 wind speeds (0.5--16\,m\,s$^{-1}$), 45 solar zenith angles (0--88$^\circ$),

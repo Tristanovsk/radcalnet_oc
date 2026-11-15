@@ -8,8 +8,16 @@ passive optical satellite sensors above coastal and oceanic waters.
 
 .. math::
 
-   R_{toa}(\lambda) = T_g^{\downarrow} T_g^{\uparrow}
-   \left[ \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda) + R_{atm}(\lambda) \right]
+   R_{toa}(\lambda) = \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda)\, T_g^{w}(\lambda)
+   + T_g^{atm}(\lambda)\, R_{atm}(\lambda),
+   \qquad
+   T_g^{X} = \left(1 + s_X^2\, \eta_X\, \tau_g\right)^{-1/s_X^2}
+
+The gaseous absorption is coupled with the scattering: the path reflectance :math:`R_{atm}` and the
+water-leaving term have their own gaseous transmittances, :math:`T_g^{atm}` and :math:`T_g^{w}`, from a
+photon path-length model (:math:`\tau_g` optical thickness of the absorbers along the geometric path,
+:math:`\eta_X` and :math:`s_X^2` mean and relative variance of the absorber paths of each term) fitted on
+full radiative transfer simulations of the coupled absorption and scattering (see :doc:`methods`).
 
 .. figure:: _static/slide_boa2toa.png
    :figclass: only-light

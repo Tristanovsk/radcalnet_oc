@@ -122,7 +122,7 @@ the full spectral resolution of the simulation (350--2500 nm):
      - total reflectance at TOA, :math:`R_{toa}`
    * - ``Ratm``
      - --
-     - atmosphere (intrinsic + surface-reflected) reflectance at TOA, :math:`T_g^{\downarrow}T_g^{\uparrow}R_{atm}`
+     - atmosphere (intrinsic + surface-reflected) reflectance at TOA, :math:`T_g^{atm}R_{atm}`
    * - ``Rrs``
      - sr\ :sup:`-1`
      - remote-sensing reflectance used for the simulation

@@ -65,7 +65,12 @@ Notation
      - aerosol and Rayleigh optical thickness
      - --
    * - :math:`T_g^{\downarrow},\ T_g^{\uparrow}`
-     - downward and upward gaseous transmittances
+     - downward and upward gaseous transmittances of the direct beam (air masses :math:`1/\mu_0`,
+       :math:`1/\mu_v`)
+     - --
+   * - :math:`T_g^{atm},\ T_g^{w},\ T_g^{E_d}`
+     - gaseous transmittances of the path reflectance, of the water-leaving term and of the downwelling
+       irradiance, coupled with the scattering (Eq. :eq:`tg_term`)
      - --
    * - :math:`T^{\downarrow},\ t^{\uparrow}`
      - downward (irradiance) and upward (radiance) atmospheric transmittances
@@ -80,9 +85,10 @@ gaseous absorption look-up table:
 
 1. **Solar irradiance at TOA** :math:`E_0`, from the solar spectrum (TSIS-1 by default), the solar
    zenith angle and the day of year (`Solar irradiance`_).
-2. **Gaseous transmittances** :math:`T_g^{\downarrow}` and :math:`T_g^{\uparrow}` along the Sun and
-   viewing directions, from the surface pressure and the columns of water vapour, ozone and nitrogen
-   dioxide (`Gaseous transmittance`_).
+2. **Gaseous transmittances** of the direct beam along the Sun and viewing directions, from the surface
+   pressure and the columns of water vapour, ozone and nitrogen dioxide (`Gaseous transmittance`_), and
+   their coupling with the scattering for each term of the signal, :math:`T_g^{atm}`, :math:`T_g^{w}` and
+   :math:`T_g^{E_d}` (:ref:`methods-gas-coupling`).
 3. **Look-up table preparation.** The look-up tables of the aerosol models are combined with the
    ``aerosol_combination`` proportions and interpolated at the geometry of the simulation
    (:py:meth:`LUT.lut_preparation <radcalnet_oc.lut.LUT.lut_preparation>`, :ref:`methods-aerosol`).
@@ -112,22 +118,61 @@ The TOA signal is expressed in reflectance units,
 
 It is decomposed into a water-leaving contribution, transmitted through the
 atmosphere, and an atmospheric contribution that includes the light scattered by
-molecules and aerosols and the skylight and sunlight reflected by the sea surface:
-
-.. math::
-   :label: rtoa
-
-   R_{toa}(\lambda) = \frac{\pi\, t^{\uparrow}(\lambda)\, T_g^{\uparrow}(\lambda)\, L_w(\lambda)}{E_0(\lambda)}
-   + T_g^{\downarrow}(\lambda)\, T_g^{\uparrow}(\lambda)\, R_{atm}(\lambda).
-
-With :math:`L_w = R_{rs}\, E_d` and :math:`E_d = T^{\downarrow}\, T_g^{\downarrow}\, E_0`
-(see :eq:`ed`), equation :eq:`rtoa` becomes
+molecules and aerosols and the skylight and sunlight reflected by the sea surface. Each contribution
+has its own gaseous transmittance, because the absorption is coupled with the scattering: the photons
+of the two terms do not cross the same amounts of absorbers (:ref:`methods-gas-coupling`):
 
 .. math::
    :label: rtoa_rrs
 
+   R_{toa}(\lambda) = \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda)\,
+   T_g^{w}(\lambda) + T_g^{atm}(\lambda)\, R_{atm}(\lambda),
+
+with, for each term :math:`X \in \{atm, w, E_d\}` (path reflectance, water-leaving term, downwelling
+irradiance), the photon path-length model
+
+.. math::
+   :label: tg_term
+
+   T_g^{X}(\lambda) = \left(1 + s_X^2\, \eta_X\, \tau_g(\lambda, m_X)\right)^{-1/s_X^2},
+   \qquad \tau_g(\lambda, m) = -\ln T_g(\lambda, m),
+
+where :math:`T_g(\lambda, m)` is the transmittance of the direct beam for the geometric air mass
+:math:`m_{atm} = m_w = 1/\mu_0 + 1/\mu_v` or :math:`m_{E_d} = 1/\mu_0`, and :math:`\eta_X` (mean absorber
+path relative to the geometric one) and :math:`s_X^2` (its relative variance) are fitted per absorption
+window and term on full radiative transfer simulations of the coupled absorption and scattering (SOS-ABS),
+as functions of the air mass, the aerosol optical thickness and the water vapour column (Eq. :eq:`tg_ppld`).
+The model is applied channel by channel (line by line in the O\ :sub:`2` bands) to H\ :sub:`2`\ O and the
+background gases in the windows of 684-990 nm; elsewhere, and for O\ :sub:`3`, NO\ :sub:`2` and
+CH\ :sub:`4`, :math:`T_g^X = T_g(\lambda, m_X)`. The path reflectance sees a fraction of the geometric path
+(:math:`\eta_{atm} \approx 0.45`-:math:`0.65`), the water-leaving term and the irradiance slightly more
+(:math:`\eta_w,\ \eta_{E_d} \approx 1.02`-:math:`1.05`).
+
+Written with the water-leaving radiance,
+
+.. math::
+   :label: rtoa
+
+   R_{toa}(\lambda) = \frac{\pi\, t^{\uparrow}(\lambda)\, L_w^{*}(\lambda)}{E_0(\lambda)}
+   + T_g^{atm}(\lambda)\, R_{atm}(\lambda), \qquad L_w^{*} = R_{rs}\, T^{\downarrow}\, T_g^{w}\, E_0,
+
+where :math:`L_w^{*}` differs from the water-leaving radiance at the surface,
+:math:`L_w = R_{rs} E_d` with :math:`E_d = T^{\downarrow} T_g^{E_d} E_0` (Eq. :eq:`ed`), only by the
+gaseous transmittance of the whole Sun-surface-sensor path, :math:`T_g^{w}`, replacing that of the
+irradiance.
+
+**Decoupled limit.** For :math:`\eta_X = 1` and :math:`s_X^2 \to 0`, every term sees the direct-beam
+transmittance, :math:`T_g^{atm} = T_g^{w} = T_g^{\downarrow} T_g^{\uparrow}`, and Eq. :eq:`rtoa_rrs` reduces
+to the factorised form of the versions before 1.1 (``gas_coupling='decoupled'``),
+
+.. math::
+   :label: rtoa_decoupled
+
    R_{toa}(\lambda) = T_g^{\downarrow} T_g^{\uparrow}
-   \left[ \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda) + R_{atm}(\lambda) \right].
+   \left[ \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda) + R_{atm}(\lambda) \right],
+
+which underestimates the band TOA reflectance by about 4 % in the O\ :sub:`2`-B band, 10-15 % at 720, 820
+and 900 nm, 30 % in the O\ :sub:`2`-A head and 50-60 % in the 940 nm band.
 
 All terms are computed at the full spectral resolution of the gaseous absorption
 look-up table (350--2500 nm) before being convolved with the spectral response of
@@ -196,11 +241,12 @@ The downwelling plane irradiance just above the water surface is
 .. math::
    :label: ed
 
-   E_d(\lambda) = T^{\downarrow}(\lambda, \theta_0, \tau_a)\; T_g^{\downarrow}(\lambda)\; E_0(\lambda),
+   E_d(\lambda) = T^{\downarrow}(\lambda, \theta_0, \tau_a)\; T_g^{E_d}(\lambda)\; E_0(\lambda),
 
 where :math:`T^{\downarrow}` is the total (direct + diffuse) irradiance transmittance of the
 Rayleigh-aerosol atmosphere, interpolated from the transmittance look-up table for the
-solar zenith angle and the aerosol optical thickness at 550 nm.
+solar zenith angle and the aerosol optical thickness at 550 nm, and :math:`T_g^{E_d}` the gaseous
+transmittance of the irradiance (Eq. :eq:`tg_term`, :math:`T_g^{\downarrow}` in the decoupled limit).
 
 The photosynthetically available radiation is derived from :math:`E_d` as
 
@@ -274,10 +320,10 @@ of the look-up table, the transmittance is averaged in each cell:
    T_{O_2}(\lambda_i) = \left\langle \exp\left[-m\, \frac{P}{P_{lbl}}\, \tau_{O_2}(\lambda)\right]
    \right\rangle_{\lambda \in \text{cell } i},
 
-and the transmittance of the Sun-surface-sensor path in Eq. :eq:`rtoa` is computed with the total air mass
+and the transmittance of the Sun-surface-sensor path in Eq. :eq:`rtoa_rrs` is computed with the total air mass
 :math:`1/\mu_0 + 1/\mu_v` rather than as the product :math:`T_g^{\downarrow} T_g^{\uparrow}` of the
 cell averages (both are equal for the REPTRAN table). Outside the two bands, O\ :sub:`2` comes from
-REPTRAN. The default remains ``'reptran'``.
+REPTRAN. ``o2_model='reptran'`` gives the O\ :sub:`2` absorption of the versions before 1.1.
 
 .. _methods-gas-coupling:
 
