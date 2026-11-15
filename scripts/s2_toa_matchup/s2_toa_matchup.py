@@ -111,6 +111,8 @@ def s2_extract(path, lon, lat, half_size=600., swir_max=0.03, cirrus_max=0.01):
         wl_true = ds.wl_true.load()
     bands = box.bands
     n_tot = bands.sizes['x'] * bands.sizes['y']
+    if n_tot == 0:  # subset made around another site
+        return None, None
     cirrus_ok = bands.notnull().all('wl') & (bands.sel(wl=1375) < cirrus_max)
     out = xr.Dataset(coords={'wl': box.wl.values})
     for prefix, valid in [('sat', cirrus_ok & (bands.sel(wl=1610) < swir_max)), ('satg', cirrus_ok)]:
@@ -249,7 +251,10 @@ def process_scene(product, path, site, lon, lat, records, args):
     t0 = _time.time()
     try:
         sat, srf = s2_extract(path, lon, lat, args.half_size, args.swir_max, args.cirrus_max)
-        if int(sat.n_pix_glint) == 0:
+        if sat is None:
+            status = 'site outside the subset'
+            sat, rec = xr.Dataset(), None
+        elif int(sat.n_pix_glint) == 0:
             status = 'no valid pixel'
             rec = None
         else:
