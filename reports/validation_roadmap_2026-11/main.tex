@@ -220,7 +220,7 @@ Left: relative; right: absolute, with the interquartile range.}
 \item \textbf{Direct sunglint.} Adding the Cox--Munk direct glint reduces the median bias at 865\,nm (all glint
   angles) from $-17.0$ to $-13.5\,\%$ (AAOT L2.0), $-24.9$ to $-6.1\,\%$ (Galata) and $-44.5$ to $0.0\,\%$
   (Section-7 L1.5), but the scatter increases below $30^\circ$ (isotropic statistics, no wind direction, wind
-  from the station).
+  from the station). Heavy-tailed statistics and sunglint flags: Section~\ref{sec:glint_flags}.
 \item \textbf{Cirrus band B10.} Simulated $\sim10^{-7}$ against $8\times10^{-4}$ observed at all sites: the
   saturated H$_2$O band is decoupled beyond 990\,nm, and the observed level may also include stratospheric
   aerosols or the L1C noise floor. The NIR--SWIR deficit increases with the observed B10 reflectance
@@ -572,8 +572,8 @@ on the cirrus-corrected excess, by minimising the median absolute residual (MAD)
 
 \begin{table}[h]
 \centering\small
-\caption{Glint statistics at the station wind against the cirrus-corrected excess (511 matchups,
-\code{glint\_tail\_fit.py}): median absolute residual and median residual (excess $-$ glint) per glint-angle bin at
+\caption{Glint statistics at the station wind against the cirrus-corrected excess (511 matchups, glint angle
+$>30^\circ$, \code{glint\_tail\_fit.py --glint-min 30}): median absolute residual and median residual (excess $-$ glint) per glint-angle bin at
 2190\,nm ($\times10^{-3}$); Spearman correlation of the wind inverted per scene at 2190\,nm with the glint angle.}
 \label{tab:glint_tail}
 \begin{tabular}{lrrrrrrrrr}
@@ -584,6 +584,61 @@ Statistics & \multicolumn{3}{c}{MAD} & \multicolumn{4}{c}{Residual at 2190\,nm} 
 \code{cm\_iso}                         & 1.67 & 1.15 & 0.87 & $+0.90$ & $+0.99$ & $+0.54$ & $-0.12$ & 0.85 \\
 \code{cm\_iso\_t}, $\nu=7$             & 1.48 & 0.95 & 0.73 & $+0.21$ & $+0.51$ & $+0.32$ & $-0.24$ & 0.51 \\
 \code{cm\_iso\_mix}, $f=0.05$, $\sigma_t^2=0.08$ & 1.36 & 0.92 & 0.73 & $-0.02$ & $+0.38$ & $+0.33$ & $-0.18$ & 0.54 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Fit over all glint angles and sunglint flags}
+\label{sec:glint_flags}
+\paragraph{Selection near the specular direction.} The clear-pixel test of the matchups (B11 $<0.03$) is also the
+cloud mask, and near the specular direction it removes the most glinted scenes (13 of 46 at AAOT L2.0 for glint
+angles of 20--25$^\circ$), which biases the observed glint low. Without the threshold (\code{satg\_*} statistics),
+cloudy scenes come back (deficits down to $-0.3$). The two are separated by the homogeneity of the box: the relative
+interquartile range at 2190\,nm is below 0.1 for the glint and above 0.25 for the clouds. The fit over all glint
+angles therefore uses the \code{satg\_*} statistics of the clear scenes and of the scenes rejected by the threshold
+with a relative interquartile range $<0.15$ (655 matchups, glint angles 20--90$^\circ$).
+
+\paragraph{Refit.} A scale factor $a$ of the mean square slope of the core was added to the parameters
+($\sigma^2 = a\,\sigma^2_\mathrm{CM}(W)$). The best statistics remain the mixture, with $a=1$, $f = 0.05$ and
+$\sigma_t^2 = 0.12$ (0.08 is almost as good): the residual at 2190\,nm is $-0.08$, $+0.16$, $+0.01$ and
+$-0.37\times10^{-3}$ for glint angles of 25--30, 30--40, 40--50 and 50--60$^\circ$. A wider core ($a>1$) degrades
+the fit at all glint angles. Between 20 and $25^\circ$ the glint is still overestimated by $\sim8\times10^{-3}$ at
+2190\,nm ($\sim$40\,\% of the simulated glint) by all the statistics: these geometries are better flagged than
+modelled. The defaults of \code{cm\_iso\_mix} are set to $f=0.05$, $\sigma_t^2=0.12$.
+
+\paragraph{Sunglint flags.} The direct glint and its flags were added to the package, computed on request
+after the simulation (\code{compute\_sunglint}). This adds the TOA direct
+glint (gaseous and direct transmittances of the Sun-surface-sensor path, as in the matchup script), the total TOA
+reflectance with glint (the TOA reflectance without glint is unchanged), the glint angle, the glint fraction (glint
+over total) at 865\,nm and a bitmask with CF attributes: bits 1, 2 and 4 for a glint fraction $\geq0.01$, 0.1 and
+0.5 (levels low, moderate and high, cumulative) and bit 8 for a glint angle $<30^\circ$ (near specular); the
+thresholds are arguments. The matchup script takes the glint statistics as an option and recomputes the glint of the
+cached scenes with the atmospheric factor of the cached simulation (option \code{--reglint}, exact to machine
+precision, a few minutes for all the sites instead of a full rerun); the gathered files carry the flags of each
+scene.
+
+With \code{cm\_iso\_mix}, the flags sort the matchups of AAOT, Galata and Section-7 as in
+Table~\ref{tab:glint_flags}. Almost all the scenes have a glint $\geq1\,\%$ at 865\,nm (heavy tail). The high-glint
+scenes (117, mostly near specular; 35 of the 60 of Section-7 L1.5) are overestimated by 14\,\% at 865\,nm and
+55\,\% at 2190\,nm and should be excluded (\code{glint\_high} or \code{glint\_near\_specular}). The low- and
+moderate-glint scenes keep the NIR deficit of about $-11\,\%$ at 865\,nm ($\sim-1.8\times10^{-3}$, the additional
+865\,nm term and the cirrus), while the SWIR deficit falls to $-6\,\%$ at 2190\,nm for moderate glint.
+
+\begin{table}[h]
+\centering\small
+\caption{Matchups of AAOT L2.0, Galata L2.0, AAOT L1.5 and Section-7 L1.5 per sunglint flag (\code{cm\_iso\_mix},
+$f=0.05$, $\sigma_t^2=0.12$, selection of Section~\ref{sec:glint_flags}): medians of the glint angle, of the glint
+fraction at 865\,nm and of the relative difference (simulation with glint $-$ satellite).}
+\label{tab:glint_flags}
+\begin{tabular}{lrrrrr}
+\toprule
+Flags & $N$ & Glint angle & Glint fraction & 865\,nm & 2190\,nm \\
+\midrule
+none                            & 35  & $74^\circ$ & 0.01 & $-3.8\,\%$  & $-20\,\%$ \\
+low                             & 344 & $49^\circ$ & 0.05 & $-11.4\,\%$ & $-29\,\%$ \\
+moderate                        & 147 & $35^\circ$ & 0.16 & $-10.8\,\%$ & $-6\,\%$ \\
+moderate, near specular         & 67  & $26^\circ$ & 0.36 & $-17.1\,\%$ & $-11\,\%$ \\
+high (108 near specular)        & 117 & $24^\circ$ & 0.65 & $+13.7\,\%$ & $+55\,\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -710,18 +765,24 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
   and Gaussian mixture (Section~\ref{sec:glint_tail}): the mixture $f = 0.05$, $\sigma_t^2 = 0.08$ reduces the SWIR misfit by 20\,\% and halves the geometry dependence of the inverted wind.
 \item \prio{P1} \textbf{Sea state of the open sea}: ERA5 wind (speed, direction) and significant wave height (swell)
   per scene, to drive the tail fraction by the sea state instead of a fixed value.
-\item \prio{P1} \textbf{Matchups with the heavy-tailed statistics}: \code{cm\_iso\_mix} as the glint statistics of
-  the matchup script, then rerun the deficit, AOT and cirrus analyses.
+\item \textit{Done (November 2026):} \textbf{matchups with the heavy-tailed statistics} and refit over all the
+  glint angles (Section~\ref{sec:glint_flags}): \code{cm\_iso\_mix} $f=0.05$, $\sigma_t^2=0.12$; glint recomputed
+  from the cached scenes (\code{--reglint}); near-specular geometries (20--25$^\circ$) still overestimated.
+\item \prio{P1} \textbf{Analyses on the heavy-tailed matchups}: \code{matchup\_analysis.py}, AOT and cirrus scripts
+  on the \code{\_cm\_iso\_mix} files, with the selection by sunglint flags instead of the $30^\circ$ glint angle.
 \item \prio{P2} \textbf{Additional 865\,nm term} (excess above the SWIR glint, 0.3--$1.5\times10^{-3}$ decreasing
   with the glint angle): test an SZA-dependent diffuse term.
 \item \prio{P1} \textbf{Cirrus term}: the deficit follows the B10 reflectance (about $-1$ per unit,
   Section~\ref{sec:aot_term}); either screen on B10 or add an empirical high-cloud term to the matchups, and
   investigate the observed B10 level (finding~6).
-\item \prio{P2} \textbf{Integrate the direct glint in the package} (today in the matchup script): coupled
-  attenuation (diffuse + direct), gas transmittance consistent with the coupling, uncertainty from the wind.
-\item \prio{P2} \textbf{Glint-based screening}: replace the fixed $30^\circ$ glint angle by a threshold on the
-  simulated glint relative to the signal (e.g.\ $<10\,\%$ of $\Rtoa$ at 865\,nm), and keep moderate glint as a
-  separate validation of the surface model using the \code{satg\_*} statistics.
+\item \textit{Done (November 2026):} \textbf{direct glint and sunglint flags} in the package, computed on
+  request after the simulation (Section~\ref{sec:glint_flags}).
+\item \prio{P2} \textbf{Direct glint in the package, next}: coupled attenuation (diffuse + direct), gas
+  transmittance consistent with the coupling, uncertainty from the wind and the slope statistics (e.g.\ difference
+  between \code{cm\_iso} and \code{cm\_iso\_mix} as an additional flag).
+\item \prio{P2} \textbf{Glint-based screening} with the flags (exclude \code{glint\_high} and
+  \code{glint\_near\_specular}), and keep moderate glint as a separate validation of the surface model using the
+  \code{satg\_*} statistics and the homogeneity test of the box.
 \end{itemize}
 
 \subsection{Computing performance}
@@ -804,8 +865,12 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
   folder (reads the cache of \code{aerosol\_diagnosis.py}, about 35\,s).
 \item Slope variance inversion (Section~\ref{sec:glint_inv}): \code{glint\_slope\_inversion.py} in the same folder
   (about 35\,s).
-\item Heavy-tailed slope statistics (Section~\ref{sec:glint_tail}): \code{glint\_tail\_fit.py} in the same folder,
-  branch \code{feature/glint\_tail} (about 25\,s).
+\item Heavy-tailed slope statistics (Sections~\ref{sec:glint_tail} and \ref{sec:glint_flags}):
+  \code{glint\_tail\_fit.py} in the same folder, branch \code{feature/glint\_tail} (all glint angles, about 70\,s;
+  \code{--glint-min 30} for Table~\ref{tab:glint_tail}).
+\item Matchups with the heavy-tailed glint and the flags: \code{s2\_toa\_matchup.py} with the options
+  \code{--reglint --glint-stats cm\_iso\_mix} and the site and level (output files with the suffix
+  \code{\_cm\_iso\_mix}).
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}

@@ -28,6 +28,19 @@ measurements of a site. Not part of the package.
    scenes are skipped (`--overwrite` to redo); failed scenes are retried at the next run. About 15 s per
    scene, 2.3 GB peak memory.
 
+   The glint statistics are set with `--glint-stats` (`cm_iso`, or the heavy-tailed `cm_iso_t` and `cm_iso_mix`
+   of `radcalnet_oc.Sunglint`, parameters `--glint-nu`, `--glint-f-tail`, `--glint-sigma2-tail`); the output then
+   gets the suffix `_<glint-stats>`. With `--reglint`, the glint of the cached scenes is recomputed with the
+   atmospheric factor of the cached simulation (exact, a few minutes for all the sites) without new simulation:
+
+   ```bash
+   python s2_toa_matchup.py --site AAOT --level lev20 --reglint --glint-stats cm_iso_mix
+   ```
+
+   The gathered files carry the sunglint flags of each scene (`glint_fraction`, glint / simulated TOA reflectance
+   with glint at 865 nm, and the bitmask `glint_flags` of `radcalnet_oc.GLINT_FLAGS`: low, moderate, high glint,
+   near-specular geometry).
+
 2. **Analysis** (`matchup_analysis.py`):
 
    ```bash
@@ -80,8 +93,10 @@ measurements of a site. Not part of the package.
    ```
 
 8. **Heavy-tailed slope statistics** (`glint_tail_fit.py`): the `cm_iso_t` (Student t) and `cm_iso_mix`
-   (Gaussian + wide slopes) statistics of `radcalnet_oc.Sunglint` fitted on the cirrus-corrected SWIR excess at the
-   station wind, and wind inverted per scene with the fitted statistics (about 25 s):
+   (Gaussian + wide slopes) statistics of `radcalnet_oc.Sunglint`, with a scaled core, fitted on the
+   cirrus-corrected excess at the station wind over all the glint angles (statistics without the SWIR threshold,
+   which removes the most glinted scenes, cloudy scenes rejected by their heterogeneity in the box;
+   `--glint-min 30` for the far tail only), and wind inverted per scene with the fitted statistics (about 70 s):
 
    ```bash
    python glint_tail_fit.py

@@ -23,6 +23,7 @@ from .kernel import GAS_COUPLING, GAS_COUPLINGS, GAS_COUPLING_FILE, GAS_COUPLING
 from .config import load_config, LUT_FILE_BACKUP
 from .lut import WIND
 from .water import extend_rrs
+from . import coxmunk
 
 template = files('radcalnet_oc.data.template').joinpath('template_clear_water.nc')
 # --------------------------------------------------
@@ -329,7 +330,9 @@ class Process():
                                  aerosol_combination=aerosol_combination)
 
     def execute(self,
-                aerosol_combination=AEROSOL_COMBINATION
+                aerosol_combination=AEROSOL_COMBINATION,
+                sunglint=None,
+                sunglint_kw=None
                 ):
         '''
         Compute the top-of-atmosphere simulation for the input time series (see :doc:`/methods`).
@@ -342,6 +345,10 @@ class Process():
         :param aerosol_combination: proportion of each aerosol model of ``config.yml``
             (``settings: aerosol_models``), list, array or :py:class:`xarray.DataArray`
             (e.g. retrieved with :py:class:`~radcalnet_oc.kernel.Aerosol`)
+        :param sunglint: if set, wave slope statistics of the direct sunglint (e.g. ``'cm_iso_mix'``), computed
+            with :py:meth:`compute_sunglint` (variables ``Rglint``, ``glint_angle``, ``glint_flags``...); ``Rtoa``
+            does not include the direct glint
+        :param sunglint_kw: keyword arguments of :py:meth:`compute_sunglint`
         '''
 
         # atmospheric + sky-reflection radiance
@@ -380,6 +387,7 @@ class Process():
         Lw_toa = Lw_toa.fillna(0)
 
         Rtoa = np.pi * Lw_toa / E0 + Ratm
+        self.Rtoa = Rtoa
 
         Ed.name = 'Ed'
 
@@ -432,6 +440,84 @@ class Process():
 
         radcalnet_db.attrs.update(self.provenance())
         self.radcalnet_db = radcalnet_db.squeeze()
+        if sunglint is not None:
+            self.compute_sunglint(stats=sunglint, **(sunglint_kw or {}))
+
+    def compute_sunglint(self, stats='cm_iso_mix', wl_ref=865., levels=None, angle_min=None, **kwargs):
+        r'''
+        Direct sunglint at the TOA and sunglint flags, added to ``radcalnet_db`` (after :py:meth:`execute`).
+
+        The direct sunlight reflected by the waves (:py:class:`~radcalnet_oc.coxmunk.Sunglint`, wind of each
+        measurement) is attenuated by the direct transmittance of the Sun-surface-sensor path,
+        :math:`T_g \exp[-(\tau_r + \tau_a)(1/\mu_0 + 1/\mu_v)]`, and is not included in the look-up tables
+        (see :doc:`/methods`). Variables added: ``Rglint`` (TOA direct glint), ``Rg_surface`` (surface glint),
+        ``Rtoa_glint`` (``Rtoa + Rglint``), ``glint_angle``, ``glint_fraction`` (``Rglint / Rtoa_glint`` at
+        ``wl_ref``) and ``glint_flags`` (bitmask :data:`~radcalnet_oc.coxmunk.GLINT_FLAGS`: cumulative levels
+        low, moderate and high of ``glint_fraction``, and near-specular geometry), e.g. to keep the low-glint
+        dates: ``db.where(db.glint_flags & GLINT_FLAGS['glint_moderate'] == 0)``.
+
+        :param stats: wave slope statistics (``'cm_iso'``, ``'cm_iso_t'``, ``'cm_iso_mix'``, ``'cm_dir'``,
+            ``'bh2006'``); the default heavy-tailed mixture fits the Sentinel-2 matchups of the AERONET-OC
+            platforms better than ``'cm_iso'``
+        :param wl_ref: reference wavelength of the glint fraction (nm)
+        :param levels: glint fractions of the levels low, moderate and high
+            (default :data:`~radcalnet_oc.coxmunk.GLINT_LEVELS`)
+        :param angle_min: glint angle below which the near-specular bit is set
+            (default :data:`~radcalnet_oc.coxmunk.GLINT_ANGLE_MIN`)
+        :param kwargs: parameters of the statistics passed to :py:meth:`~radcalnet_oc.coxmunk.Sunglint.sunglint`
+            (``nu``, ``f_tail``, ``sigma2_tail``, ``wazi``, ``shadow``)
+        '''
+        levels = coxmunk.GLINT_LEVELS if levels is None else levels
+        angle_min = coxmunk.GLINT_ANGLE_MIN if angle_min is None else angle_min
+        sza, wind = self.sza.values, self.wind.values
+        vza, azi = np.atleast_1d(self.vza.values), np.atleast_1d(self.azi.values)
+        Rg = np.zeros((len(sza), len(vza), len(azi)))
+        for i, (s, w) in enumerate(zip(sza, wind)):
+            for j, v in enumerate(vza):
+                for k, a in enumerate(azi):
+                    # Sunglint: relative azimuth 180 deg in the specular direction (180 - azi of the LUT)
+                    g = coxmunk.Sunglint(float(s), float(v), 180. - float(a))
+                    Rg[i, j, k] = max(g.sunglint(float(w), stats=stats, **kwargs)[0], 0.)
+        coords = {'time': self.sza.time.values, 'vza': vza, 'azi': azi}
+        Rg = xr.DataArray(Rg, coords=coords, dims=('time', 'vza', 'azi'))
+        angle = xr.DataArray(coxmunk.glint_angle(sza[:, None, None], vza[None, :, None], azi[None, None, :]),
+                             coords=coords, dims=('time', 'vza', 'azi'))
+
+        full_wl = self.full_wl
+        muv = xr.DataArray(np.cos(np.radians(vza)), coords={'vza': vza}, dims='vza')
+        tau_r = self.lut.rot.interp(wl=full_wl, kwargs={'fill_value': 'extrapolate'}) * \
+            self.input_db['pressure'] / 1013.25
+        tau_a = self.lut.aot_lut.interp(aot_ref=self.aot550).interp(wl=full_wl, method='quadratic')
+        Tdir = np.exp(-(tau_r + tau_a) * (1 / self.mu0 + 1 / muv))
+        Tg = (self.Tg_d * self.Tg_u).sel(wl=full_wl)
+        Rglint = (Tg * Tdir * Rg).reset_coords(drop=True)
+        Rglint = Rglint.transpose(*[d for d in self.Rtoa.dims if d in Rglint.dims])
+        total = self.Rtoa.reset_coords(drop=True) + Rglint
+        fraction = (Rglint / total).sel(wl=wl_ref, method='nearest', drop=True)
+        flags = xr.DataArray(coxmunk.glint_flags(fraction.values, angle.broadcast_like(fraction).values,
+                                                 levels, angle_min),
+                             coords=fraction.coords, dims=fraction.dims)
+
+        db = self.radcalnet_db
+        params = {'stats': stats, **kwargs}
+        db['Rglint'] = Rglint.squeeze()
+        db['Rglint'].attrs = {'unit': '-', 'description': 'direct sunglint reflectance at top-of-atmosphere '
+                              '(not included in Rtoa)', 'glint_statistics': repr(params)}
+        db['Rg_surface'] = Rg.squeeze()
+        db['Rg_surface'].attrs = {'unit': '-', 'description': 'direct sunglint reflectance at the surface',
+                                  'glint_statistics': repr(params)}
+        db['Rtoa_glint'] = total.squeeze()
+        db['Rtoa_glint'].attrs = {'unit': '-', 'description': 'Total reflectance at top-of-atmosphere with the '
+                                  'direct sunglint'}
+        db['glint_angle'] = angle.squeeze()
+        db['glint_angle'].attrs = {'unit': 'deg', 'description': 'angle between the viewing direction and the '
+                                   'specular reflection of the Sun'}
+        db['glint_fraction'] = fraction.squeeze()
+        db['glint_fraction'].attrs = {'unit': '-', 'description': f'Rglint / Rtoa_glint at {wl_ref:g} nm'}
+        db['glint_flags'] = flags.squeeze()
+        db['glint_flags'].attrs = coxmunk.flag_attrs(levels, angle_min, wl_ref)
+        self.radcalnet_db = db
+        return db
 
     def provenance(self):
         '''

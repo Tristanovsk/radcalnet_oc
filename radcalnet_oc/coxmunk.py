@@ -7,6 +7,57 @@ Sunglint reflectance of a rough sea surface from the Cox and Munk wave slope sta
 import numpy as np
 from scipy import special
 
+#: sunglint flags (bitmask, CF ``flag_masks``): cumulative levels of the direct glint relative to the TOA
+#: reflectance at the reference wavelength (a high-glint case has the three level bits set), and geometry
+#: close to the specular direction, where the glint model is the least reliable (overestimated by ~40 % at glint
+#: angles of 20--25 deg on the Sentinel-2 matchups of the AERONET-OC platforms)
+GLINT_FLAGS = {'glint_low': 1, 'glint_moderate': 2, 'glint_high': 4, 'glint_near_specular': 8}
+#: glint fractions of the TOA reflectance of the levels low, moderate and high
+GLINT_LEVELS = (0.01, 0.1, 0.5)
+#: glint angle (deg) below which ``glint_near_specular`` is set
+GLINT_ANGLE_MIN = 30.
+
+
+def glint_angle(sza, vza, azi):
+    '''
+    Angle (deg) between the viewing direction and the direction of specular reflection of the Sun.
+
+    :param sza: solar zenith angle (deg)
+    :param vza: viewing zenith angle (deg)
+    :param azi: relative azimuth (deg), convention of the look-up tables: 0 deg when the sensor looks towards
+        the Sun (specular reflection for ``vza = sza``)
+    '''
+    s, v, a = np.radians(sza), np.radians(vza), np.radians(azi)
+    c = np.cos(s) * np.cos(v) + np.sin(s) * np.sin(v) * np.cos(a)
+    return np.degrees(np.arccos(np.clip(c, -1, 1)))
+
+
+def glint_flags(fraction, angle, levels=GLINT_LEVELS, angle_min=GLINT_ANGLE_MIN):
+    '''
+    Sunglint bitmask (:data:`GLINT_FLAGS`).
+
+    :param fraction: direct glint divided by the total TOA reflectance (with glint) at the reference wavelength
+    :param angle: glint angle (deg)
+    :param levels: fractions of the levels low, moderate and high
+    :param angle_min: glint angle below which the near-specular bit is set
+    :return: flags (uint8), same shape as the broadcast inputs
+    '''
+    fraction, angle = np.broadcast_arrays(np.asarray(fraction, float), np.asarray(angle, float))
+    flags = np.zeros(fraction.shape, dtype=np.uint8)
+    for name, level in zip(['glint_low', 'glint_moderate', 'glint_high'], levels):
+        flags |= np.where(fraction >= level, GLINT_FLAGS[name], 0).astype(np.uint8)
+    flags |= np.where(angle < angle_min, GLINT_FLAGS['glint_near_specular'], 0).astype(np.uint8)
+    return flags
+
+
+def flag_attrs(levels=GLINT_LEVELS, angle_min=GLINT_ANGLE_MIN, wl_ref=865.):
+    '''CF attributes of the sunglint flags.'''
+    return {'flag_masks': np.array(list(GLINT_FLAGS.values()), dtype=np.uint8),
+            'flag_meanings': ' '.join(GLINT_FLAGS),
+            'description': f'sunglint flags: direct glint >= {levels[0]:g}, {levels[1]:g}, {levels[2]:g} of the TOA '
+                           f'reflectance (with glint) at {wl_ref:g} nm (cumulative levels low, moderate, high); '
+                           f'glint angle < {angle_min:g} deg (near specular, glint model least reliable)'}
+
 
 class Sunglint:
     '''
@@ -39,7 +90,7 @@ class Sunglint:
         self.m = m
         self.tau_atm = tau_atm
 
-    def sunglint(self, ws, wazi=0, stats='cm_dir', shadow=True, slope=False, nu=4., f_tail=0.05, sigma2_tail=0.1):
+    def sunglint(self, ws, wazi=0, stats='cm_dir', shadow=True, slope=False, nu=7., f_tail=0.05, sigma2_tail=0.12):
         '''
         Stokes vector of the sunglint reflectance, Eq. :eq:`glint`, without atmospheric transmittance.
 

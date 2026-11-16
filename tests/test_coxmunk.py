@@ -93,7 +93,8 @@ def test_heavy_tailed_limits():
         assert glint(35., vza, azi, 5., stats='cm_iso_mix', f_tail=0.) == pytest.approx(iso, rel=1e-12)
 
 
-@pytest.mark.parametrize('kwargs', [{'stats': 'cm_iso_t', 'nu': 3.}, {'stats': 'cm_iso_mix', 'f_tail': 0.05}])
+@pytest.mark.parametrize('kwargs', [{'stats': 'cm_iso_t', 'nu': 3.},
+                                    {'stats': 'cm_iso_mix', 'f_tail': 0.05, 'sigma2_tail': 0.1}])
 def test_heavy_tailed_slope_pdf(kwargs):
     """Slope pdf of the heavy-tailed statistics: normalised, Student t with the Cox and Munk mean square slope,
     and a heavier tail than the Gaussian far from the specular direction."""
@@ -107,7 +108,7 @@ def test_heavy_tailed_slope_pdf(kwargs):
         s2 = sigma2 * (nu - 2) / (2 * nu)
         p = 1. / (2 * np.pi * s2) * (1 + t ** 2 / (nu * s2)) ** (-(nu + 2) / 2)
     else:
-        f, s2w = kwargs['f_tail'], 0.1
+        f, s2w = kwargs['f_tail'], kwargs['sigma2_tail']
         p = (1 - f) / (np.pi * sigma2) * np.exp(-t ** 2 / sigma2) + f / (np.pi * s2w) * np.exp(-t ** 2 / s2w)
     norm = np.trapezoid(2 * np.pi * t * p, t)
     assert norm == pytest.approx(1., abs=0.02)
@@ -136,3 +137,19 @@ def test_heavy_tailed_hemispherical_albedo(kwargs):
                   for v in vza])
     albedo = (R * (np.cos(vza) * np.sin(vza))[:, None]).sum() * np.radians(0.5) * np.radians(1.) / np.pi
     assert albedo == pytest.approx(fresnel_unpolarised(np.radians(sza)), rel=0.05)
+
+
+def test_glint_angle():
+    """Glint angle: 0 in the specular direction (vza = sza, azimuth 0 of the LUT), sza + vza in the
+    backscattering plane (azimuth 180)."""
+    from radcalnet_oc import glint_angle
+    assert glint_angle(30., 30., 0.) == pytest.approx(0., abs=1e-6)
+    assert glint_angle(30., 20., 180.) == pytest.approx(50.)
+    assert glint_angle(40., 0., 77.) == pytest.approx(40.)
+
+
+def test_glint_flags_bits():
+    from radcalnet_oc import glint_flags, GLINT_FLAGS
+    f = glint_flags([0.005, 0.02, 0.2, 0.7, 0.7], [45., 45., 45., 45., 20.])
+    assert f.dtype == np.uint8
+    np.testing.assert_array_equal(f, [0, 1, 3, 7, 7 | GLINT_FLAGS['glint_near_specular']])

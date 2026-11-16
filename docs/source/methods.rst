@@ -515,9 +515,38 @@ Sunglint
 Implemented in :py:class:`~radcalnet_oc.coxmunk.Sunglint`. The sunglint reflectance is modelled with the Cox and Munk (1954) wave slope statistics.
 The look-up tables give the diffuse light, without sunglint (`Atmospheric path reflectance`_); the
 sunglint is defined as the direct sunlight reflected by the sea surface and attenuated by the Beer-Lambert
-law only (Eq. :eq:`tdir`), to be added to the diffuse light. It is not included in the TOA reflectance of
-:py:class:`~radcalnet_oc.process.Process`; its contribution to the TOA signal is evaluated in the
+law only (Eq. :eq:`tdir`), to be added to the diffuse light. It is not included in the TOA reflectance
+``Rtoa`` of :py:class:`~radcalnet_oc.process.Process`; its contribution to the TOA signal is evaluated in the
 tutorial :doc:`tutorials/research/radcalnet_oc_sunglint`.
+
+:py:meth:`~radcalnet_oc.process.Process.compute_sunglint` (or ``Process.execute(sunglint='cm_iso_mix')``) adds
+the TOA direct glint ``Rglint`` (gaseous and direct transmittances of the Sun-surface-sensor path), ``Rtoa_glint``
+:math:`=` ``Rtoa`` :math:`+` ``Rglint``, the glint angle, the glint fraction ``Rglint / Rtoa_glint`` at 865 nm and
+the bitmask ``glint_flags`` (:data:`~radcalnet_oc.coxmunk.GLINT_FLAGS`, CF ``flag_masks`` and ``flag_meanings``)
+to filter the dates by sunglint level:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Bit
+     - Name
+     - Condition (default)
+   * - 1
+     - ``glint_low``
+     - glint fraction :math:`\geq` 0.01
+   * - 2
+     - ``glint_moderate``
+     - glint fraction :math:`\geq` 0.1
+   * - 4
+     - ``glint_high``
+     - glint fraction :math:`\geq` 0.5
+   * - 8
+     - ``glint_near_specular``
+     - glint angle :math:`<` 30°
+
+The levels are cumulative (a high-glint date has the bits 1, 2 and 4), e.g. to keep the dates with at most a low
+glint: ``db.where(db.glint_flags & GLINT_FLAGS['glint_moderate'] == 0)``. The thresholds are arguments of
+:py:meth:`~radcalnet_oc.process.Process.compute_sunglint`.
 
 .. note::
 
@@ -587,9 +616,10 @@ and the Cox and Munk Gaussian plus a fraction :math:`f` of wide slopes of mean s
    + \frac{f}{\pi\sigma_t^2}\exp\left( -\frac{\tan^2\theta_n}{\sigma_t^2} \right).
 
 Both reduce to Eq. :eq:`cm_iso` for :math:`\nu\to\infty` and :math:`f = 0`. On the Sentinel-2 matchups of the
-AERONET-OC platforms (glint angles of 30--90°, station wind), the far glint is reproduced with :math:`f\approx0.05`
-and :math:`\sigma_t^2\approx0.08` (``scripts/s2_toa_matchup/glint_tail_fit.py``), a tail that does not scale with
-the wind of the station.
+AERONET-OC platforms (glint angles of 20--90°, station wind), the glint is reproduced from 25 to 60° with
+:math:`f = 0.05` and :math:`\sigma_t^2 = 0.12` (defaults of ``cm_iso_mix``; ``scripts/s2_toa_matchup/glint_tail_fit.py``),
+a tail that does not scale with the wind of the station; closer to the specular direction (20--25°) the glint is
+still overestimated by about 40 %, which the ``glint_near_specular`` flag below marks.
 
 With the directional statistics, the upwind and crosswind variances are
 

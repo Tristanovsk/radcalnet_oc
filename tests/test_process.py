@@ -269,3 +269,55 @@ def test_command_line_version(capsys):
     with pytest.raises(SystemExit):
         run.main(['--version'])
     assert radcalnet_oc.__version__ in capsys.readouterr().out
+
+
+@pytest.fixture(scope='module')
+def glint_run():
+    """Process with the direct sunglint on 4 measurements, from near-specular to far geometries."""
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 4))
+    process = Process(input_db=input_db, vza=angles('vza', [5., 30.]), azi=angles('azi', [0., 60., 180.]))
+    process.execute(sunglint='cm_iso_mix')
+    return process
+
+
+def test_sunglint_output(glint_run):
+    """compute_sunglint adds the glint variables without changing Rtoa; Rtoa_glint = Rtoa + Rglint."""
+    db = glint_run.radcalnet_db
+    for name in ['Rglint', 'Rg_surface', 'Rtoa_glint', 'glint_angle', 'glint_fraction', 'glint_flags']:
+        assert name in db, name
+    assert db.glint_flags.dtype == np.uint8
+    assert db.glint_flags.attrs['flag_meanings'].split() == list(radcalnet_oc.GLINT_FLAGS)
+    np.testing.assert_allclose(db.Rtoa_glint, db.Rtoa + db.Rglint)
+    assert (db.Rglint >= 0).all()
+
+
+def test_sunglint_toa_formula(glint_run):
+    """Rglint = Tg_d Tg_u exp(-(tau_r + tau_a) (1/mu0 + 1/muv)) Rg_surface, as in the matchup script."""
+    p = glint_run
+    db = p.radcalnet_db
+    t, v, a = 0, 1, 0
+    sza, vza = float(p.sza[t]), float(p.vza[v])
+    Rg = radcalnet_oc.Sunglint(sza, vza, 180. - float(p.azi[a])).sunglint(float(p.wind[t]), stats='cm_iso_mix')[0]
+    wl = 1610.
+    tau_r = float(p.lut.rot.interp(wl=wl)) * float(p.input_db.pressure[t]) / 1013.25
+    tau_a = float(p.lut.aot_lut.interp(aot_ref=float(p.aot550[t])).interp(wl=wl, method='quadratic'))
+    Tg = float((p.Tg_d * p.Tg_u).isel(time=t).sel(vza=vza).sel(wl=wl, method='nearest'))
+    expected = Tg * np.exp(-(tau_r + tau_a) * (1 / np.cos(np.radians(sza)) + 1 / np.cos(np.radians(vza)))) * Rg
+    got = float(db.Rglint.isel(time=t, vza=v, azi=a).sel(wl=wl, method='nearest'))
+    assert got == pytest.approx(expected, rel=1e-3)
+
+
+def test_sunglint_flags(glint_run):
+    """Glint flags: cumulative levels of the glint fraction at 865 nm and near-specular geometry."""
+    db = glint_run.radcalnet_db
+    F = radcalnet_oc.GLINT_FLAGS
+    flags, frac, ang = db.glint_flags.values, db.glint_fraction.values, db.glint_angle.values
+    np.testing.assert_array_equal((flags & F['glint_low']) > 0, frac >= 0.01)
+    np.testing.assert_array_equal((flags & F['glint_moderate']) > 0, frac >= 0.1)
+    np.testing.assert_array_equal((flags & F['glint_high']) > 0, frac >= 0.5)
+    np.testing.assert_array_equal((flags & F['glint_near_specular']) > 0, ang < 30.)
+    # the levels are nested, and far from the specular direction the glint is at most low (heavy tail)
+    assert np.all((flags & F['glint_high'] == 0) | (flags & F['glint_moderate'] > 0))
+    assert np.all((flags & F['glint_moderate'])[ang > 50.] == 0)
+    # near the specular direction (vza 30, azi 0, sza ~ 30-60) the glint dominates
+    assert (db.glint_flags.sel(vza=30., azi=0.) & F['glint_moderate'] > 0).any()

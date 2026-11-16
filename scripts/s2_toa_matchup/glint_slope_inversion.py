@@ -44,6 +44,7 @@ import radcalnet_oc as radoc
 ODIR = '/data/radcalnet/matchup/sentinel2'
 SITES = ['AAOT_lev20', 'Galata_Platform_lev20', 'AAOT_lev15']
 BANDS = [865, 1610, 2190]
+IQR_GLINT = 0.15  # relative IQR at 2190 nm below which a scene rejected by the SWIR threshold is glint, not cloud
 SIGMA2 = np.geomspace(0.003, 0.5, 300)  # slope variance grid (cm_iso: 0.003 at zero wind, 0.157 at 30 m/s)
 
 
@@ -52,20 +53,34 @@ def wind_eq(sigma2):
     return (sigma2 - 3e-3) / 512e-5
 
 
-def load(odir, site, dt_max=60, aot_max=0.3, glint_min=30):
-    '''Selected matchups (same selection as aot_term_search.py), deficit and glint x1e-3.'''
+def load(odir, site, dt_max=60, aot_max=0.3, glint_min=30, glint_pixels=False):
+    '''
+    Selected matchups (same selection as aot_term_search.py), deficit and glint x1e-3.
+
+    :param glint_pixels: if True, satellite statistics without the SWIR threshold of the clear pixels
+        (``satg_*``): near the specular direction, the threshold removes the most glinted scenes and biases the
+        glint low. The scenes rejected by the threshold are kept when they are homogeneous in the box (relative
+        interquartile range at 2190 nm < ``IQR_GLINT``), which separates the glint (< 0.1) from the clouds (> 0.25)
+    '''
     ds = xr.open_dataset(f'{odir}/{site}_s2_toa_matchup.nc')
-    sel = ((ds.frac_valid > 0.5) & (ds.n_pix >= 50) & (np.abs(ds.dt_nearest) <= dt_max)
-           & (ds.aot550 < aot_max) & (ds.glint_angle > glint_min))
+    clear = (ds.frac_valid > 0.5) & (ds.n_pix >= 50)
+    if glint_pixels:
+        iqr = ((ds.satg_q75 - ds.satg_q25) / ds.satg_median).sel(wl=2190, drop=True)
+        valid = clear | ((ds.frac_valid_glint > 0.5) & (ds.n_pix_glint >= 50) & (iqr < IQR_GLINT))
+        sat = ds.satg_median
+    else:
+        valid, sat = clear, ds.sat_median
+    sel = valid & (np.abs(ds.dt_nearest) <= dt_max) & (ds.aot550 < aot_max) & (ds.glint_angle > glint_min)
     d = ds.sel(time=sel)
-    df = pd.DataFrame({f'D{b}': 1e3 * (d.sim_median - d.sat_median).sel(wl=b).values for b in BANDS},
+    sat = sat.sel(time=sel)
+    df = pd.DataFrame({f'D{b}': 1e3 * (d.sim_median - sat).sel(wl=b).values for b in BANDS},
                       index=pd.DatetimeIndex(d.time.values))
     for b in BANDS:
         df[f'G{b}'] = 1e3 * d.glint_median.sel(wl=b).values
         # atmospheric factor Tg Tdir of the glint (ratio of the medians over the measurements of the window)
         T = (d.glint_median.sel(wl=b) / d.Rg_surface).values
         df[f'T{b}'] = np.where((d.Rg_surface.values > 1e-10) & (T > 0.3) & (T <= 1), T, np.nan)
-    df['B10'] = 1e3 * d.sat_median.sel(wl=1375).values
+    df['B10'] = 1e3 * sat.sel(wl=1375).values
     for v in ['aot550', 'wind', 'sza', 'vza', 'azi', 'glint_angle']:
         df[v] = d[v].values
     df['site'] = site
