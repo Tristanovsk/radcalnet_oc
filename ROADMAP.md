@@ -14,9 +14,9 @@ aerosol optical thickness. Explaining it (task 10) has the largest expected impa
 
 ## Tier 1: quick wins (hours to a day each)
 
-1. **Release 1.1.** The `[Unreleased]` section of `CHANGELOG.md` is complete (line-by-line O2, path-length
+1. ~~**Release 1.1.**~~ *Done* (1.1.0, 15 November 2026, tag `v1.1.0`). Line-by-line O2, path-length
    coupling by default, wind, spectral extension and reconstruction of Rrs, `Spectral.from_srf`,
-   `aeronet_oc_db`): ship the 684-990 nm defaults on their own, before the full-range coupling.
+   `aeronet_oc_db`: the 684-990 nm defaults shipped on their own, before the full-range coupling.
 2. ~~**Traceability of the outputs.**~~ *Done.* Package version (and git commit of a development install), `o2_model`,
    `gas_coupling` and coupling table, `rrs_extension`, solar spectrum, default wind, TOA LUT file and DOI as
    attributes of `Process.radcalnet_db` (today only the command line writes the version). The Sentinel-2
@@ -104,10 +104,10 @@ aerosol optical thickness. Explaining it (task 10) has the largest expected impa
 
 ## Done
 
-- Wind speed as an input variable, interpolated between the LUT wind nodes (Unreleased).
+- Wind speed as an input variable, interpolated between the LUT wind nodes (1.1.0).
 - Spectral extension of Rrs beyond the input (pure water) and hyperspectral reconstruction with invRrs
-  (Unreleased).
+  (1.1.0).
 - Photon path-length coupling of the gaseous absorption with the scattering in 684-990 nm, line-by-line O2
-  (Unreleased).
+  (1.1.0).
 - AERONET-OC data from the shared `aeronet_oc_db` database; Sentinel-2 TOA matchups and their analysis
   (`scripts/s2_toa_matchup`).
