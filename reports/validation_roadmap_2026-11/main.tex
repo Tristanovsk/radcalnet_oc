@@ -209,10 +209,10 @@ Left: relative; right: absolute, with the interquartile range.}
 \item \textbf{Dependence on the aerosol load.} The NIR--SWIR deficit increases with AOT (AAOT, 2190\,nm:
   $-0.8$, $-1.5$, $-2.2\times10^{-3}$ for AOT $<0.08$, 0.08--0.15, 0.15--0.3). The AOT-proportional part is
   spectrally flat ($-9$ to $-11\times10^{-3}$ per unit AOT from 865 to 2190\,nm) and larger for coarse aerosols
-  (Section~\ref{sec:sixs}), consistent with an aerosol model too spectrally steep (coarse mode underestimated)
-  in the retrieved DESE/MACL/WASO mixture, and with the coarse spectral sampling of the LUT (1000, 1600,
-  2200\,nm nodes); it accounts for about $-1\times10^{-3}$ at a typical AOT of 0.1, i.e.\ a third of the
-  deficit.
+  (Section~\ref{sec:sixs}); it accounts for about $-1\times10^{-3}$ at a typical AOT of 0.1, i.e.\ a third of
+  the deficit. The proportions of the retrieved mixture are not the cause: the mixtures with enough coarse mode to
+  cancel the slope in the SWIR contradict the AOT spectrum measured by AERONET-OC, and the OPAC models consistent
+  with it give too little SWIR path reflectance per unit AOT (Section~\ref{sec:aerosol_diag}).
 \item \textbf{Direct sunglint.} Adding the Cox--Munk direct glint reduces the median bias at 865\,nm (all glint
   angles) from $-17.0$ to $-13.5\,\%$ (AAOT L2.0), $-24.9$ to $-6.1\,\%$ (Galata) and $-44.5$ to $0.0\,\%$
   (Section-7 L1.5), but the scatter increases below $30^\circ$ (isotropic statistics, no wind direction, wind
@@ -301,6 +301,61 @@ Offset part, glint angle $>60^\circ$ & 110 & $-0.54$ & $+0.06$ & $-0.09$ \\
 \end{tabular}
 \end{table}
 
+\subsubsection{Aerosol model and AOT dependence}
+\label{sec:aerosol_diag}
+For each matchup of Table~\ref{tab:sixs}, the path reflectance $R_\mathrm{atm}$ of each of the six OPAC models of the
+LUT is computed at 865, 1610 and 2190\,nm for the geometry of the scene and the AOT(550) and wind of the nearest
+AERONET-OC measurement (\code{scripts/s2\_toa\_matchup/aerosol\_diagnosis.py}). The models being combined linearly
+at the same AOT(550) in the LUT, the reflectance of any mixture follows, and the deficit is shifted by the change
+of $R_\mathrm{atm}$ when the retrieved mixture is replaced by another one (gaseous transmittance neglected in these
+bands). The AOT spectrum of each mixture is compared with the one measured at the AERONET-OC bands (400--1020\,nm).
+
+\begin{itemize}
+\item \textbf{The retrieved mixture is fine-dominated, as the measurements.} WASO makes 85 to 92\,\% of AOT(550)
+  (DESE 6--8\,\%, MACL 2--9\,\%); the mixture fits the measured AOT spectrum (rms residual of the normalized AOT
+  0.047), slightly too steep in the near infrared (Ångström exponent 1.65 at 865--1020\,nm, against 1.39 measured)
+  and 4--6\,\% low at 865 and 1020\,nm. Extended to the SWIR, its AOT(2190)/AOT(550) is 0.04--0.09, against 0.12--0.16
+  for the power-law extrapolation of the measured 865--1020\,nm AOT (an upper bound for a fine mode).
+\item \textbf{More coarse mode removes the SWIR slope, but contradicts the AOT spectrum.} The default 50/50
+  COAV/MACL mixture brings the slope from $-11$ and $-9$ to $-2.7\times10^{-3}$ per unit AOT at 1610 and 2190\,nm, and
+  MACL alone overshoots ($+8.6$, $+6.7$); their Ångström exponents (0.70 and 0.33 at 865--1020\,nm) and residuals
+  (0.19 and 0.34, 4 to 7 times that of the retrieval) are incompatible with the measurements. Constraining a
+  WASO+MACL mixture with the measured AOT at 865 or 1020\,nm gives 8--16\,\% of MACL and keeps the slope ($-11$ to
+  $-15$). The six-model retrieval chooses fine models again (WASO and URBA) and does not reduce the slope.
+\item \textbf{The OPAC models consistent with the AOT spectrum give too little SWIR reflectance.} COAV alone has
+  the measured Ångström exponents (1.43 at 443--865 and 865--1020\,nm) and the largest SWIR slope ($-14$, $-12$).
+  The AOT dependence therefore comes from the aerosol models (size distribution, phase function, hygroscopic growth),
+  not from their proportions. A likely candidate is the fine model of the retrieval, \code{WASO\_rh0}, dry
+  water-soluble particles, whereas the relative humidity is typically 70--90\,\% at sea: hydrated particles are
+  larger and scatter relatively more in the NIR--SWIR, which goes in the direction of both the too steep retrieval
+  and the missing SWIR reflectance.
+\item \textbf{The 865\,nm offset does not depend on the mixture} ($-2.1$ to $-2.6\times10^{-3}$ for all the
+  mixtures): it is the glint-angle term of Section~\ref{sec:sixs}.
+\end{itemize}
+
+\begin{table}[h]
+\centering\small
+\caption{Deficit sim $-$ sat ($\times10^{-3}$) $=$ offset $+$ slope $\times$ AOT(550) when the retrieved mixture is
+replaced (511 matchups, AOT of the nearest AERONET-OC measurement; \code{aerosol\_diagnosis.py}), and consistency of
+the mixture with the measured AOT spectrum: Ångström exponent at 865--1020\,nm ($\alpha$, measured 1.39) and rms
+residual of the normalized AOT at 400--1020\,nm (medians).}
+\label{tab:aerosol}
+\begin{tabular}{lrrrrrr}
+\toprule
+Mixture & \multicolumn{2}{c}{865\,nm} & 1610\,nm & 2190\,nm & $\alpha$ & residual \\
+ & offset & slope & slope & slope & & \\
+\midrule
+Retrieved DESE/MACL/WASO & $-2.43$ & $-12.0$ & $-11.4$ & $-9.2$ & 1.65 & 0.047 \\
+Six-model retrieval      & $-2.54$ & $-15.5$ & $-12.4$ & $-9.9$ & 1.56 & 0.044 \\
+WASO+MACL fitted at 1020\,nm & $-2.39$ & $-12.7$ & $-12.7$ & $-10.6$ & -- & -- \\
+COAV                     & $-2.59$ & $-21.3$ & $-14.1$ & $-12.2$ & 1.43 & 0.071 \\
+COAV+MACL 50/50 (default) & $-2.49$ & $-12.3$ & $-2.7$ & $-2.7$ & 0.70 & 0.186 \\
+MACL                     & $-2.40$ & $-3.2$ & $+8.6$ & $+6.7$ & 0.33 & 0.338 \\
+DESE                     & $-2.12$ & $+10.6$ & $+33.8$ & $+31.0$ & 0.09 & 0.358 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \paragraph{Caveats.} No pixel-level uncertainty is attached yet to either side; the AERONET-OC $\Rrs$ is
 used at nadir; the matchup files report \code{radcalnet\_oc=1.0.2} although they were produced with the
 development branch (defaults \code{lbl} + \code{path\_length}), which illustrates the traceability gap of
@@ -358,12 +413,17 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
 
 \subsection{Aerosol model}
 \begin{itemize}
-\item \prio{P1} \textbf{Diagnose the AOT dependence of the NIR--SWIR deficit} (spectrally flat, larger for coarse
-  aerosols, not scaling as the single-scattering path reflectance, Section~\ref{sec:sixs}): compare the retrieved mixtures
-  (fine/coarse fractions, Ångström exponent) with the spectral AOT residuals; test COAV/MACL/DESE-rich mixtures and
-  the default 50/50 COAV/MACL on the same matchups.
-\item \prio{P1} \textbf{Make the spectral-AOT retrieval the default} when the AOT spectrum is available, and extend
-  the candidate set (6 models of the LUT rather than 3), with a constraint on the coarse mode in the SWIR.
+\item \textit{Done (November 2026):} \textbf{diagnosis of the AOT dependence of the NIR--SWIR deficit}
+  (Section~\ref{sec:aerosol_diag}): the proportions of the mixture are excluded, the OPAC models consistent with the
+  measured AOT spectrum give too little SWIR reflectance per unit AOT; extending the retrieval to the six models of
+  the LUT does not help.
+\item \prio{P1} \textbf{Hygroscopic fine mode in the LUT}: add water-soluble (and continental) models at relative
+  humidities of 70--90\,\% (OSOAA runs), test them on the matchups (same diagnosis script) and select the model
+  with the relative humidity of the site (ERA5).
+\item \prio{P1} \textbf{Make the spectral-AOT retrieval the default} when the AOT spectrum is available, with more
+  weight on the near-infrared bands (865, 1020\,nm), where the retrieved mixture is too steep.
+\item \prio{P2} \textbf{Size distribution from AERONET inversions} (almucantar, where available near the sites) to
+  build site-specific fine and coarse modes instead of the OPAC ones.
 \item \prio{P2} \textbf{Spectral sampling of the LUT}: only 10 wavelength nodes (1000, 1600, 2200\,nm in the SWIR);
   quantify the interpolation error of $R_\mathrm{atm}$ with a dense-grid simulation and add nodes (e.g.\ 865,
   1240, 1380) if needed.
@@ -486,6 +546,9 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
   outputs \code{/data/radcalnet/matchup/sentinel2/<site>\_<level>\_s2\_toa\_matchup.nc}.
 \item 6S analysis of the deficit (Section~\ref{sec:sixs}): \code{python scripts/s2\_toa\_matchup/sixs\_terms.py}
   (Natural Earth land polygons through cartopy).
+\item Aerosol model diagnosis (Section~\ref{sec:aerosol_diag}): script \code{aerosol\_diagnosis.py} in the
+  same folder (option \code{--n-jobs 4}, about 12\,min for the 511 matchups); the scenes are cached in the
+  subfolder \code{aerosol\_diagnosis} of the matchup folder.
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}

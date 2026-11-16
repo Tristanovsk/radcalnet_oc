@@ -51,6 +51,16 @@ measurements of a site. Not part of the package.
    python sixs_terms.py --odir /data/radcalnet/matchup/sentinel2
    ```
 
+5. **Aerosol model diagnosis of the AOT dependence** (`aerosol_diagnosis.py`): path reflectance of the six OPAC
+   models of the LUT at 865, 1610 and 2190 nm for each matchup (geometry of the scene, AOT and wind of the nearest
+   AERONET-OC measurement), deficit refitted with alternative mixtures, and consistency of each mixture with the
+   measured AOT spectrum. The scenes are cached per site in `--cache` (about 12 min for the 511 matchups with
+   4 processes, then seconds):
+
+   ```bash
+   python aerosol_diagnosis.py --n-jobs 4
+   ```
+
 The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
 `reports/validation_roadmap_2026-11`. The output files record the radcalnet_oc version and settings
 (`radcalnet_oc` attribute) since the traceability change of ROADMAP task 2.
