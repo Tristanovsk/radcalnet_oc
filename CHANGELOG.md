@@ -20,6 +20,14 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   pages move from `notebook/<name>.html` to `tutorials/<name>.html`); the working notebooks of
   `docs/source/tutorials/examples` are moved out of the documentation, to `examples/`, without their
   three development versions of the rendered tutorials.
+- Tutorials rerun with version 1.1 (outputs of 0.0.3 or 1.0.1 before), except the Sentinel-3 matchup
+  (simulations of version 0.0.2 to be regenerated). *Gaseous transmittance*: the direct beam (line-by-line
+  and REPTRAN O2) compared with the coupled transmittances of the path reflectance and of the water-leaving
+  term, instead of the arbitrary scaling coefficients of H2O and CH4. *Solar irradiance* and *Downwelling
+  irradiance*: total irradiance with the coupled transmittance `T_g^{E_d}` (the solar irradiance tutorial
+  did not apply its gas columns and read one aerosol model of the raw transmittance table). *Sunglint*:
+  `R_sg`, transmittance of the whole path `Tg_du`, Gaussian 3 nm smoothing. *Gaseous coupling*: presented
+  as the study before version 1.1.
 
 ### Fixed
 - `Process.execute` failed for a single measurement (time dimension of length 1) when squeezing the
