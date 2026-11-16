@@ -793,6 +793,55 @@ Screened bias, 865/2190\,nm & $-10.8$/$-24.3\,\%$ & $-10.1$/$-24.1\,\%$ \\
 \end{tabular}}
 \end{table}
 
+\subsubsection{Uncertainty of the glint and operational flag}
+\label{sec:glint_unc}
+The objective of radcalnet-oc is an accurate simulation of the TOA signal for RadCalNet; the matchup studies serve
+to improve the radiative transfer and to document when the simulation is too uncertain for Cal/Val. The glint
+levels of Section~\ref{sec:glint_flags} measure the amount of glint, not the uncertainty of the simulation. An
+uncertainty of the glint was therefore added to the package (\code{Process.compute\_sunglint}, by default), with a
+flag per wavelength for the operational flagging of the simulations before their distribution through the RadCalNet
+portal.
+
+\paragraph{Uncertainty of the glint.} The glint is computed with the plausible wave slope statistics established
+above: Cox--Munk, Student $t$ ($\nu=7$), heavy-tailed mixture (0.05, 0.12) and mixture with the retuned core
+($0.003 + 0.0035\,W$; 0.10, 0.08), each at the wind and at the wind $\pm1.5$\,m\,s$^{-1}$ (typical difference between
+the wind of a platform and the roughness of the scene). The uncertainty \code{Rglint\_unc} is the half range of these
+twelve values, attenuated as the glint (spectral).
+
+\paragraph{Spectral flag.} \code{glint\_uncertain} is 1 at the wavelengths where \code{Rglint\_unc} exceeds 5\,\% of
+the simulated TOA reflectance with glint: these bands of the simulation are not suitable for Cal/Val, while the
+other bands of the same date may be. A single flag over all the bands would reject 97\,\% of the matchups because of
+the SWIR, where the TOA signal of the water is low (5\,\% is $\sim2\times10^{-4}$ at 2190\,nm); the spectral flag keeps
+the usable bands. The bitmask of the glint levels is unchanged.
+
+\paragraph{Consistency with the matchups.} On the 715 matchups of AAOT, Galata and Section-7
+(\code{matchup\_analysis.py glint}, Table~\ref{tab:glint_unc}), the flagged bands have a median absolute difference two
+to three times larger than the kept ones at all the bands. Where the glint is uncertain, twice \code{Rglint\_unc}
+covers 61, 71 and 77\,\% of the residuals at 865, 1610 and 2190\,nm (after the offset of the scenes without glint):
+the order of magnitude of the uncertainty is realistic, slightly underestimated since the residuals also include the
+non-glint terms. Where it is not, the glint uncertainty ($\sim0.07\times10^{-3}$) is far below the residuals (0.5 to
+$1.2\times10^{-3}$), dominated by other terms. The visible bands are mostly kept (8\,\% flagged at 443\,nm) and agree
+within 2--4\,\%; the SWIR is flagged for almost all the dates (90 and 97\,\% at 1610 and 2190\,nm), consistent with what
+the glint model can guarantee today. The kept NIR bands keep the $-8$ to $-10\,\%$ bias of the additional 865\,nm term,
+which is not a glint term and must enter the uncertainty budget of the product separately.
+
+\begin{table}[h]
+\centering\small
+\caption{Spectral flag of the glint uncertainty ($>5\,\%$ of the TOA reflectance with glint) on the 715 matchups of
+AAOT L2.0, Galata L2.0, AAOT L1.5 and Section-7 L1.5 (heavy-tailed glint, all glint angles): fraction of the matchups
+flagged per band, and median absolute percentage difference (sim $+$ glint $-$ sat) of the kept and flagged bands.}
+\label{tab:glint_unc}
+\begin{tabular}{lrrrrrrrrrrr}
+\toprule
+Band (nm) & 443 & 490 & 560 & 665 & 705 & 740 & 783 & 842 & 865 & 1610 & 2190 \\
+\midrule
+Flagged (\%)        & 7.6 & 19.3 & 28.8 & 42.2 & 46.6 & 51.0 & 55.7 & 58.6 & 62.9 & 90.1 & 96.9 \\
+MAPD kept (\%)      & 2.7 & 2.1  & 2.9  & 3.8  & 5.5  & 6.0  & 8.1  & 8.6  & 9.7  & 13.0 & 22.7 \\
+MAPD flagged (\%)   & 3.5 & 5.8  & 7.6  & 10.6 & 12.6 & 13.1 & 15.1 & 17.9 & 17.3 & 31.5 & 37.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \paragraph{Caveats.} No pixel-level uncertainty is attached yet to either side; the AERONET-OC $\Rrs$ is
 used at nadir; the matchup files report \code{radcalnet\_oc=1.0.2} although they were produced with the
 development branch (defaults \code{lbl} + \code{path\_length}), which illustrates the traceability gap of
@@ -929,6 +978,13 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
   and glint-angle terms removed, fewer outliers.
 \item \prio{P2} \textbf{Named preset} of the retuned statistics in \code{Sunglint} (e.g.\ for the platform winds) and
   default of the matchup analyses, once confirmed with ERA5.
+\item \textit{Done (November 2026):} \textbf{uncertainty of the glint and spectral flag} for the operational flagging
+  of the distributed simulations (Section~\ref{sec:glint_unc}): ensemble of plausible slope statistics and wind
+  $\pm1.5$\,m\,s$^{-1}$, flag per wavelength above 5\,\% of the TOA reflectance.
+\item \prio{P1} \textbf{Glint uncertainty in the uncertainty budget} of the product (per band, with the other terms:
+  cirrus, NIR term, aerosol model), and the glint flag in the files distributed through the RadCalNet portal.
+\item \prio{P2} \textbf{Wind uncertainty from ERA5} (difference between ERA5 and the platform wind) instead of the
+  fixed 1.5\,m\,s$^{-1}$.
 \item \prio{P1} \textbf{ERA5 wind} (speed, direction) per scene, to separate a weaker wind dependence of the
   roughness from the dilution by the errors of the platform wind.
 \item \prio{P1} \textbf{Default screening}: heavy-tailed glint and exclusion of the high and near-specular flags in
@@ -1043,6 +1099,9 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
 \item Retuned core: \code{s2\_toa\_matchup.py} with \code{--reglint}, \code{--glint-stats cm\_iso\_mix},
   \code{--glint-s1 0.0035}, \code{--glint-f-tail 0.10} and \code{--glint-sigma2-tail 0.08}; analyses with
   \code{--glint-stats cm\_iso\_mix\_core}.
+\item Glint uncertainty and spectral flag (Section~\ref{sec:glint_unc}): matchups regathered with the options
+  \code{--reglint} and \code{--glint-stats cm\_iso\_mix} (variables \code{glint\_unc} and \code{glint\_uncertain}),
+  then the \code{glint} command of \code{matchup\_analysis.py} with \code{--glint-pixels}.
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}

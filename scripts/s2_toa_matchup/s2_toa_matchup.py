@@ -338,6 +338,25 @@ def reglint(s, stats, kw):
     return s
 
 
+#: MSI bands of the absorption (945 nm water vapour, 1375 nm cirrus), excluded from the glint uncertainty test
+ABSORPTION_BANDS = [945, 1375]
+
+
+def glint_unc_scene(s):
+    """
+    Uncertainty of the TOA glint of a scene (radcalnet_oc.coxmunk.glint_uncertainty: half range of the plausible
+    slope statistics at the wind +/- its uncertainty), per measurement with the atmospheric factor of the cached
+    simulation, median over the measurements (wl).
+    """
+    old = s.rec_Rg_surface
+    ok = old > 1e-30
+    factor = (s.rec_Rglint / old).where(ok)
+    factor = factor.fillna(factor.median('rec_time'))
+    u = np.array([radoc.coxmunk.glint_uncertainty(float(s.sza), float(s.vza), 180. - float(s.azi), float(w))[0]
+                  for w in s.rec_wind.values])
+    return (factor * xr.DataArray(u, coords=old.coords, dims=old.dims)).median('rec_time')
+
+
 def gather(files, site, level, glint=(GLINT_STATS, {})):
     stats, kw = glint
     scenes, recs = [], []
@@ -378,6 +397,7 @@ def gather(files, site, level, glint=(GLINT_STATS, {})):
         sc['glint_median'] = s.rec_Rglint.median('rec_time')
         sc['Rg_surface'] = s.rec_Rg_surface.median('rec_time')
         sc['glint_spectrum_median'] = s.rec_Rglint_spectrum.median('rec_time')
+        sc['glint_unc'] = glint_unc_scene(s)
         for v in AERONET_VARS + RECONSTRUCTION_VARS:
             sc[v] = s['rec_' + v].median('rec_time')
         sc = sc.drop_vars('time', errors='ignore')
@@ -390,6 +410,18 @@ def gather(files, site, level, glint=(GLINT_STATS, {})):
     # reflectance with glint at 865 nm (median of the measurements) and glint angle
     out['glint_fraction'] = (out.glint_median / out.simg_median).sel(wl=865, drop=True)
     out['glint_fraction'].attrs = {'description': 'glint_median / simg_median at 865 nm'}
+    # glint uncertainty relative to the simulated TOA reflectance with glint, and spectral flag glint_uncertain
+    # (per band) above radcalnet_oc.coxmunk.GLINT_UNC_THRESHOLD
+    out['glint_unc'].attrs = {'description': 'uncertainty of the TOA glint: half range of radcalnet_oc.coxmunk.'
+                                             'GLINT_ENSEMBLE at the wind +/- WIND_UNC (median of the measurements)'}
+    ratio = out.glint_unc / out.simg_median
+    out['glint_uncertain'] = (ratio > radoc.coxmunk.GLINT_UNC_THRESHOLD).astype(np.uint8)
+    out['glint_uncertain'].attrs = radoc.coxmunk.uncertain_attrs()
+    rel = ratio.drop_sel(wl=ABSORPTION_BANDS)
+    out['glint_unc_rel'] = rel.max('wl')
+    out['glint_unc_rel'].attrs = {'description': 'largest glint_unc / simg_median over the bands (without '
+                                                 f'{ABSORPTION_BANDS} nm)'}
+    out['glint_unc_wl'] = rel.fillna(-1).idxmax('wl')
     out['glint_flags'] = (('time',), radoc.glint_flags(out.glint_fraction.values, out.glint_angle.values))
     out['glint_flags'].attrs = radoc.coxmunk.flag_attrs()
     out = xr.merge([out, rec], compat='override', join='outer')

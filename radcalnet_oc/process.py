@@ -443,7 +443,8 @@ class Process():
         if sunglint is not None:
             self.compute_sunglint(stats=sunglint, **(sunglint_kw or {}))
 
-    def compute_sunglint(self, stats='cm_iso_mix', wl_ref=865., levels=None, angle_min=None, **kwargs):
+    def compute_sunglint(self, stats='cm_iso_mix', wl_ref=865., levels=None, angle_min=None, uncertainty=True,
+                         threshold=None, wind_unc=None, ensemble=None, tg_min=0.9, **kwargs):
         r'''
         Direct sunglint at the TOA and sunglint flags, added to ``radcalnet_db`` (after :py:meth:`execute`).
 
@@ -456,6 +457,14 @@ class Process():
         low, moderate and high of ``glint_fraction``, and near-specular geometry), e.g. to keep the low-glint
         dates: ``db.where(db.glint_flags & GLINT_FLAGS['glint_moderate'] == 0)``.
 
+        With ``uncertainty``, the uncertainty of the glint is the half range of the glint of the plausible slope
+        statistics (:data:`~radcalnet_oc.coxmunk.GLINT_ENSEMBLE`) at the wind and at the wind :math:`\pm`
+        ``wind_unc``, attenuated as the glint (``Rglint_unc``, spectral), and the spectral flag ``glint_uncertain``
+        (0/1 per wavelength) marks the wavelengths where ``Rglint_unc / Rtoa_glint`` exceeds ``threshold`` (5 %):
+        bands of the simulation too uncertain for Cal/Val, whatever the glint level, e.g. the SWIR of a date whose
+        visible bands are usable. ``glint_unc_rel`` and ``glint_unc_wl`` give the largest ratio in the atmospheric
+        windows (gaseous transmittance of the path > ``tg_min``) and its wavelength.
+
         :param stats: wave slope statistics (``'cm_iso'``, ``'cm_iso_t'``, ``'cm_iso_mix'``, ``'cm_dir'``,
             ``'bh2006'``); the default heavy-tailed mixture fits the Sentinel-2 matchups of the AERONET-OC
             platforms better than ``'cm_iso'``
@@ -464,22 +473,37 @@ class Process():
             (default :data:`~radcalnet_oc.coxmunk.GLINT_LEVELS`)
         :param angle_min: glint angle below which the near-specular bit is set
             (default :data:`~radcalnet_oc.coxmunk.GLINT_ANGLE_MIN`)
+        :param uncertainty: compute the glint uncertainty and the ``glint_uncertain`` bit
+        :param threshold: relative uncertainty of the TOA reflectance above which ``glint_uncertain`` is set
+            (default :data:`~radcalnet_oc.coxmunk.GLINT_UNC_THRESHOLD`, 0.05)
+        :param wind_unc: uncertainty of the wind speed (m s-1, default :data:`~radcalnet_oc.coxmunk.WIND_UNC`)
+        :param ensemble: plausible slope statistics, sequence of ``(stats, kwargs)``
+            (default :data:`~radcalnet_oc.coxmunk.GLINT_ENSEMBLE`)
+        :param tg_min: minimum gaseous transmittance of the path of the wavelengths of ``glint_unc_rel``
         :param kwargs: parameters of the statistics passed to :py:meth:`~radcalnet_oc.coxmunk.Sunglint.sunglint`
-            (``nu``, ``f_tail``, ``sigma2_tail``, ``wazi``, ``shadow``)
+            (``nu``, ``f_tail``, ``sigma2_tail``, ``sigma2_coef``, ``wazi``, ``shadow``)
         '''
         levels = coxmunk.GLINT_LEVELS if levels is None else levels
         angle_min = coxmunk.GLINT_ANGLE_MIN if angle_min is None else angle_min
+        threshold = coxmunk.GLINT_UNC_THRESHOLD if threshold is None else threshold
+        wind_unc = coxmunk.WIND_UNC if wind_unc is None else wind_unc
+        ensemble = coxmunk.GLINT_ENSEMBLE if ensemble is None else ensemble
         sza, wind = self.sza.values, self.wind.values
         vza, azi = np.atleast_1d(self.vza.values), np.atleast_1d(self.azi.values)
         Rg = np.zeros((len(sza), len(vza), len(azi)))
+        Rg_unc = np.zeros_like(Rg)
         for i, (s, w) in enumerate(zip(sza, wind)):
             for j, v in enumerate(vza):
                 for k, a in enumerate(azi):
                     # Sunglint: relative azimuth 180 deg in the specular direction (180 - azi of the LUT)
                     g = coxmunk.Sunglint(float(s), float(v), 180. - float(a))
                     Rg[i, j, k] = max(g.sunglint(float(w), stats=stats, **kwargs)[0], 0.)
+                    if uncertainty:
+                        Rg_unc[i, j, k] = coxmunk.glint_uncertainty(float(s), float(v), 180. - float(a), float(w),
+                                                                    ensemble, wind_unc)[0]
         coords = {'time': self.sza.time.values, 'vza': vza, 'azi': azi}
         Rg = xr.DataArray(Rg, coords=coords, dims=('time', 'vza', 'azi'))
+        Rg_unc = xr.DataArray(Rg_unc, coords=coords, dims=('time', 'vza', 'azi'))
         angle = xr.DataArray(coxmunk.glint_angle(sza[:, None, None], vza[None, :, None], azi[None, None, :]),
                              coords=coords, dims=('time', 'vza', 'azi'))
 
@@ -494,6 +518,13 @@ class Process():
         Rglint = Rglint.transpose(*[d for d in self.Rtoa.dims if d in Rglint.dims])
         total = self.Rtoa.reset_coords(drop=True) + Rglint
         fraction = (Rglint / total).sel(wl=wl_ref, method='nearest', drop=True)
+        if uncertainty:
+            Rglint_unc = (Tg * Tdir * Rg_unc).reset_coords(drop=True).transpose(*Rglint.dims)
+            ratio = Rglint_unc / total
+            uncertain = (ratio > threshold).astype(np.uint8)
+            rel = ratio.where((Tg > tg_min).reset_coords(drop=True))
+            unc_rel = rel.max('wl')
+            unc_wl = rel.fillna(-1).idxmax('wl')
         flags = xr.DataArray(coxmunk.glint_flags(fraction.values, angle.broadcast_like(fraction).values,
                                                  levels, angle_min),
                              coords=fraction.coords, dims=fraction.dims)
@@ -514,6 +545,18 @@ class Process():
                                    'specular reflection of the Sun'}
         db['glint_fraction'] = fraction.squeeze()
         db['glint_fraction'].attrs = {'unit': '-', 'description': f'Rglint / Rtoa_glint at {wl_ref:g} nm'}
+        if uncertainty:
+            db['Rglint_unc'] = Rglint_unc.squeeze()
+            db['Rglint_unc'].attrs = {'unit': '-', 'description': 'uncertainty of the TOA direct glint: half range of '
+                                      f'the slope statistics {[s for s, _ in ensemble]} at the wind +/- {wind_unc:g} '
+                                      'm s-1', 'ensemble': repr(ensemble)}
+            db['glint_uncertain'] = uncertain.squeeze()
+            db['glint_uncertain'].attrs = coxmunk.uncertain_attrs(threshold, wind_unc, ensemble)
+            db['glint_unc_rel'] = unc_rel.transpose(*fraction.dims).squeeze()
+            db['glint_unc_rel'].attrs = {'unit': '-', 'description': 'largest Rglint_unc / Rtoa_glint in the '
+                                         f'atmospheric windows (path gaseous transmittance > {tg_min:g})'}
+            db['glint_unc_wl'] = unc_wl.transpose(*fraction.dims).squeeze()
+            db['glint_unc_wl'].attrs = {'unit': 'nm', 'description': 'wavelength of glint_unc_rel'}
         db['glint_flags'] = flags.squeeze()
         db['glint_flags'].attrs = coxmunk.flag_attrs(levels, angle_min, wl_ref)
         self.radcalnet_db = db

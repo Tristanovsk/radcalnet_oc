@@ -11,11 +11,40 @@ from scipy import special
 #: reflectance at the reference wavelength (a high-glint case has the three level bits set), and geometry
 #: close to the specular direction, where the glint model is the least reliable (overestimated by ~40 % at glint
 #: angles of 20--25 deg on the Sentinel-2 matchups of the AERONET-OC platforms)
+#: (the uncertainty of the glint is flagged per wavelength, see :func:`uncertain_attrs`)
 GLINT_FLAGS = {'glint_low': 1, 'glint_moderate': 2, 'glint_high': 4, 'glint_near_specular': 8}
 #: glint fractions of the TOA reflectance of the levels low, moderate and high
 GLINT_LEVELS = (0.01, 0.1, 0.5)
 #: glint angle (deg) below which ``glint_near_specular`` is set
 GLINT_ANGLE_MIN = 30.
+#: plausible wave slope statistics of the glint uncertainty: Cox and Munk, Student t, heavy-tailed mixture, and the
+#: mixture with the core and tail retuned on the Sentinel-2 matchups of the AERONET-OC platforms (station wind)
+GLINT_ENSEMBLE = (('cm_iso', {}),
+                  ('cm_iso_t', {'nu': 7.}),
+                  ('cm_iso_mix', {'f_tail': 0.05, 'sigma2_tail': 0.12}),
+                  ('cm_iso_mix', {'f_tail': 0.10, 'sigma2_tail': 0.08, 'sigma2_coef': (3e-3, 35e-4)}))
+#: uncertainty of the wind speed of the glint (m s-1): platform wind against the roughness of the scene
+WIND_UNC = 1.5
+#: relative uncertainty of the TOA reflectance due to the glint above which a wavelength is flagged
+#: ``glint_uncertain`` (operational flag of the simulations distributed for Cal/Val, all wavelengths)
+GLINT_UNC_THRESHOLD = 0.05
+
+
+def glint_uncertainty(sza, vza, azi, wind, ensemble=GLINT_ENSEMBLE, wind_unc=WIND_UNC):
+    '''
+    Uncertainty of the surface glint: half range of the glint of the statistics of ``ensemble`` at the wind speeds
+    ``wind - wind_unc`` (>= 0), ``wind`` and ``wind + wind_unc``.
+
+    :param sza: solar zenith angle (deg)
+    :param vza: viewing zenith angle (deg)
+    :param azi: relative azimuth (deg), convention of :py:class:`Sunglint` (180 deg in the specular direction)
+    :param wind: wind speed (m s-1)
+    :return: half range, minimum and maximum of the surface glint reflectance
+    '''
+    g = Sunglint(sza, vza, azi)
+    values = [max(g.sunglint(max(w, 0.), stats=stats, **kw)[0], 0.)
+              for stats, kw in ensemble for w in (wind - wind_unc, wind, wind + wind_unc)]
+    return (max(values) - min(values)) / 2, min(values), max(values)
 
 
 def glint_angle(sza, vza, azi):
@@ -57,6 +86,15 @@ def flag_attrs(levels=GLINT_LEVELS, angle_min=GLINT_ANGLE_MIN, wl_ref=865.):
             'description': f'sunglint flags: direct glint >= {levels[0]:g}, {levels[1]:g}, {levels[2]:g} of the TOA '
                            f'reflectance (with glint) at {wl_ref:g} nm (cumulative levels low, moderate, high); '
                            f'glint angle < {angle_min:g} deg (near specular, glint model least reliable)'}
+
+
+def uncertain_attrs(threshold=GLINT_UNC_THRESHOLD, wind_unc=WIND_UNC, ensemble=GLINT_ENSEMBLE):
+    '''CF attributes of the spectral flag of the glint uncertainty.'''
+    return {'flag_values': np.array([0, 1], dtype=np.uint8), 'flag_meanings': 'glint_ok glint_uncertain',
+            'description': f'1 where the uncertainty of the direct glint (half range of the slope statistics '
+                           f'{[s for s, _ in ensemble]} at the wind +/- {wind_unc:g} m s-1) exceeds {threshold:g} of '
+                           f'the TOA reflectance with glint at this wavelength: band not suitable for Cal/Val',
+            'threshold': threshold, 'wind_unc': wind_unc}
 
 
 class Sunglint:

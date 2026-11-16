@@ -12,8 +12,9 @@ Three commands, on the gathered files ``<odir>/<site>_<level>_s2_toa_matchup.nc`
 - ``figures``: spectral bias per site (``s2_bias_spectrum.pdf``) and difference versus glint angle with
   a scatter plot (``s2_glint_scatter.pdf``);
 - ``glint``: matchups per sunglint level (``glint_flags`` of the gathered files: none, low, moderate, high,
-  near specular) with and without the simulated glint, and efficiency of screenings by glint angle and by flags
-  (matchups kept, outliers removed, bias and dispersion of the kept ones); figure ``s2_glint_levels.pdf``.
+  near specular) with and without the simulated glint, spectral flag of the glint uncertainty
+  (``glint_uncertain``, per band), and efficiency of screenings by glint angle and by flags (matchups kept, outliers
+  removed, bias and dispersion of the kept ones); figure ``s2_glint_levels.pdf``.
 
 Selection of the matchups: valid fraction of the box > ``--frac-min``, at least ``--npix-min`` valid pixels,
 nearest AERONET-OC measurement within ``--dt-max`` minutes, AOT(550) < ``--aot-max``. With ``--glint-pixels``,
@@ -285,6 +286,24 @@ def cmd_glint(args):
     out = pd.concat([g[[f'relg{wl}' for wl in args.bands]].agg(lambda x: np.nanmedian(np.abs(x)))
                      .add_prefix('MAPD '), g[[f'absg{wl}' for wl in args.bands]].median()], axis=1)
     print(out.reindex([l for l in LEVELS if l in out.index]).round(2).to_string())
+
+    if 'glint_uncertain' in ds:
+        # spectral flag of the glint uncertainty (radcalnet_oc: Rglint_unc / Rtoa_glint > 5 %), per band
+        rows = []
+        for site in sites_of(args):
+            ds = load(args.odir, site, args)
+            d = ds.isel(time=selection(ds, args).values).drop_sel(wl=[945, 1375])
+            rel = (100 * (d.simg_median - d.sat_median) / d.sat_median).to_pandas()
+            flag = d.glint_uncertain.to_pandas().astype(bool)
+            rows.append((rel, flag))
+        rel = pd.concat([r for r, _ in rows])
+        flag = pd.concat([f for _, f in rows])
+        out = pd.DataFrame({'flagged %': 100 * flag.mean(),
+                            'kept: bias %': rel[~flag].median(), 'kept: MAPD %': rel[~flag].abs().median(),
+                            'flagged: bias %': rel[flag].median(), 'flagged: MAPD %': rel[flag].abs().median()})
+        print(f'-- spectral flag glint_uncertain ({len(rel)} matchups): fraction flagged per band, median relative '
+              'difference with the glint (bias) and MAPD of the kept and flagged bands')
+        print(out.T.round(1).to_string())
 
     # efficiency of the screenings: outliers of the simulation with the glint
     out_rel, out_abs = args.outlier_rel, args.outlier_abs

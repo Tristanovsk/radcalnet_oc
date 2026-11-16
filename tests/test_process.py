@@ -321,3 +321,21 @@ def test_sunglint_flags(glint_run):
     assert np.all((flags & F['glint_moderate'])[ang > 50.] == 0)
     # near the specular direction (vza 30, azi 0, sza ~ 30-60) the glint dominates
     assert (db.glint_flags.sel(vza=30., azi=0.) & F['glint_moderate'] > 0).any()
+
+
+def test_sunglint_uncertainty(glint_run):
+    """Glint uncertainty: spectral Rglint_unc >= 0, spectral flag glint_uncertain where Rglint_unc / Rtoa_glint
+    > 5 %, glint_unc_rel its largest value in the windows; near the specular direction the glint is uncertain."""
+    db = glint_run.radcalnet_db
+    for name in ['Rglint_unc', 'glint_uncertain', 'glint_unc_rel', 'glint_unc_wl']:
+        assert name in db, name
+    assert (db.Rglint_unc >= 0).all()
+    assert db.glint_uncertain.dtype == np.uint8 and 'wl' in db.glint_uncertain.dims
+    np.testing.assert_array_equal(db.glint_uncertain.values, (db.Rglint_unc / db.Rtoa_glint).values > 0.05)
+    assert db.glint_uncertain.attrs['flag_meanings'] == 'glint_ok glint_uncertain'
+    assert (db.glint_uncertain.sel(vza=30., azi=0.).sel(wl=865., method='nearest') == 1).all()
+    # the uncertain fraction of the bands grows from the blue to the SWIR (decreasing TOA signal)
+    frac = db.glint_uncertain.mean(['time', 'vza', 'azi'])
+    assert float(frac.sel(wl=2190., method='nearest')) >= float(frac.sel(wl=443., method='nearest'))
+    # the windows exclude the saturated absorption bands
+    assert not np.isin(np.round(db.glint_unc_wl.values), np.arange(1355, 1415)).any()

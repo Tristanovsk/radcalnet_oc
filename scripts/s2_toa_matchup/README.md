@@ -41,7 +41,9 @@ measurements of a site. Not part of the package.
 
    The gathered files carry the sunglint flags of each scene (`glint_fraction`, glint / simulated TOA reflectance
    with glint at 865 nm, and the bitmask `glint_flags` of `radcalnet_oc.GLINT_FLAGS`: low, moderate, high glint,
-   near-specular geometry).
+   near-specular geometry), the glint uncertainty `glint_unc` (spread of `radcalnet_oc.coxmunk.GLINT_ENSEMBLE` at
+   the wind +/- 1.5 m/s, per band) and the spectral flag `glint_uncertain` (per band, `glint_unc / simg_median` >
+   5 %).
 
 2. **Analysis** (`matchup_analysis.py`):
 

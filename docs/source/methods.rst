@@ -548,6 +548,17 @@ The levels are cumulative (a high-glint date has the bits 1, 2 and 4), e.g. to k
 glint: ``db.where(db.glint_flags & GLINT_FLAGS['glint_moderate'] == 0)``. The thresholds are arguments of
 :py:meth:`~radcalnet_oc.process.Process.compute_sunglint`.
 
+The uncertainty of the glint is flagged per wavelength, for the operational flagging of the simulations distributed
+for Cal/Val. ``Rglint_unc`` is the half range of the glint of the plausible slope statistics
+(:data:`~radcalnet_oc.coxmunk.GLINT_ENSEMBLE`: Cox and Munk, Student t, heavy-tailed mixture, mixture with the core
+and tail retuned on the Sentinel-2 matchups) at the wind and at the wind :math:`\pm` 1.5 m s\ :sup:`-1`
+(:data:`~radcalnet_oc.coxmunk.WIND_UNC`), attenuated as the glint, and the spectral flag ``glint_uncertain`` (1 per
+wavelength) marks the wavelengths where ``Rglint_unc / Rtoa_glint`` exceeds 5 %
+(:data:`~radcalnet_oc.coxmunk.GLINT_UNC_THRESHOLD`): these bands of the simulation are not suitable for Cal/Val,
+while the other bands of the same date may be (the low TOA signal of the water in the SWIR makes these bands the
+first flagged). On the Sentinel-2 matchups of AAOT, Galata and Section-7, the flagged bands have a median absolute
+difference two to three times larger than the kept ones (665 nm: 10.6 against 3.8 %; 865 nm: 17.3 against 9.7 %).
+
 .. note::
 
    In this section and in :py:class:`~radcalnet_oc.coxmunk.Sunglint`, the relative azimuth angle

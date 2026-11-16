@@ -167,3 +167,15 @@ def test_core_wind_coefficient(stats):
     w_eff = (s0 + s1 * ws - 3e-3) / 512e-5
     assert s.sunglint(ws, stats=stats, sigma2_coef=(s0, s1))[0] == pytest.approx(s.sunglint(w_eff, stats=stats)[0],
                                                                                  rel=1e-12)
+
+
+def test_glint_uncertainty():
+    """Glint uncertainty: half range of the ensemble at the wind +/- its uncertainty; zero far from the glint for
+    all statistics but the heavy tails, large near the specular direction."""
+    from radcalnet_oc.coxmunk import glint_uncertainty, GLINT_ENSEMBLE
+    u, lo, hi = glint_uncertainty(30., 30., 180., 3.)  # specular
+    assert u == pytest.approx((hi - lo) / 2) and u > 0.1 * hi
+    u_far, _, _ = glint_uncertainty(30., 10., 0., 3.)  # backscattering, glint angle 40 deg... far
+    assert u_far < u
+    # a single statistics without wind uncertainty has no spread
+    assert glint_uncertainty(30., 20., 150., 3., ensemble=GLINT_ENSEMBLE[:1], wind_unc=0.)[0] == 0.
