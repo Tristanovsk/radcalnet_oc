@@ -20,8 +20,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   pages move from `notebook/<name>.html` to `tutorials/<name>.html`); the working notebooks of
   `docs/source/tutorials/examples` are moved out of the documentation, to `examples/`, without their
   three development versions of the rendered tutorials.
-- Tutorials rerun with version 1.1 (outputs of 0.0.3 or 1.0.1 before), except the Sentinel-3 matchup
-  (simulations of version 0.0.2 to be regenerated). *Gaseous transmittance*: the direct beam (line-by-line
+- Tutorials rerun with version 1.1 (outputs of 0.0.3 or 1.0.1 before). *Sentinel-3 matchup*: the simulations
+  are computed in the tutorial for each AERONET-OC measurement within 1 h of the overpass, at the geometry of the
+  scene and with the direct sunglint (cached per scene), instead of being read from the monthly simulations of
+  version 0.0.2 on a grid of viewing angles; VZA up to 48 deg (508 matchups instead of 375). *Gaseous transmittance*: the direct beam (line-by-line
   and REPTRAN O2) compared with the coupled transmittances of the path reflectance and of the water-leaving
   term, instead of the arbitrary scaling coefficients of H2O and CH4. *Solar irradiance* and *Downwelling
   irradiance*: total irradiance with the coupled transmittance `T_g^{E_d}` (the solar irradiance tutorial
