@@ -42,6 +42,15 @@ measurements of a site. Not part of the package.
 
 3. **Notebook**: `sentinel2_radcalnet_oc_toa_matchup.ipynb`, spectra and time series of the matchups of a site.
 
+4. **6S analysis of the NIR-SWIR deficit** (`sixs_terms.py`): the coupling and environment terms of 6S (trapping
+   of the water signal, adjacency of the coast with the 6S environment functions and the Natural Earth land
+   polygons of cartopy, whitecaps) compared with the deficit, and decomposition of the deficit into an offset and
+   a term proportional to AOT (dependence on wind, Angstrom exponent, glint angle and L1C processing baseline):
+
+   ```bash
+   python sixs_terms.py --odir /data/radcalnet/matchup/sentinel2
+   ```
+
 The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
 `reports/validation_roadmap_2026-11`. The output files record the radcalnet_oc version and settings
 (`radcalnet_oc` attribute) since the traceability change of ROADMAP task 2.

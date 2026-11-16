@@ -197,17 +197,22 @@ Left: relative; right: absolute, with the interquartile range.}
   ($\Rrs$ at nadir) term rather than aerosols.
 \item \textbf{NIR--SWIR: systematic deficit of $2$--$3\times10^{-3}$}, nearly flat from 705 to 2190\,nm
   (Fig.~\ref{fig:bias}, right), hence a relative error growing with wavelength as the signal decreases. The same
-  shape at all sites (larger at Section-7, closer to the coast) points to a common, spectrally flat missing
-  contribution rather than to a band-specific gas or calibration error.
+  shape at all sites points to a common missing contribution rather than to a band-specific gas or calibration
+  error. It is larger at Section-7, although this platform is the farthest from the coast (29\,km, against 13\,km
+  for AAOT and 23\,km for Galata), and it is mostly an AOT-independent term that vanishes for glint angles
+  $>60^\circ$ (Section~\ref{sec:sixs}).
 \item \textbf{Dependence on the glint angle.} At AAOT, the deficit at 865\,nm is $-4.0$, $-3.4$, $-2.1$ and
   $-1.1\times10^{-3}$ for glint angles of 30--40, 40--50, 50--60 and $>60^\circ$ (Galata: $-5.4$ to $-1.2$);
   2190\,nm behaves the same (Fig.~\ref{fig:glint}). With MSI near nadir, the glint angle is strongly correlated
   with the solar zenith angle (Spearman $\rho\approx0.5$ for both), so a far glint tail cannot yet be separated
   from an SZA-dependent diffuse term.
 \item \textbf{Dependence on the aerosol load.} The NIR--SWIR deficit increases with AOT (AAOT, 2190\,nm:
-  $-0.8$, $-1.5$, $-2.2\times10^{-3}$ for AOT $<0.08$, 0.08--0.15, 0.15--0.3), consistent with an aerosol model
-  too spectrally steep (coarse mode underestimated) in the retrieved DESE/MACL/WASO mixture, and with the coarse
-  spectral sampling of the LUT (1000, 1600, 2200\,nm nodes).
+  $-0.8$, $-1.5$, $-2.2\times10^{-3}$ for AOT $<0.08$, 0.08--0.15, 0.15--0.3). The AOT-proportional part is
+  spectrally flat ($-9$ to $-11\times10^{-3}$ per unit AOT from 865 to 2190\,nm) and larger for coarse aerosols
+  (Section~\ref{sec:sixs}), consistent with an aerosol model too spectrally steep (coarse mode underestimated)
+  in the retrieved DESE/MACL/WASO mixture, and with the coarse spectral sampling of the LUT (1000, 1600,
+  2200\,nm nodes); it accounts for about $-1\times10^{-3}$ at a typical AOT of 0.1, i.e.\ a third of the
+  deficit.
 \item \textbf{Direct sunglint.} Adding the Cox--Munk direct glint reduces the median bias at 865\,nm (all glint
   angles) from $-17.0$ to $-13.5\,\%$ (AAOT L2.0), $-24.9$ to $-6.1\,\%$ (Galata) and $-44.5$ to $0.0\,\%$
   (Section-7 L1.5), but the scatter increases below $30^\circ$ (isotropic statistics, no wind direction, wind
@@ -227,6 +232,74 @@ Left: relative; right: absolute, with the interquartile range.}
 the simulated direct glint. Right: simulated versus observed TOA reflectance for glint angles $>30^\circ$.}
 \label{fig:glint}
 \end{figure}
+
+\subsubsection{The NIR--SWIR deficit in view of 6S}
+\label{sec:sixs}
+The 6S formulation (Vermote et al., \emph{6S User Guide}, version 3, 2006, Part~1, Eqs.~4--8 and 23--26; Part~2,
+subroutine ENVIRO) gives a checklist of the terms coupling the atmosphere and the surface: the target contribution
+split into direct--direct, diffuse--direct, direct--diffuse and multiple interactions (spherical albedo $S$,
+trapping $1/(1-S\rho)$), and, for a non-uniform surface, the environment (adjacency) term
+$T(\theta_s)\,t_d(\theta_v)\,\langle\rho\rangle/(1-S\langle\rho\rangle)$. Each one was confronted with the deficit
+(\code{scripts/s2\_toa\_matchup/sixs\_terms.py}, same selection as Table~\ref{tab:s2}, AAOT L2.0, AAOT L1.5 and
+Galata pooled, $N=511$).
+
+\begin{itemize}
+\item \textbf{Surface--atmosphere coupling of the sea surface: already in the LUT.} In the SOS core of OSOAA used for
+  the LUT, the direct solar beam reflected by the waves is introduced as a source of the first order of scattering
+  and only this direct--direct term (6S Eq.~23) is subtracted from the upward field at the end: the skylight
+  reflected by the surface (Eq.~24), the scattering of the reflected direct beam (Eq.~25) and the multiple
+  interactions through the spherical albedo (Eq.~26) are in $R_\mathrm{atm}$, and the direct--direct glint is
+  added back by the matchup script.
+\item \textbf{Trapping of the water signal: negligible.} $T T S\rho_w^2/(1-S\rho_w)$ is below $10^{-5}$ for
+  $\rho_w = \pi\Rrs < 0.01$ (NIR--SWIR), and $4\times10^{-4}$ at most for $\rho_w = 0.05$ and $S=0.15$.
+\item \textbf{Environment (adjacency) of the coast: one order of magnitude too small and not flat.} With the 6S
+  environment functions of the molecules, $F_R(r) = 1-[0.930\,e^{-0.08r}+0.070\,e^{-1.10r}]$, and of the aerosols,
+  $F_P(r) = 1-[0.448\,e^{-0.27r}+0.552\,e^{-2.83r}]$ ($r$ in km), the Natural Earth land polygons and the
+  reflectance of vegetated land (0.30, 0.22, 0.12 at 865, 1610, 2190\,nm, an upper bound), the term is
+  0.22, 0.016, $0.003\times10^{-3}$ at AAOT (coast at 13\,km), 0.10, 0.007, $0.001\times10^{-3}$ at Galata (23\,km)
+  and 0.04, 0.002, $0.0004\times10^{-3}$ at Section-7 (29\,km), against $-2.7$, $-1.8$, $-1.5\times10^{-3}$ at
+  AAOT. Beyond 10\,km only the molecular environment function contributes: the term collapses in the SWIR and does
+  not depend on the aerosol load.
+\item \textbf{Whitecaps (Lambertian, absent from OSOAA): not supported.} With the coverage
+  $W = 2.95\times10^{-6}U^{3.52}$ and a foam reflectance of 0.22 decreasing in the infrared, they would give
+  0.24 (6\,m\,s$^{-1}$) to $0.66\times10^{-3}$ (8\,m\,s$^{-1}$) at 865\,nm, but the deficit does not increase with
+  the wind speed (it is even smaller above 7\,m\,s$^{-1}$) and a $U^{3.52}$ term is not significant in the
+  regressions.
+\end{itemize}
+
+The deficit splits into an offset and a term proportional to AOT(550) (Table~\ref{tab:sixs}). The AOT term is
+spectrally flat and larger for coarse aerosols (deficit at 865\,nm of $-5.1\times10^{-3}$ for an Ångström exponent
+$<0.8$, against $-2.6\times10^{-3}$ for $>1.6$), as expected from an underestimated coarse mode, but it does not
+scale with the single-scattering geometry factor $1/(4\mu_s\mu_v)$ of the path reflectance ($R^2 = 0$ when AOT is
+replaced by AOT$/(4\mu_s\mu_v)$): a missing optical thickness alone does not explain it, which points rather to the
+phase function of the retrieved models or to the AOT and spectral interpolation of the LUT. The offset, about
+two thirds of the deficit, decreases by a factor 2 from 865 to 2190\,nm, which matches none of the 6S terms above
+(factor $\sim$40 for the molecular scattering, 70 for the environment, 4 for the whitecaps), and it depends on the
+glint angle: from $-3.2$, $-2.4$, $-1.8\times10^{-3}$ at 30--40$^\circ$ to $-0.5$, $+0.1$, $-0.1\times10^{-3}$
+beyond $60^\circ$ (865, 1610, 2190\,nm). It is not an L1C radiometric offset: the deficit at 865\,nm is similar for
+the processing baselines N0400 to N0511 and for the reprocessed collection N0500 ($-2.3\times10^{-3}$, 2017--2021).
+The deficit is therefore not explained by the coupling and environment terms of 6S; its main part is the
+glint-angle (or SZA) dependence of finding~3, i.e.\ a far glint tail heavier than the isotropic Cox--Munk one or an
+SZA-dependent diffuse term (Section~\ref{sec:roadmap_glint}).
+
+\begin{table}[h]
+\centering\small
+\caption{Deficit sim $-$ sat ($\times10^{-3}$) $=$ offset $+$ slope $\times$ AOT(550), least squares, glint angle
+$>30^\circ$ (\code{sixs\_terms.py}). Last line: offset part ($D - $ slope$\times$AOT) for glint angles $>60^\circ$.}
+\label{tab:sixs}
+\begin{tabular}{lrrrr}
+\toprule
+ & $N$ & 865\,nm & 1610\,nm & 2190\,nm \\
+\midrule
+Offset, pooled            & 511 & $-2.77$ & $-1.70$ & $-1.43$ \\
+Slope per unit AOT, pooled & 511 & $-9.5$ & $-10.6$ & $-8.9$ \\
+Offset / slope, AAOT L2.0 & 314 & $-2.64$ / $-9.0$ & $-1.49$ / $-10.0$ & $-1.30$ / $-8.1$ \\
+Offset / slope, Galata L2.0 & 98 & $-3.58$ / $-4.7$ & $-2.42$ / $-9.8$ & $-2.04$ / $-9.4$ \\
+Offset / slope, AAOT L1.5 & 99 & $-2.18$ / $-17.8$ & $-1.55$ / $-14.6$ & $-1.20$ / $-11.3$ \\
+Offset part, glint angle $>60^\circ$ & 110 & $-0.54$ & $+0.06$ & $-0.09$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{Caveats.} No pixel-level uncertainty is attached yet to either side; the AERONET-OC $\Rrs$ is
 used at nadir; the matchup files report \code{radcalnet\_oc=1.0.2} although they were produced with the
@@ -285,7 +358,8 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
 
 \subsection{Aerosol model}
 \begin{itemize}
-\item \prio{P1} \textbf{Diagnose the AOT dependence of the NIR--SWIR deficit}: compare the retrieved mixtures
+\item \prio{P1} \textbf{Diagnose the AOT dependence of the NIR--SWIR deficit} (spectrally flat, larger for coarse
+  aerosols, not scaling as the single-scattering path reflectance, Section~\ref{sec:sixs}): compare the retrieved mixtures
   (fine/coarse fractions, Ångström exponent) with the spectral AOT residuals; test COAV/MACL/DESE-rich mixtures and
   the default 50/50 COAV/MACL on the same matchups.
 \item \prio{P1} \textbf{Make the spectral-AOT retrieval the default} when the AOT spectrum is available, and extend
@@ -325,8 +399,10 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
 \end{itemize}
 
 \subsection{Sunglint}
+\label{sec:roadmap_glint}
 \begin{itemize}
-\item \prio{P1} \textbf{Explain the glint-angle dependence} of the NIR--SWIR deficit (Fig.~\ref{fig:glint}): compare
+\item \prio{P1} \textbf{Explain the glint-angle dependence} of the NIR--SWIR deficit (Fig.~\ref{fig:glint}), its main
+  part after the 6S analysis of Section~\ref{sec:sixs} (environment, trapping and whitecaps excluded): compare
   the observed SWIR reflectance with the Cox--Munk tail versus the glint angle and the wind speed; use the
   wind direction (ERA5) with anisotropic Cox--Munk statistics; test the sky-glint term of the LUT at the measured
   wind.
@@ -408,6 +484,8 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
   (commit \code{6439281}); documentation \url{https://radcalnet-oc.readthedocs.io}.
 \item Matchups: \code{python scripts/s2\_toa\_matchup/s2\_toa\_matchup.py --site AAOT --level lev20 --n-jobs 4};
   outputs \code{/data/radcalnet/matchup/sentinel2/<site>\_<level>\_s2\_toa\_matchup.nc}.
+\item 6S analysis of the deficit (Section~\ref{sec:sixs}): \code{python scripts/s2\_toa\_matchup/sixs\_terms.py}
+  (Natural Earth land polygons through cartopy).
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}
