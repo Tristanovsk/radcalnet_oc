@@ -22,6 +22,9 @@ from . import GaseousTransmittance, GasCoupling, Misc, LUT, SolarIrradiance, __v
 from .kernel import GAS_COUPLING, GAS_COUPLINGS, GAS_COUPLING_FILE, GAS_COUPLING_PPLD_FILE
 from .config import load_config, LUT_FILE_BACKUP
 from .lut import WIND
+#: pressure of the Rayleigh optical thickness of the OSOAA runs of the look-up tables (hPa): AP.MOT of the runs is the
+#: Bodhaine et al. (1999) optical thickness at 1015.2 hPa (e.g. 0.360251 at 400 nm against 0.359559 at 1013.25 hPa)
+LUT_PRESSURE = 1015.2
 from .water import extend_rrs
 from . import coxmunk
 
@@ -89,7 +92,8 @@ class Process():
                  Rrs_name='Rrs',
                  o2_model=None,
                  gas_coupling=None,
-                 rrs_extension=None
+                 rrs_extension=None,
+                 rayleigh_pressure=False
                  ):
         '''
         :param input_db: time series of the surface measurements, :py:class:`xarray.Dataset` with a
@@ -118,7 +122,11 @@ class Process():
             near-infrared end of the input, see :py:func:`~radcalnet_oc.water.extend_rrs`) or ``'zero'``
             (as before version 1.1); by default ``settings: rrs_extension`` of the configuration
             (``'pure_water'``)
+        :param rayleigh_pressure: scale the Rayleigh scattering with the surface pressure of each measurement
+            (the look-up tables are computed for 1015.2 hPa): path reflectance and diffuse transmittances, see
+            :py:meth:`rayleigh_pressure_correction`
         '''
+        self.rayleigh_pressure = rayleigh_pressure
         self.rrs_extension = RRS_EXTENSION if rrs_extension is None else rrs_extension
         if self.rrs_extension not in RRS_EXTENSIONS:
             raise ValueError(f'rrs_extension must be one of {RRS_EXTENSIONS}, not {self.rrs_extension!r}')
@@ -366,6 +374,11 @@ class Process():
         Rdiff = self.lut.Rdiff_lut
         Rdiff = Rdiff.squeeze([d for d in Rdiff.dims if d != 'time' and Rdiff.sizes[d] == 1])
         Ratm = Rdiff.interp(aot_ref=self.aot550).interp(wl=self.full_wl, method='quadratic')
+        if self.rayleigh_pressure:
+            dRray, fd, fu = self.rayleigh_pressure_correction()
+            Ratm = Ratm + dRray
+            self.Tra_d = self.Tra_d * fd
+            self.tra_u = self.tra_u * fu
         # Sun-surface-sensor gaseous transmittance (Tg_d * Tg_u, computed for the whole path, or with the
         # effective air mass of the path reflectance, see get_gas_transmittance)
         Ratm = self.Tg_atm * Ratm
@@ -562,6 +575,45 @@ class Process():
         self.radcalnet_db = db
         return db
 
+    def rayleigh_pressure_correction(self):
+        r"""
+        Change of the Rayleigh scattering from the pressure of the look-up tables (:math:`P_0` = 1015.2 hPa, ``LUT_PRESSURE``) to
+        the surface pressure :math:`P` of each measurement (after :py:meth:`~radcalnet_oc.lut.LUT.lut_preparation`).
+
+        The Rayleigh optical thickness scales as :math:`\tau_r(P) = \tau_r(P_0)\,P/P_0`. The Rayleigh reflectance of
+        the tables (molecules and sea surface, no aerosol) is a smooth function of :math:`\tau_r` at a given
+        geometry; its logarithmic sensitivity :math:`D = d\ln R_{ray}/d\ln\tau_r` (1 in single scattering, less
+        when multiple scattering matters) is computed from the wavelength nodes of the tables, where
+        :math:`\tau_r` varies, and
+
+        .. math::
+
+           \Delta R_{ray} = R_{ray}\left[(P/P_0)^D - 1\right]
+
+        is added to the path reflectance (the coupling between the aerosols and the molecules is kept, first
+        order). The diffuse transmittances of the irradiance and of the water-leaving radiance are multiplied by
+        :math:`\exp(-\Delta\tau_r/2\mu)`, half of the Rayleigh scattering being lost for the direct beam.
+
+        :return: :math:`\Delta R_{ray}` (wavelengths of the simulation), factors of ``Tra_d`` and ``tra_u``
+        """
+        Rray = self.lut.Rray
+        Rray = Rray.squeeze([d for d in Rray.dims if d != 'time' and Rray.sizes[d] == 1])
+        tau = self.lut.rot.interp(wl=Rray.wl, kwargs={'fill_value': 'extrapolate'})
+        # logarithmic derivative along the wavelength nodes (tau_r and R_ray decrease with the wavelength)
+        D = xr.apply_ufunc(lambda r: np.gradient(np.log(np.clip(r, 1e-12, None)), np.log(tau.values), axis=-1),
+                           Rray, input_core_dims=[['wl']], output_core_dims=[['wl']])
+        x = self.input_db['pressure'] / LUT_PRESSURE
+        full_wl = self.full_wl
+        Rray_full = Rray.interp(wl=full_wl, method='quadratic')
+        D_full = D.interp(wl=full_wl)
+        dRray = (Rray_full * (x ** D_full - 1)).reset_coords(drop=True)
+        dtau = self.lut.rot.interp(wl=full_wl, kwargs={'fill_value': 'extrapolate'}) * (x - 1)
+        fd = np.exp(-dtau / (2 * self.mu0)).reset_coords(drop=True)
+        fu = np.exp(-dtau / (2 * self.muv)).reset_coords(drop=True)
+        fu = fu.squeeze([d for d in fu.dims if d not in self.tra_u.dims and fu.sizes[d] == 1])
+        self.dRray = dRray
+        return dRray, fd, fu
+
     def provenance(self):
         '''
         Settings of the simulation, written as global attributes of ``radcalnet_db``: version of the package
@@ -582,6 +634,7 @@ class Process():
                 'gas_coupling': self.gas_coupling,
                 'gas_coupling_table': Path(str(self.gas_coupling_file)).name if self.gas_coupling_file else 'none',
                 'rrs_extension': self.rrs_extension,
+                'rayleigh_pressure': int(self.rayleigh_pressure),
                 'solar_database': self.solar_database,
                 'default_wind': float(WIND),
                 'toa_lut': lut_file.name,

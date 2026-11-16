@@ -864,7 +864,7 @@ glint angle of $35^\circ$, 45\,\% at $27^\circ$), consistently with the spectral
 by 0.2\,\%: the surface pressure enters the gaseous absorption and the direct transmittance, but the path reflectance
 of the LUT is not scaled with the Rayleigh optical thickness, so that the synoptic variations of $\pm10$--20\,hPa
 ($\pm1$--2\,\% of the Rayleigh reflectance in the blue) are not simulated. This is a correction of the radiative
-transfer to make, not only a term of the budget.
+transfer to make, not only a term of the budget (started in Section~\ref{sec:pressure}).
 
 \paragraph{Not yet in the budget.} The aerosol model (spread of the mixtures compatible with the measured AOT
 spectrum, Section~\ref{sec:aerosol_diag}), the residuals of the models (gas coupling, absorption tables, invRrs
@@ -893,6 +893,38 @@ Total, glint angle $27^\circ$ & 3.6 & 12.5 & 23.8 & 45.4 & 58.3 & 86.3 & 103.7 \
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsubsection{Pressure scaling of the Rayleigh scattering}
+\label{sec:pressure}
+The LUT is computed for $P_0 = 1013.25$\,hPa. A correction was added to \code{Process} as an option
+(\code{rayleigh\_pressure=True}, method \code{rayleigh\_pressure\_correction}). The Rayleigh optical thickness scales
+as $\tau_r(P) = \tau_r(P_0)\,P/P_0$, and the Rayleigh reflectance of the LUT (molecules and sea surface, AOT $=0$) is a
+smooth function of $\tau_r$ at a given geometry. Its logarithmic sensitivity $D = d\ln R_\mathrm{ray}/d\ln\tau_r$ is
+computed at each geometry from the wavelength nodes of the LUT, where $\tau_r$ varies (1 in single scattering, lower
+in the blue where multiple scattering matters), and
+\begin{equation}
+\Delta R_\mathrm{ray} = R_\mathrm{ray}\left[(P/P_0)^D - 1\right]
+\end{equation}
+is added to the path reflectance, the aerosol--Rayleigh coupling being kept (first order). The diffuse transmittances
+of the irradiance and of the water-leaving radiance are multiplied by $\exp(-\Delta\tau_r/2\mu)$. The correction is nil
+at $P_0$ (unit test); the provenance attributes of the output record the option.
+
+On the clear-water template ($\theta_s = 25^\circ$, VZA $10^\circ$), a pressure change of $\pm2\,\%$ ($\pm20$\,hPa) changes
+the path reflectance by $\pm1.73\,\%$ from 412 to 490\,nm, $\pm1.03\,\%$ at 865\,nm and $\pm0.14\,\%$ at 2190\,nm, and the
+TOA reflectance by $\pm1.30\,\%$ at 412\,nm ($2.2\times10^{-3}$), $\pm1.29\,\%$ at 443\,nm and $\pm1.43\,\%$ at 665\,nm, the
+water-leaving term partly compensating the path term through the transmittance. The pressure of the matchups spans
+1005--1030\,hPa (5th--95th percentiles of AAOT, Galata and Section-7), i.e.\ up to $\pm1\,\%$ in the blue.
+
+\paragraph{Tension with the matchups.} Without the correction, the residual at 443\,nm should decrease by
+$\sim0.64\,\%$ per \% of pressure; the observed slope (regression with the AOT, glint angle $>30^\circ$) is $-0.11$
+($t=-0.6$), about three standard errors away. Since the scaling of $\tau_r$ with $P$ is certain, another blue term
+correlated with the pressure is likely present in the matchups (e.g.\ the $\Rrs$ used at nadir, or weather-related
+conditions: high pressure with clear and calm days), to be investigated before using the blue bias of the matchups.
+
+\paragraph{Default.} The option is off by default: switching it on changes the results of the package (regression
+test at $10^{-4}$ with the template pressures of 1010--1014\,hPa), which requires a new reference and a CHANGELOG
+entry. The physically correct default is on; the sensitivity $D$ is to be checked first with OSOAA runs at another
+pressure for a few geometries.
 
 \paragraph{Caveats.} No pixel-level uncertainty is attached yet to either side; the AERONET-OC $\Rrs$ is
 used at nadir; the matchup files report \code{radcalnet\_oc=1.0.2} although they were produced with the
@@ -1077,8 +1109,12 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
   uncertainties of the RadCalNet assessment; aerosol-model term (mixtures compatible with the AOT spectrum); model
   residuals (coupling, absorption tables, invRrs reconstruction and SWIR extension); terms of the matchups (thin
   cirrus, additional near-infrared term).
-\item \prio{P1} \textbf{Pressure in the Rayleigh scattering}: scale the path reflectance of the LUT with the Rayleigh
-  optical thickness of the surface pressure (not simulated today, Section~\ref{sec:budget}).
+\item \textit{Done (November 2026):} \textbf{pressure scaling of the Rayleigh scattering} as an option of
+  \code{Process} (Section~\ref{sec:pressure}): $\pm1.3\,\%$ of the TOA reflectance in the blue for $\pm20$\,hPa.
+\item \prio{P1} \textbf{Validate and make it the default}: OSOAA runs at 993 and 1033\,hPa for a few geometries to
+  check $D$, then default on, new regression reference and CHANGELOG entry.
+\item \prio{P2} \textbf{Blue term correlated with the pressure} in the matchups (Section~\ref{sec:pressure}):
+  bidirectional $\Rrs$, weather-related conditions.
 \item \prio{P2} \textbf{Operational chain}: scheduled update from \code{aeronet\_oc\_db} for all sites, ERA5 wind
   where the station wind is missing, quality flags (invRrs fit residual, AOT spectral consistency), a
   RadCalNet-like hyperspectral TOA product per site and day.
@@ -1160,6 +1196,7 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
   then the \code{glint} command of \code{matchup\_analysis.py} with \code{--glint-pixels}.
 \item Uncertainty budget (Section~\ref{sec:budget}): new module of the package, applied to a simulation
   executed with the direct glint (see its documentation).
+\item Pressure scaling (Section~\ref{sec:pressure}): option \code{rayleigh\_pressure} of \code{Process}.
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}

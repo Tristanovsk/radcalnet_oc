@@ -360,3 +360,27 @@ def test_uncertainty_budget(glint_run):
     # the AOT term grows with the path reflectance from the blue to the near infrared (relative to Rtoa)
     rel = (db.u_aot550 / db.Rtoa).isel(time=0, vza=0, azi=1)
     assert float(rel.sel(wl=865., method='nearest')) > float(rel.sel(wl=443., method='nearest'))
+
+
+def test_rayleigh_pressure():
+    """Pressure scaling of the Rayleigh scattering: nil at the pressure of the LUT, Ratm larger at higher pressure,
+    by less than the Rayleigh optical thickness ratio, and mostly in the blue; diffuse transmittances reduced."""
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 2))
+    geom = dict(vza=angles('vza', [10.]), azi=angles('azi', [90.]))
+    runs = {}
+    for P in [1015.2, 1035.5]:
+        db = input_db.copy()
+        db['pressure'] = db.pressure * 0 + P
+        for flag in [False, True]:
+            p = Process(input_db=db, rayleigh_pressure=flag, **geom)
+            p.execute()
+            runs[(P, flag)] = p
+    xr.testing.assert_allclose(runs[(1015.2, True)].radcalnet_db.Rtoa, runs[(1015.2, False)].radcalnet_db.Rtoa)
+    hi, ref = runs[(1035.5, True)].radcalnet_db, runs[(1035.5, False)].radcalnet_db
+    rel = ((hi.Ratm - ref.Ratm) / ref.Ratm).isel(time=0)
+    r443, r2190 = float(rel.sel(wl=443., method='nearest')), float(rel.sel(wl=2190., method='nearest'))
+    assert 0.01 < r443 < 0.02 and 0 < r2190 < r443
+    assert hi.attrs['rayleigh_pressure'] == 1 and ref.attrs['rayleigh_pressure'] == 0
+    p = runs[(1035.5, True)]
+    assert float(p.Tra_d.isel(time=0).sel(wl=443., method='nearest')) < \
+        float(runs[(1035.5, False)].Tra_d.isel(time=0).sel(wl=443., method='nearest'))
