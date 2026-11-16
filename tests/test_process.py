@@ -339,3 +339,24 @@ def test_sunglint_uncertainty(glint_run):
     assert float(frac.sel(wl=2190., method='nearest')) >= float(frac.sel(wl=443., method='nearest'))
     # the windows exclude the saturated absorption bands
     assert not np.isin(np.round(db.glint_unc_wl.values), np.arange(1355, 1415)).any()
+
+
+def test_uncertainty_budget(glint_run):
+    """Uncertainty budget: one term per input (central differences through Process) and the glint term, combined
+    in quadrature; a zero input uncertainty gives a zero term; the nominal simulation and the LUT are unchanged."""
+    from radcalnet_oc.uncertainty import uncertainty_budget
+    p = glint_run
+    R0 = p.radcalnet_db.Rtoa.copy()
+    ratm_lut = p.lut.Rdiff_lut.copy()
+    db = uncertainty_budget(p, inputs={'aot550': ('abs', 0.02), 'tco3': ('rel', 0.)})
+    for name in ['u_aot550', 'u_tco3', 'u_glint', 'u_total', 'u_total_rel']:
+        assert name in db, name
+    assert float(db.u_tco3.max()) == 0.
+    assert float(db.u_aot550.sel(wl=865., method='nearest').min()) > 0.
+    np.testing.assert_allclose(db.u_total, np.sqrt(db.u_aot550 ** 2 + db.u_tco3 ** 2 + db.u_glint ** 2))
+    np.testing.assert_allclose(db.u_total_rel, db.u_total / db.Rtoa_glint)
+    xr.testing.assert_identical(db.Rtoa, R0)
+    xr.testing.assert_identical(p.lut.Rdiff_lut, ratm_lut)
+    # the AOT term grows with the path reflectance from the blue to the near infrared (relative to Rtoa)
+    rel = (db.u_aot550 / db.Rtoa).isel(time=0, vza=0, azi=1)
+    assert float(rel.sel(wl=865., method='nearest')) > float(rel.sel(wl=443., method='nearest'))

@@ -743,6 +743,35 @@ Finally, the Stokes vector of the sunglint reflectance is
 
 .. _spectral_convolution:
 
+Uncertainty budget
+------------------
+
+Implemented in :py:func:`~radcalnet_oc.uncertainty.uncertainty_budget`, after
+:py:meth:`~radcalnet_oc.process.Process.execute` (and
+:py:meth:`~radcalnet_oc.process.Process.compute_sunglint` for the glint term). The standard uncertainty of each input
+:math:`x_i` is propagated to the TOA reflectance by central differences through the full simulation, the aerosol
+mixture of the nominal simulation being kept:
+
+.. math::
+   :label: u_input
+
+   u_i(\lambda) = \frac{|R_{toa}(x_i + u(x_i)) - R_{toa}(x_i - u(x_i))|}{2},
+
+and the uncertainty of the direct glint ``Rglint_unc`` (`Sunglint`_) is added as a model term. The terms are
+assumed independent:
+
+.. math::
+   :label: u_total
+
+   u_{total}(\lambda) = \sqrt{\sum_i u_i^2(\lambda) + u_{glint}^2(\lambda)}.
+
+The default input uncertainties (:data:`~radcalnet_oc.uncertainty.INPUT_UNC`: AOT(550) 0.01, water vapour 10 %,
+ozone 3 %, pressure 2 hPa, wind 1.5 m s\ :sup:`-1` for the sky reflection of the look-up tables, :math:`R_{rs}` 5 %)
+are provisional and are arguments of the function. Not yet included: the aerosol model (mixture), the residuals of the
+models (gas coupling, absorption tables, invRrs reconstruction and SWIR extension) and the terms identified on the
+Sentinel-2 matchups (thin cirrus, additional near-infrared term). The surface pressure enters the gaseous absorption
+and the direct transmittance, but not the Rayleigh scattering of the path reflectance of the look-up tables.
+
 Spectral convolution
 --------------------
 

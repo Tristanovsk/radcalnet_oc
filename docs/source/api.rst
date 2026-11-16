@@ -108,6 +108,15 @@ Sunglint
 
    radcalnet_oc.coxmunk.Sunglint
 
+Uncertainty budget
+------------------
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.uncertainty.uncertainty_budget
+
 Spectral response of the sensors
 --------------------------------
 
