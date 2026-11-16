@@ -204,8 +204,8 @@ Left: relative; right: absolute, with the interquartile range.}
 \item \textbf{Dependence on the glint angle.} At AAOT, the deficit at 865\,nm is $-4.0$, $-3.4$, $-2.1$ and
   $-1.1\times10^{-3}$ for glint angles of 30--40, 40--50, 50--60 and $>60^\circ$ (Galata: $-5.4$ to $-1.2$);
   2190\,nm behaves the same (Fig.~\ref{fig:glint}). With MSI near nadir, the glint angle is strongly correlated
-  with the solar zenith angle (Spearman $\rho\approx0.5$ for both), so a far glint tail cannot yet be separated
-  from an SZA-dependent diffuse term.
+  with the solar zenith angle (Spearman $\rho\approx0.5$ for both); in a joint regression the glint angle wins
+  in the SWIR, the two remaining inseparable at 865\,nm (Section~\ref{sec:aot_term}).
 \item \textbf{Dependence on the aerosol load.} The NIR--SWIR deficit increases with AOT (AAOT, 2190\,nm:
   $-0.8$, $-1.5$, $-2.2\times10^{-3}$ for AOT $<0.08$, 0.08--0.15, 0.15--0.3). The AOT-proportional part is
   spectrally flat ($-9$ to $-11\times10^{-3}$ per unit AOT from 865 to 2190\,nm) and larger for coarse aerosols
@@ -213,14 +213,18 @@ Left: relative; right: absolute, with the interquartile range.}
   the deficit. The proportions of the retrieved mixture are not the cause: the mixtures with enough coarse mode to
   cancel the slope in the SWIR contradict the AOT spectrum measured by AERONET-OC, and the OPAC models consistent
   with it give too little SWIR path reflectance per unit AOT, also with a hygroscopic fine mode
-  (Section~\ref{sec:aerosol_diag}).
+  (Section~\ref{sec:aerosol_diag}). The AOT dependence is in fact mostly a seasonal confound: the AOT is high in
+  summer, when the glint angle is small, and the AOT is no longer significant once the glint angle and the
+  cirrus-band reflectance are in the regression (Section~\ref{sec:aot_term}).
 \item \textbf{Direct sunglint.} Adding the Cox--Munk direct glint reduces the median bias at 865\,nm (all glint
   angles) from $-17.0$ to $-13.5\,\%$ (AAOT L2.0), $-24.9$ to $-6.1\,\%$ (Galata) and $-44.5$ to $0.0\,\%$
   (Section-7 L1.5), but the scatter increases below $30^\circ$ (isotropic statistics, no wind direction, wind
   from the station).
 \item \textbf{Cirrus band B10.} Simulated $\sim10^{-7}$ against $8\times10^{-4}$ observed at all sites: the
   saturated H$_2$O band is decoupled beyond 990\,nm, and the observed level may also include stratospheric
-  aerosols or the L1C noise floor \todo{to investigate}.
+  aerosols or the L1C noise floor. The NIR--SWIR deficit increases with the observed B10 reflectance
+  (about $-1$ per unit, independent of the AOT, Section~\ref{sec:aot_term}): thin cirrus contributes about
+  $1\times10^{-3}$ of the deficit.
 \item \textbf{Sensor units.} At AAOT L2.0, S2A and S2B agree within 1--2 points; S2C matchups (11 at AAOT L2.0,
   28 at AAOT L1.5) are 2--5 points more negative in the NIR--SWIR. Not significant yet (few S2C matchups,
   different period and processing level).
@@ -395,6 +399,82 @@ DESE, RH 70\,\% (LUT)  & 0.11 & 0.09 & 0.763 & 54.5 & 43.2 & 32.2 & 0.14 \\
 \end{tabular}
 \end{table}
 
+\subsubsection{Search for the term correlated with the AOT}
+\label{sec:aot_term}
+The candidate non-aerosol terms were tested on their signatures (same 511 matchups, deficit $D$ = sim $-$ sat
+without the direct glint, $\times10^{-3}$; \code{scripts/s2\_toa\_matchup/aot\_term\_search.py}). Without other
+regressor, $D = -2.8 - 9.5\,\mathrm{AOT}$ at 865\,nm, $-1.7 - 10.6\,\mathrm{AOT}$ at 1610\,nm and
+$-1.4 - 8.9\,\mathrm{AOT}$ at 2190\,nm.
+
+\begin{itemize}
+\item \textbf{Representativeness of the AERONET-OC AOT: excluded.} An error proportional to the AOT would follow
+  $\partial R_\mathrm{atm}/\partial\mathrm{AOT}$ of the retrieved mixture, 55, 19 and $9\times10^{-3}$ per unit AOT at
+  865, 1610 and 2190\,nm at the median geometry (LUT), i.e.\ a ratio 6.0\,:\,2.1\,:\,1, against 1.07\,:\,1.20\,:\,1 for
+  the observed slopes; the AOT error needed would be 17, 56 and 97\,\% depending on the band. The slope is also
+  larger when the AOT is stable in the $\pm60$\,min window ($-16$ against $-6$ at 865\,nm for a coefficient of
+  variation below and above the median) and does not depend on the time lag of the nearest measurement.
+\item \textbf{Wind: excluded.} The AOT is weakly anti-correlated with the wind ($r=-0.19$), the slope is similar in
+  the wind classes 0--2, 2--4 and $>4$\,m\,s$^{-1}$, and the wind adds little to the regression.
+\item \textbf{Glint-angle (seasonal) confound: the main part.} The AOT is correlated with the glint angle
+  ($r=-0.37$) and the SZA ($r=-0.38$) through the season (Table~\ref{tab:aot_season}). Within the glint-angle bins
+  of Fig.~\ref{fig:glint}, the slope with the AOT is not significant ($|t|<1.8$). In $D = a + b\,\mathrm{AOT} +
+  c\,\theta_g$, the AOT coefficient falls to $-0.3$, $-2.9$, $-3.0$ ($t = -0.1$, $-1.5$, $-1.9$), while
+  $c = +0.13$, $+0.11$, $+0.08$ per degree ($t\approx10$). In a joint regression with the SZA, the glint angle wins
+  in the SWIR ($t = 4.6$ against $-0.7$ at 1610\,nm, 4.7 against $-1.0$ at 2190\,nm), the two remaining
+  inseparable at 865\,nm ($t$ = 2.1 and 1.6).
+\item \textbf{Thin cirrus: an independent, flat term.} The reflectance observed in B10 (1375\,nm, 10th/50th/90th
+  percentiles 0.5/0.8/$1.4\times10^{-3}$) is not correlated with the AOT ($r=0.03$) but with the deficit: in
+  $D = a + c\,\theta_g + e\,R_\mathrm{B10}$, $e = -1.4$, $-1.0$, $-0.8$ ($t$ from $-8$ to $-10$), i.e.\ about
+  $1\times10^{-3}$ at the median B10, as expected from a spectrally flat high layer absent from the simulation.
+  This regression explains 32\,\% of the variance and adding the AOT does not improve it ($+1.6$, $-1.6$, $-1.9$,
+  $|t|\le1.3$).
+\end{itemize}
+
+The glint-angle term is broader than the isotropic Cox--Munk glint at the station wind (median
+2.9\,m\,s$^{-1}$, Table~\ref{tab:aot_glint}). Where the simulated direct glint $G$ is significant
+(30--40$^\circ$), adding it reduces the deficit by $\sim0.7\times10^{-3}$ only, while the deficit keeps decreasing
+from 40 to $60^\circ$ where $G\approx0$. The deficit follows $-0.4$ to $-0.6\,G$ rather than $-G$, and the
+deficit with the glint, $D+G$, still depends on the glint angle ($+0.07$, $+0.04$, $+0.02$ per degree, $t = 5.9$,
+4.3, 2.2, with B10 in the regression). A wider slope distribution than given by the station wind (swell, wind
+over the open sea, heavier tails of the slope statistics) would lower the glint peak and raise its far tail as
+observed. The term correlated with the AOT is therefore the glint-angle term of finding~3, plus the
+cirrus term; no aerosol-model change is required by the matchups at this stage.
+
+\begin{table}[h]
+\centering\small
+\caption{Medians per season of AOT(550), glint angle and deficit sim $-$ sat ($\times10^{-3}$, without the direct
+glint), 511 matchups (\code{aot\_term\_search.py}).}
+\label{tab:aot_season}
+\begin{tabular}{lrrrrrr}
+\toprule
+Season & $N$ & AOT(550) & Glint angle & 865\,nm & 1610\,nm & 2190\,nm \\
+\midrule
+Winter (DJF) & 82  & 0.069 & $67^\circ$ & $-1.01$ & $-0.61$ & $-0.60$ \\
+Spring (MAM) & 141 & 0.118 & $42^\circ$ & $-2.91$ & $-2.22$ & $-1.64$ \\
+Summer (JJA) & 141 & 0.148 & $35^\circ$ & $-4.59$ & $-3.67$ & $-3.05$ \\
+Autumn (SON) & 147 & 0.084 & $51^\circ$ & $-2.50$ & $-1.82$ & $-1.57$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering\small
+\caption{Medians per glint-angle bin of the simulated direct glint $G$ (isotropic Cox--Munk, wind of the
+nearest AERONET-OC measurement) and of the deficit without ($D$) and with ($D+G$) it, $\times10^{-3}$.}
+\label{tab:aot_glint}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Glint angle & $N$ & AOT(550) & \multicolumn{3}{c}{865\,nm} & \multicolumn{3}{c}{2190\,nm} \\
+ & & & $G$ & $D$ & $D+G$ & $G$ & $D$ & $D+G$ \\
+\midrule
+30--40$^\circ$ & 184 & 0.13 & 0.66 & $-4.52$ & $-3.12$ & 0.67 & $-3.05$ & $-1.60$ \\
+40--50$^\circ$ & 137 & 0.12 & 0.02 & $-3.25$ & $-3.00$ & 0.02 & $-2.08$ & $-1.76$ \\
+50--60$^\circ$ & 80  & 0.09 & 0.00 & $-2.09$ & $-2.00$ & 0.00 & $-1.34$ & $-1.20$ \\
+$>60^\circ$    & 110 & 0.07 & 0.00 & $-1.18$ & $-1.18$ & 0.00 & $-0.71$ & $-0.70$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \paragraph{Caveats.} No pixel-level uncertainty is attached yet to either side; the AERONET-OC $\Rrs$ is
 used at nadir; the matchup files report \code{radcalnet\_oc=1.0.2} although they were produced with the
 development branch (defaults \code{lbl} + \code{path\_length}), which illustrates the traceability gap of
@@ -459,10 +539,9 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
 \item \textit{Done (November 2026):} \textbf{hygroscopic fine mode} (Section~\ref{sec:aerosol_diag},
   Table~\ref{tab:hygro}): at most 1.2 times the SWIR reflectance of WASO\_rh0 up to 95\,\% of relative humidity,
   against 2.2 times needed; no LUT computed.
-\item \prio{P1} \textbf{Term correlated with the AOT}: look for a non-aerosol origin of the AOT dependence (glint
-  and diffuse light coupling at high AOT, spatial and temporal representativeness of the AERONET-OC AOT for the
-  satellite box), and, if none, non-spherical or larger particles than OPAC (MOPSMAP spheroids) in a small OSOAA
-  test.
+\item \textit{Done (November 2026):} \textbf{term correlated with the AOT} (Section~\ref{sec:aot_term}): a seasonal
+  confound with the glint angle, plus an independent cirrus term (B10); the representativeness of the AERONET-OC
+  AOT and the wind are excluded. Non-spherical particles (MOPSMAP spheroids) are not needed at this stage.
 \item \prio{P1} \textbf{Make the spectral-AOT retrieval the default} when the AOT spectrum is available, with more
   weight on the near-infrared bands (865, 1020\,nm), where the retrieved mixture is too steep.
 \item \prio{P2} \textbf{Size distribution from AERONET inversions} (almucantar, where available near the sites) to
@@ -508,7 +587,12 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
   part after the 6S analysis of Section~\ref{sec:sixs} (environment, trapping and whitecaps excluded): compare
   the observed SWIR reflectance with the Cox--Munk tail versus the glint angle and the wind speed; use the
   wind direction (ERA5) with anisotropic Cox--Munk statistics; test the sky-glint term of the LUT at the measured
-  wind.
+  wind. The direct glint at the station wind is too peaked and its far tail too weak
+  (Table~\ref{tab:aot_glint}): invert a slope variance per scene from the SWIR deficit and compare it with the
+  AERONET-OC and ERA5 winds and with heavier-tailed slope statistics.
+\item \prio{P1} \textbf{Cirrus term}: the deficit follows the B10 reflectance (about $-1$ per unit,
+  Section~\ref{sec:aot_term}); either screen on B10 or add an empirical high-cloud term to the matchups, and
+  investigate the observed B10 level (finding~6).
 \item \prio{P2} \textbf{Integrate the direct glint in the package} (today in the matchup script): coupled
   attenuation (diffuse + direct), gas transmittance consistent with the coupling, uncertainty from the wind.
 \item \prio{P2} \textbf{Glint-based screening}: replace the fixed $30^\circ$ glint angle by a threshold on the
@@ -592,6 +676,8 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
 \item Aerosol model diagnosis (Section~\ref{sec:aerosol_diag}): script \code{aerosol\_diagnosis.py} in the
   same folder (option \code{--n-jobs 4}, about 12\,min for the 511 matchups); the scenes are cached in the
   subfolder \code{aerosol\_diagnosis} of the matchup folder.
+\item Search for the AOT-correlated term (Section~\ref{sec:aot_term}): \code{aot\_term\_search.py} in the same
+  folder (reads the cache of \code{aerosol\_diagnosis.py}, about 35\,s).
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}

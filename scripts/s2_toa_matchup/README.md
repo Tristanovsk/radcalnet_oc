@@ -61,6 +61,15 @@ measurements of a site. Not part of the package.
    python aerosol_diagnosis.py --n-jobs 4
    ```
 
+6. **Search for the term correlated with the AOT** (`aot_term_search.py`): signatures of the candidate non-aerosol
+   terms (cirrus with the B10 reflectance, representativeness of the AERONET-OC AOT, glint angle and season, wind)
+   and comparison of the deficit with the simulated direct glint per glint-angle bin. Reads the cache of
+   `aerosol_diagnosis.py` for the retrieved mixture (about 35 s):
+
+   ```bash
+   python aot_term_search.py
+   ```
+
 The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
 `reports/validation_roadmap_2026-11`. The output files record the radcalnet_oc version and settings
 (`radcalnet_oc` attribute) since the traceability change of ROADMAP task 2.
