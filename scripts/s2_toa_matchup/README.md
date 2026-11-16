@@ -53,6 +53,20 @@ measurements of a site. Not part of the package.
    AOT(550) < 0.3, glint angle > 30 deg (options `--frac-min`, `--npix-min`, `--dt-max`, `--aot-max`,
    `--glint-min`).
 
+   With the heavy-tailed glint and the sunglint flags (`--glint-stats cm_iso_mix` reads the `_cm_iso_mix` files;
+   `--glint-pixels` uses the statistics without the SWIR threshold and keeps the homogeneous glint scenes;
+   `--flags-exclude` replaces the glint-angle screening):
+
+   ```bash
+   # matchups per sunglint level and efficiency of the screenings (glint angle, flags), figure s2_glint_levels.pdf
+   python matchup_analysis.py glint --sites AAOT_lev20 Galata_Platform_lev20 AAOT_lev15 Section-7_Platform_lev15 \
+       --glint-stats cm_iso_mix --glint-pixels --fig-dir figures
+   python matchup_analysis.py stats --glint-stats cm_iso_mix --glint-pixels --flags-exclude glint_high glint_near_specular
+   ```
+
+   `aot_term_search.py` takes the same `--glint-stats` and `--flags-exclude` options, and `--with-glint` for the
+   deficit including the simulated glint.
+
 3. **Notebook**: `sentinel2_radcalnet_oc_toa_matchup.ipynb`, spectra and time series of the matchups of a site.
 
 4. **6S analysis of the NIR-SWIR deficit** (`sixs_terms.py`): the coupling and environment terms of 6S (trapping

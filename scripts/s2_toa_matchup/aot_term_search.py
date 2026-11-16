@@ -35,15 +35,24 @@ ODIR = '/data/radcalnet/matchup/sentinel2'
 CACHE = '/data/radcalnet/matchup/sentinel2/aerosol_diagnosis'
 SITES = ['AAOT_lev20', 'Galata_Platform_lev20', 'AAOT_lev15']
 BANDS = [865, 1610, 2190]
+FLAGS = {'glint_low': 1, 'glint_moderate': 2, 'glint_high': 4, 'glint_near_specular': 8}
 
 
-def load(odir, site, dt_max=60, aot_max=0.3, glint_min=30):
+def load(odir, site, dt_max=60, aot_max=0.3, glint_min=30, glint_stats='cm_iso', with_glint=False,
+         flags_exclude=None):
     '''Selected matchups: deficit (x1e-3), AOT, B10 reflectance, glint angle, wind, AOT variability in the window.'''
-    ds = xr.open_dataset(f'{odir}/{site}_s2_toa_matchup.nc')
-    sel = ((ds.frac_valid > 0.5) & (ds.n_pix >= 50) & (np.abs(ds.dt_nearest) <= dt_max)
+    sfx = '' if glint_stats == 'cm_iso' else f'_{glint_stats}'
+    ds = xr.open_dataset(f'{odir}/{site}_s2_toa_matchup{sfx}.nc')
+    if flags_exclude:  # glint screening by the sunglint flags instead of the glint angle
+        glint_min = -1.
+        ok = (ds.glint_flags & np.uint8(sum(FLAGS[f] for f in flags_exclude))) == 0
+    else:
+        ok = True
+    sel = (ok & (ds.frac_valid > 0.5) & (ds.n_pix >= 50) & (np.abs(ds.dt_nearest) <= dt_max)
            & (ds.aot550 < aot_max) & (ds.glint_angle > glint_min))
     d = ds.sel(time=sel)
-    df = pd.DataFrame({f'D{b}': 1e3 * (d.sim_median - d.sat_median).sel(wl=b).values for b in BANDS},
+    sim = d.simg_median if with_glint else d.sim_median
+    df = pd.DataFrame({f'D{b}': 1e3 * (sim - d.sat_median).sel(wl=b).values for b in BANDS},
                       index=pd.DatetimeIndex(d.time.values))
     for b in BANDS:
         df[f'G{b}'] = 1e3 * d.glint_median.sel(wl=b).values  # simulated direct glint (not in sim_median)
@@ -111,10 +120,19 @@ def main():
     p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     p.add_argument('--odir', default=ODIR, help='directory of the matchup files')
     p.add_argument('--cache', default=CACHE, help='directory of the results of aerosol_diagnosis.py')
+    p.add_argument('--glint-stats', default='cm_iso', help='glint statistics of the matchup files (suffix)')
+    p.add_argument('--with-glint', action='store_true',
+                   help='deficit with the simulated direct glint (simg - sat) instead of sim - sat')
+    p.add_argument('--flags-exclude', nargs='+', default=None, choices=list(FLAGS),
+                   help='glint screening by the sunglint flags instead of the glint angle > 30 deg')
     args = p.parse_args()
     warnings.simplefilter('ignore')
     pd.set_option('display.width', 200)
-    df = pd.concat([load(args.odir, s) for s in SITES])
+    df = pd.concat([load(args.odir, s, glint_stats=args.glint_stats, with_glint=args.with_glint,
+                         flags_exclude=args.flags_exclude) for s in SITES])
+    print(f'    glint statistics {args.glint_stats}, deficit {"with" if args.with_glint else "without"} the simulated '
+          f'glint, screening ' + (f'without {"/".join(args.flags_exclude)}' if args.flags_exclude else
+                                  'glint angle > 30 deg'))
     print(f'=== {len(df)} matchups ({", ".join(f"{s}: {(df.site == s).sum()}" for s in SITES)})')
     print('    deficit = offset + slope x AOT(550):')
     show(df, ['aot550'], 'all')
@@ -162,6 +180,8 @@ def main():
     print(pd.DataFrame({str(k): slopes(v) for k, v in df.groupby(w, observed=True)}).T.round(2).to_string())
 
 
+    if args.with_glint:
+        return
     print('\n=== 5. seasonal confound with the glint angle')
     print(f'    correlation of AOT(550) with the glint angle: {df[["aot550", "glint_angle"]].corr().iloc[0, 1]:.2f}, '
           f'with SZA: {df[["aot550", "sza"]].corr().iloc[0, 1]:.2f}')

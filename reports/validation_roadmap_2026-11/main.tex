@@ -200,7 +200,9 @@ Left: relative; right: absolute, with the interquartile range.}
   shape at all sites points to a common missing contribution rather than to a band-specific gas or calibration
   error. It is larger at Section-7, although this platform is the farthest from the coast (29\,km, against 13\,km
   for AAOT and 23\,km for Galata), and it is mostly an AOT-independent term that vanishes for glint angles
-  $>60^\circ$ (Section~\ref{sec:sixs}).
+  $>60^\circ$ (Section~\ref{sec:sixs}). With the heavy-tailed glint and the screening by sunglint flags, the SWIR
+  deficit falls from $-59$ to $-24\,\%$ at 2190\,nm (AAOT L2.0) and its offset closes once the cirrus term is
+  accounted for (Section~\ref{sec:glint_levels}).
 \item \textbf{Dependence on the glint angle.} At AAOT, the deficit at 865\,nm is $-4.0$, $-3.4$, $-2.1$ and
   $-1.1\times10^{-3}$ for glint angles of 30--40, 40--50, 50--60 and $>60^\circ$ (Galata: $-5.4$ to $-1.2$);
   2190\,nm behaves the same (Fig.~\ref{fig:glint}). With MSI near nadir, the glint angle is strongly correlated
@@ -643,6 +645,69 @@ high (108 near specular)        & 117 & $24^\circ$ & 0.65 & $+13.7\,\%$ & $+55\,
 \end{tabular}
 \end{table}
 
+\subsubsection{Matchups per sunglint level and efficiency of the flags}
+\label{sec:glint_levels}
+The matchups of AAOT L2.0, Galata L2.0, AAOT L1.5 and Section-7 L1.5 (715, all glint angles, satellite statistics
+without the SWIR threshold with the homogeneity test of Section~\ref{sec:glint_flags}) were compared per sunglint
+level, with the heavy-tailed glint (\code{matchup\_analysis.py glint}, Fig.~\ref{fig:glint_levels}).
+
+\begin{itemize}
+\item \textbf{The flags order the matchups.} Without the simulated glint, the deficit grows with the level (2190\,nm:
+  $-25\,\%$ for no glint, $-59\,\%$ low, $-76\,\%$ moderate, $-94\,\%$ high). With it, the residual is within
+  $\pm30\,\%$ up to the moderate level ($-3.8$, $-11.4$, $-10.8\,\%$ at 865\,nm and $-20$, $-29$, $-6\,\%$ at
+  2190\,nm for none, low and moderate), and the high level stands out ($+14\,\%$ and $+55\,\%$). With the isotropic
+  Cox--Munk glint, 338 scenes are flagged without glint but keep $-54\,\%$ at 2190\,nm (missing far tail): the
+  heavy-tailed flags put them in the low level.
+\item \textbf{Efficiency of the screenings} (Table~\ref{tab:glint_screening}). Outliers are defined on the
+  simulation with glint ($|$sim $-$ sat$| > 30\,\%$ at 865\,nm or $>5\times10^{-3}$ at 2190\,nm, 197 of 715) and the
+  screenings are ranked by the Youden index (outliers removed $+$ good matchups kept $-100\,\%$). Excluding the high
+  and near-specular flags is the best compromise (53.2, against 50.7 for the glint angle $>30^\circ$ used so far,
+  and 45.9 with the flags of the isotropic statistics); keeping only the low level removes 81\,\% of the outliers
+  but a third of the good matchups. About 13\,\% of the kept matchups remain outliers, from the NIR and cirrus
+  terms rather than from the glint.
+\item \textbf{Bias with the recommended screening} (simulation with glint, without the high and near-specular
+  flags): $-10.7$, $-17$, $-24\,\%$ at 865, 1610, 2190\,nm for AAOT L2.0 (313 matchups; $-16$, $-39$, $-59\,\%$
+  without glint for glint angles $>30^\circ$), $-6.3$, $-13$, $-15\,\%$ for Galata (94), $-14.3$, $-30$, $-36\,\%$
+  for AAOT L1.5 (99) and $-8.4$, $-8$, $-7\,\%$ for Section-7 L1.5 (20).
+\item \textbf{Decomposition of the deficit with the glint} (\code{aot\_term\_search.py} on the deficit including
+  the heavy-tailed glint, same screening, 506 matchups). The glint-angle dependence vanishes in the SWIR ($+0.01$ and
+  $-0.01\times10^{-3}$ per degree, not significant, against $+0.11$ and $+0.08$ with $t\approx10$ before) and
+  remains small at 865\,nm ($+0.04$, $t=2.8$). With the cirrus term (B10 coefficients $-1.2$, $-0.85$, $-0.77$,
+  unchanged), the offsets are $-0.61$, $+0.05$, $+0.21\times10^{-3}$ at 865, 1610, 2190\,nm: the SWIR deficit is
+  closed, and an 865\,nm term of $\sim-1\times10^{-3}$ remains. The AOT slope halves ($-5$, $-5$, $-3\times10^{-3}$ per
+  unit AOT, $t$ from $-2.1$ to $-2.7$; $\sim-0.4\times10^{-3}$ at an AOT of 0.1). A wind term appears ($+0.2\times10^{-3}$
+  per m\,s$^{-1}$, $t\approx3$): the fixed tail fraction gives too much glint at high wind or too little at low wind.
+\end{itemize}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/s2_glint_levels.pdf}
+\caption{Median relative difference (sim $-$ sat)/sat per sunglint level (\code{cm\_iso\_mix} flags), without
+(left) and with (right) the simulated heavy-tailed glint; dashed: near specular. AAOT L2.0, Galata L2.0, AAOT L1.5
+and Section-7 L1.5, all glint angles.}
+\label{fig:glint_levels}
+\end{figure}
+
+\begin{table}[h]
+\centering\small
+\caption{Efficiency of the glint screenings on the 715 matchups (simulation with the heavy-tailed glint; outlier:
+$|$sim $-$ sat$| > 30\,\%$ at 865\,nm or $>5\times10^{-3}$ at 2190\,nm, 197 matchups): matchups kept, outliers removed,
+good matchups kept, Youden index and median relative difference of the kept matchups.}
+\label{tab:glint_screening}
+\begin{tabular}{lrrrrrr}
+\toprule
+Screening & Kept & Outliers removed & Good kept & Youden & 865\,nm & 2190\,nm \\
+\midrule
+None                                & 715 & 0\,\%    & 100\,\% & 0    & $-8.9\,\%$  & $-15.6\,\%$ \\
+Glint angle $>30^\circ$             & 535 & 61.9\,\% & 88.8\,\% & 50.7 & $-10.7\,\%$ & $-23.9\,\%$ \\
+Glint angle $>40^\circ$             & 335 & 85.3\,\% & 59.1\,\% & 44.4 & $-10.2\,\%$ & $-27.1\,\%$ \\
+Exclude high                        & 598 & 44.2\,\% & 94.2\,\% & 38.4 & $-11.0\,\%$ & $-23.9\,\%$ \\
+Exclude high and near specular      & 526 & 65.0\,\% & 88.2\,\% & 53.2 & $-10.8\,\%$ & $-24.3\,\%$ \\
+Keep low or none                    & 384 & 80.7\,\% & 66.8\,\% & 47.5 & $-10.7\,\%$ & $-28.1\,\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \paragraph{Caveats.} No pixel-level uncertainty is attached yet to either side; the AERONET-OC $\Rrs$ is
 used at nadir; the matchup files report \code{radcalnet\_oc=1.0.2} although they were produced with the
 development branch (defaults \code{lbl} + \code{path\_length}), which illustrates the traceability gap of
@@ -768,8 +833,13 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
 \item \textit{Done (November 2026):} \textbf{matchups with the heavy-tailed statistics} and refit over all the
   glint angles (Section~\ref{sec:glint_flags}): \code{cm\_iso\_mix} $f=0.05$, $\sigma_t^2=0.12$; glint recomputed
   from the cached scenes (\code{--reglint}); near-specular geometries (20--25$^\circ$) still overestimated.
-\item \prio{P1} \textbf{Analyses on the heavy-tailed matchups}: \code{matchup\_analysis.py}, AOT and cirrus scripts
-  on the \code{\_cm\_iso\_mix} files, with the selection by sunglint flags instead of the $30^\circ$ glint angle.
+\item \textit{Done (November 2026):} \textbf{analyses on the heavy-tailed matchups} with the sunglint flags
+  (Section~\ref{sec:glint_levels}): SWIR deficit closed after the cirrus term, glint-angle dependence removed in the
+  SWIR, best screening: exclude the high and near-specular flags.
+\item \prio{P1} \textbf{Wind-dependent tail}: fit the tail fraction (or width) of \code{cm\_iso\_mix} as a function
+  of the wind (station, ERA5) or of the sea state, to remove the wind term of the residual.
+\item \prio{P1} \textbf{Default screening}: heavy-tailed glint and exclusion of the high and near-specular flags in
+  the matchup analyses and in the processing of the other sensors.
 \item \prio{P2} \textbf{Additional 865\,nm term} (excess above the SWIR glint, 0.3--$1.5\times10^{-3}$ decreasing
   with the glint angle): test an SZA-dependent diffuse term.
 \item \prio{P1} \textbf{Cirrus term}: the deficit follows the B10 reflectance (about $-1$ per unit,
@@ -871,6 +941,10 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
 \item Matchups with the heavy-tailed glint and the flags: \code{s2\_toa\_matchup.py} with the options
   \code{--reglint --glint-stats cm\_iso\_mix} and the site and level (output files with the suffix
   \code{\_cm\_iso\_mix}).
+\item Matchups per sunglint level and screenings (Section~\ref{sec:glint_levels}, Fig.~\ref{fig:glint_levels}):
+  \code{matchup\_analysis.py glint} with \code{--glint-stats cm\_iso\_mix --glint-pixels} and the four sites;
+  decomposition: \code{aot\_term\_search.py} with \code{--glint-stats cm\_iso\_mix --with-glint} and
+  \code{--flags-exclude glint\_high glint\_near\_specular}.
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}
