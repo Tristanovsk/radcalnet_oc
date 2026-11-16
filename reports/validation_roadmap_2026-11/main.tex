@@ -957,9 +957,47 @@ COAV, AOT 0.1       & 800 & 1.02 & $-1.22$ & $-1.21$ & 0.00 & 0.05 & \\
 \end{tabular}
 \end{table}
 
-\paragraph{Default.} The option is off by default: switching it on changes the results of the package (regression
-test at $10^{-4}$ with the template pressures of 1010--1014\,hPa), which requires a new reference and a CHANGELOG
-entry. After the validation, the physically correct default is on.
+\paragraph{Default.} After the validation, the scaling is on by default (\code{settings: rayleigh\_pressure: true}
+of the configuration, option \code{--rayleigh\_pressure} of the command line, provenance attribute
+\code{rayleigh\_pressure}). On the clear-water template (1011--1014\,hPa), the TOA reflectance changes by
+$-0.18\,\%$ at 412--443\,nm, $-0.21\,\%$ at 560\,nm and $-0.02\,\%$ at 2190\,nm; the regression reference is updated
+for the default case, the case of the settings before version 1.1 (\code{rayleigh\_pressure=False}) being unchanged,
+and the change is in the CHANGELOG.
+
+\paragraph{GRS and hGRS.} The atmospheric corrections GRS (multispectral) and hGRS (hyperspectral) use LUTs of the
+same OSOAA runs (\code{toa\_lut\_opac\_wind\_v3.nc}, \code{toa\_lut\_opac\_wind\_up\_v3.nc}, Rayleigh optical thickness
+of 1015.2\,hPa), with two other treatments of the pressure: GRS multiplies the whole path reflectance (aerosols
+included) by $P/P_0$ with $P_0 = 1013.2$\,hPa (\code{grs\_kernel.py}); hGRS does not scale the path reflectance
+(the pressure enters the gaseous absorption and the direct transmittance only). Their error on the path reflectance
+against the validated scaling (Table~\ref{tab:grs_pressure}): for hGRS, $\pm2.7\times10^{-3}$ at 400\,nm and
+$\pm1.2\times10^{-3}$ at 500\,nm for $\pm20$\,hPa, i.e.\ $\sim\pm1\times10^{-3}$\,sr$^{-1}$ of $\Rrs$ at 400\,nm, a large
+fraction of the blue $\Rrs$ of clear waters, and an offset of $+0.3\times10^{-3}$ at 1013\,hPa; for GRS, a systematic
+$+0.26\times10^{-3}$ at 400\,nm ($\sim+0.2\,\%$ of the path reflectance at all wavelengths) from the reference pressure,
+and $\pm1.5$--2\,\% in the SWIR from the scaling of the aerosol part (up to $0.07\times10^{-3}$ at 2200\,nm, in the bands of
+its aerosol and glint retrieval). Both would benefit from the scaling of radcalnet-oc: reference pressure of
+1015.2\,hPa for the path reflectance (1013.25\,hPa remains right for the Bodhaine optical thickness of the direct
+transmittance), only the Rayleigh part scaled, $R_\mathrm{diff} + R_\mathrm{ray}[(P/P_0)^D - 1]$ with the AOT~0 slice
+of their LUT, and the diffuse transmittances scaled.
+
+\begin{table}[h]
+\centering\small
+\caption{Error of the path reflectance ($\times10^{-3}$) of the pressure treatments of GRS (whole path reflectance
+times $P/1013.2$) and hGRS (no scaling) against the validated scaling of radcalnet-oc; LUT \code{toa\_lut\_opac\_wind\_v3},
+$\theta_s=40^\circ$, VZA $5^\circ$, default COAV/MACL mixture.}
+\label{tab:grs_pressure}
+\begin{tabular}{llrrrrrr}
+\toprule
+AOT(550) & $P$ (hPa) & \multicolumn{3}{c}{GRS} & \multicolumn{3}{c}{hGRS} \\
+ & & 400\,nm & 800\,nm & 2200\,nm & 400\,nm & 500\,nm & 800\,nm \\
+\midrule
+0.05 & 995  & $-0.07$ & $-0.03$ & $-0.014$ & $+2.69$ & $+1.21$ & $+0.18$ \\
+0.05 & 1013 & $+0.26$ & $+0.02$ & $0.000$  & $+0.29$ & $+0.13$ & $+0.02$ \\
+0.05 & 1035 & $+0.67$ & $+0.08$ & $+0.017$ & $-2.63$ & $-1.18$ & $-0.18$ \\
+0.20 & 995  & $-0.29$ & $-0.19$ & $-0.058$ & $+2.69$ & $+1.21$ & $+0.18$ \\
+0.20 & 1035 & $+0.94$ & $+0.27$ & $+0.070$ & $-2.63$ & $-1.18$ & $-0.18$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{Caveats.} No pixel-level uncertainty is attached yet to either side; the AERONET-OC $\Rrs$ is
 used at nadir; the matchup files report \code{radcalnet\_oc=1.0.2} although they were produced with the
@@ -1148,7 +1186,10 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
   \code{Process} (Section~\ref{sec:pressure}): $\pm1.3\,\%$ of the TOA reflectance in the blue for $\pm20$\,hPa.
 \item \textit{Done (November 2026):} \textbf{OSOAA validation of the pressure scaling}
   (Table~\ref{tab:pressure_osoaa}): within 0.03\,\% (Rayleigh) and 0.25\,\% (AOT 0.1) of the path reflectance.
-\item \prio{P1} \textbf{Pressure scaling by default}: new regression reference and CHANGELOG entry.
+\item \textit{Done (November 2026):} \textbf{pressure scaling by default}, with a new regression reference and an
+  entry of the CHANGELOG.
+\item \prio{P1} \textbf{Pressure scaling in GRS and hGRS} (Table~\ref{tab:grs_pressure}): reference pressure of the
+  LUT (1015.2\,hPa), scaling of the Rayleigh part only, diffuse transmittances.
 \item \prio{P2} \textbf{Blue term correlated with the pressure} in the matchups (Section~\ref{sec:pressure}):
   bidirectional $\Rrs$, weather-related conditions.
 \item \prio{P2} \textbf{Operational chain}: scheduled update from \code{aeronet\_oc\_db} for all sites, ERA5 wind

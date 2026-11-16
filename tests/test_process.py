@@ -54,6 +54,7 @@ def test_provenance(clear_water):
     assert attrs['o2_model'] == 'lbl' and attrs['gas_coupling'] == 'path_length'
     assert attrs['gas_coupling_table'] == 'gas_coupling_ppld.csv'
     assert attrs['rrs_extension'] == 'pure_water' and attrs['solar_database'] == 'tsis'
+    assert attrs['rayleigh_pressure'] == 1
     assert attrs['default_wind'] == 2.
     assert attrs['toa_lut'] == 'toa_lut_opac_ultra_light.nc'
     assert attrs['toa_lut_doi'].startswith('none')

@@ -770,9 +770,10 @@ ozone 3 %, pressure 2 hPa, wind 1.5 m s\ :sup:`-1` for the sky reflection of the
 are provisional and are arguments of the function. Not yet included: the aerosol model (mixture), the residuals of the
 models (gas coupling, absorption tables, invRrs reconstruction and SWIR extension) and the terms identified on the
 Sentinel-2 matchups (thin cirrus, additional near-infrared term). The surface pressure enters the gaseous absorption
-and the direct transmittance; it enters the Rayleigh scattering of the path reflectance and the diffuse
-transmittances only with ``Process(rayleigh_pressure=True)``
-(:py:meth:`~radcalnet_oc.process.Process.rayleigh_pressure_correction`, the look-up tables being computed for
+and the direct transmittance; it also enters the Rayleigh scattering of the path reflectance and the diffuse
+transmittances (``Process(rayleigh_pressure=True)``, default ``settings: rayleigh_pressure: true``,
+:py:meth:`~radcalnet_oc.process.Process.rayleigh_pressure_correction`, validated with OSOAA runs at
+:math:`\pm` 20 hPa within 0.03 % of the path reflectance, the look-up tables being computed for
 1015.2 hPa, pressure of the Rayleigh optical thickness of the OSOAA runs): the Rayleigh reflectance is scaled as :math:`(P/P_0)^D`, with :math:`D = d\ln R_{ray}/d\ln\tau_r`
 from the wavelength nodes of the tables (about 0.87 in the blue, 1 beyond 1000 nm), i.e. :math:`\pm`\ 1.3 % of the
 TOA reflectance at 412--443 nm for :math:`\pm`\ 20 hPa.

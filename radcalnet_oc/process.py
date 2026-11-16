@@ -39,6 +39,7 @@ AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 # spectral extension of Rrs beyond the range of the input: 'pure_water' or 'zero'
 RRS_EXTENSIONS = ('pure_water', 'zero')
 RRS_EXTENSION = config['settings'].get('rrs_extension', 'pure_water')
+RAYLEIGH_PRESSURE = bool(config['settings'].get('rayleigh_pressure', True))
 
 
 @functools.lru_cache(maxsize=None)
@@ -93,7 +94,7 @@ class Process():
                  o2_model=None,
                  gas_coupling=None,
                  rrs_extension=None,
-                 rayleigh_pressure=False
+                 rayleigh_pressure=None
                  ):
         '''
         :param input_db: time series of the surface measurements, :py:class:`xarray.Dataset` with a
@@ -124,9 +125,10 @@ class Process():
             (``'pure_water'``)
         :param rayleigh_pressure: scale the Rayleigh scattering with the surface pressure of each measurement
             (the look-up tables are computed for 1015.2 hPa): path reflectance and diffuse transmittances, see
-            :py:meth:`rayleigh_pressure_correction`
+            :py:meth:`rayleigh_pressure_correction`; by default ``settings: rayleigh_pressure`` of the
+            configuration (True)
         '''
-        self.rayleigh_pressure = rayleigh_pressure
+        self.rayleigh_pressure = RAYLEIGH_PRESSURE if rayleigh_pressure is None else bool(rayleigh_pressure)
         self.rrs_extension = RRS_EXTENSION if rrs_extension is None else rrs_extension
         if self.rrs_extension not in RRS_EXTENSIONS:
             raise ValueError(f'rrs_extension must be one of {RRS_EXTENSIONS}, not {self.rrs_extension!r}')

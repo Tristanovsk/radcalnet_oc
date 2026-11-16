@@ -45,6 +45,10 @@ settings:
   # (semi-analytical model with the absorption of pure water, particulate backscattering fitted on the
   # near-infrared end of the input; default) or 'zero' (as before version 1.1)
   rrs_extension: 'pure_water'
+  # scaling of the Rayleigh scattering of the look-up tables (OSOAA runs at 1015.2 hPa) with the surface pressure of
+  # each measurement: path reflectance and diffuse transmittances (Process.rayleigh_pressure_correction, validated
+  # with OSOAA runs at +/- 20 hPa); true by default, false as before version 1.2
+  rayleigh_pressure: true
 
 processor:
   ncpu: 8

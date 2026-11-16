@@ -14,8 +14,27 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `o2_model`, `rrs_extension`), direct sunglint added to `Rtoa`, provenance attributes, sensitivity
   studies and convolution with sensor bands. It replaces *TOA atmosphere radiation*.
 - Direct sunglint term $T_{dir} R_{sg}$ in the TOA equation of the README and of the documentation.
+- Pressure scaling of the Rayleigh scattering (`Process(rayleigh_pressure=...)`, `settings: rayleigh_pressure` of
+  the configuration, `--rayleigh_pressure` of the command line, `Process.rayleigh_pressure_correction`): the
+  Rayleigh reflectance of the look-up tables, computed with the Rayleigh optical thickness of 1015.2 hPa, is scaled
+  as `R_ray [(P/P0)^D - 1]` with `D = dln R_ray / dln tau_r` from the wavelength nodes, and the diffuse
+  transmittances by `exp(-dtau_r / 2 mu)`; validated with OSOAA runs at +/- 20 hPa (within 0.03 % of the path
+  reflectance for a Rayleigh atmosphere, 0.25 % with AOT 0.1; `scripts/rayleigh_pressure`). The output attribute
+  `rayleigh_pressure` records the setting.
+- Direct sunglint and sunglint flags in the package (`Process.compute_sunglint`, `Process.execute(sunglint=...)`):
+  TOA direct glint, glint angle, bitmask of glint levels and near-specular geometry (`GLINT_FLAGS`), uncertainty of
+  the glint (ensemble of plausible slope statistics, wind +/- 1.5 m s-1) and spectral flag `glint_uncertain`
+  (> 5 % of the TOA reflectance). Heavy-tailed isotropic slope statistics in `Sunglint` (`cm_iso_t`, `cm_iso_mix`)
+  and core slope variance `sigma2_coef`.
+- First uncertainty budget of the TOA simulation (`radcalnet_oc.uncertainty.uncertainty_budget`): inputs propagated
+  through `Process` by central differences, glint term, quadrature (provisional input uncertainties).
 
 ### Changed
+- The Rayleigh scattering is scaled with the surface pressure by default (`rayleigh_pressure: true`): the TOA
+  reflectance changes by about -0.06 % per hPa below 1015.2 hPa in the blue (Ratm by -0.09 % per hPa), e.g.
+  -0.18 % at 412-443 nm and -0.02 % at 2190 nm for the clear-water template (1011-1014 hPa); the regression
+  reference is updated (default case; the case of the settings before version 1.1 sets `rayleigh_pressure=False`
+  and is unchanged). Set `rayleigh_pressure: false` to recover the previous results.
 - One folder for the rendered tutorials: `docs/source/notebook` is moved to `docs/source/tutorials` (the
   pages move from `notebook/<name>.html` to `tutorials/<name>.html`); the working notebooks of
   `docs/source/tutorials/examples` are moved out of the documentation, to `examples/`, without their

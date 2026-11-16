@@ -3,7 +3,8 @@
 Usage:
   radcalnet_oc <input_file> [--output <output_file>] [--vza angles] [--azi angles]
    [--aerosol_combination props] [--solar_database name] [--rrs_name name] [--o2_model model]
-   [--gas_coupling coupling] [--rrs_extension method] [--bands wavelengths] [--fwhm fwhm] [--expon expon] [--no_clobber]
+   [--gas_coupling coupling] [--rrs_extension method] [--rayleigh_pressure flag] [--bands wavelengths]
+   [--fwhm fwhm] [--expon expon] [--no_clobber]
   radcalnet_oc -h | --help
   radcalnet_oc -v | --version
 
@@ -33,6 +34,9 @@ Options:
   --rrs_extension method  Rrs beyond the spectral range of the input: pure_water (model with the
                    absorption of pure water fitted on the near-infrared end of the input) or zero;
                    default: settings: rrs_extension of the configuration
+  --rayleigh_pressure flag  Scale the Rayleigh scattering of the look-up tables with the surface pressure
+                   of each measurement: true or false; default: settings: rayleigh_pressure of the
+                   configuration (true)
   --bands wavelengths  Central wavelengths (nm) of sensor bands, comma-separated: the band-averaged
                    Rtoa, Ratm, Ed, E0 and Rrs are added to the output (variables <name>_bands,
                    dimension wl_band)
@@ -61,6 +65,17 @@ BAND_VARIABLES = ['Rtoa', 'Ratm', 'Ed', 'E0', 'Rrs']
 def floats(text):
     '''Parse a comma-separated list of numbers.'''
     return [float(v) for v in text.split(',') if v.strip()]
+
+
+def _flag(value, name):
+    """Boolean option of the command line (None: default of the configuration)."""
+    if value is None:
+        return None
+    if value.lower() in ('true', '1', 'yes'):
+        return True
+    if value.lower() in ('false', '0', 'no'):
+        return False
+    raise ValueError(f'{name} must be true or false, not {value!r}')
 
 
 def main(argv=None):
@@ -105,7 +120,8 @@ def main(argv=None):
                           Rrs_name=args['--rrs_name'],
                           o2_model=args['--o2_model'],
                           gas_coupling=args['--gas_coupling'],
-                          rrs_extension=args['--rrs_extension'])
+                          rrs_extension=args['--rrs_extension'],
+                          rayleigh_pressure=_flag(args['--rayleigh_pressure'], '--rayleigh_pressure'))
         if aerosol_combination is None:
             process.execute()
         else:
