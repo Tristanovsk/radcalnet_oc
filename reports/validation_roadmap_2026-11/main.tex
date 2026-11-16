@@ -212,7 +212,8 @@ Left: relative; right: absolute, with the interquartile range.}
   (Section~\ref{sec:sixs}); it accounts for about $-1\times10^{-3}$ at a typical AOT of 0.1, i.e.\ a third of
   the deficit. The proportions of the retrieved mixture are not the cause: the mixtures with enough coarse mode to
   cancel the slope in the SWIR contradict the AOT spectrum measured by AERONET-OC, and the OPAC models consistent
-  with it give too little SWIR path reflectance per unit AOT (Section~\ref{sec:aerosol_diag}).
+  with it give too little SWIR path reflectance per unit AOT, also with a hygroscopic fine mode
+  (Section~\ref{sec:aerosol_diag}).
 \item \textbf{Direct sunglint.} Adding the Cox--Munk direct glint reduces the median bias at 865\,nm (all glint
   angles) from $-17.0$ to $-13.5\,\%$ (AAOT L2.0), $-24.9$ to $-6.1\,\%$ (Galata) and $-44.5$ to $0.0\,\%$
   (Section-7 L1.5), but the scatter increases below $30^\circ$ (isotropic statistics, no wind direction, wind
@@ -325,10 +326,8 @@ bands). The AOT spectrum of each mixture is compared with the one measured at th
 \item \textbf{The OPAC models consistent with the AOT spectrum give too little SWIR reflectance.} COAV alone has
   the measured Ångström exponents (1.43 at 443--865 and 865--1020\,nm) and the largest SWIR slope ($-14$, $-12$).
   The AOT dependence therefore comes from the aerosol models (size distribution, phase function, hygroscopic growth),
-  not from their proportions. A likely candidate is the fine model of the retrieval, \code{WASO\_rh0}, dry
-  water-soluble particles, whereas the relative humidity is typically 70--90\,\% at sea: hydrated particles are
-  larger and scatter relatively more in the NIR--SWIR, which goes in the direction of both the too steep retrieval
-  and the missing SWIR reflectance.
+  not from their proportions. The fine model of the retrieval, \code{WASO\_rh0}, is dry, whereas the relative
+  humidity is typically 70--90\,\% at sea: the hygroscopic growth of the fine mode is tested below.
 \item \textbf{The 865\,nm offset does not depend on the mixture} ($-2.1$ to $-2.6\times10^{-3}$ for all the
   mixtures): it is the glint-angle term of Section~\ref{sec:sixs}.
 \end{itemize}
@@ -352,6 +351,46 @@ COAV                     & $-2.59$ & $-21.3$ & $-14.1$ & $-12.2$ & 1.43 & 0.071 
 COAV+MACL 50/50 (default) & $-2.49$ & $-12.3$ & $-2.7$ & $-2.7$ & 0.70 & 0.186 \\
 MACL                     & $-2.40$ & $-3.2$ & $+8.6$ & $+6.7$ & 0.33 & 0.338 \\
 DESE                     & $-2.12$ & $+10.6$ & $+33.8$ & $+31.0$ & 0.09 & 0.358 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Hygroscopic fine mode.} Before computing new LUTs, the effect of the relative humidity was estimated in
+single scattering from the OPAC scattering matrices of MOPSMAP (the source of the LUT models; WASO up to 70\,\%,
+continental and urban models up to 95\,\%), at the median geometry of the matchups (scattering angle $140^\circ$,
+10--90\,\% range 116--160$^\circ$): path reflectance per unit AOT(550),
+$\omega\,\tau_a(\lambda)/\tau_a(550)\,P(\Theta)/(4\mu_s\mu_v)$, and Ångström exponents (Table~\ref{tab:hygro}, same diagnosis
+script). The single scattering underestimates the LUT (WASO at 2190\,nm: 4.6 against
+$7.4\times10^{-3}$ per unit AOT with the molecules, the surface and the multiple scattering), so that only the ratios
+between models are used. Cancelling the slope at 2190\,nm ($-9.2\times10^{-3}$ per unit AOT) requires about 2.2 times
+the reflectance of the retrieved fine mode. The hygroscopic growth gives at most 1.2 times: WASO is almost unchanged
+from 0 to 70\,\% (its particles remain small compared with the SWIR wavelengths), and the continental and urban models,
+whose Ångström exponents match the measurements, reach 1.0--1.2 times WASO\_rh0 up to 95\,\%, their larger SWIR AOT
+being compensated by a lower backscattering ($P(140^\circ)$ of 0.17--0.22 against 0.44 at 2200\,nm). A LUT with a
+hygroscopic fine mode is therefore not expected to change the slope by more than $\sim1\times10^{-3}$ per unit AOT,
+and was not computed. No OPAC-type aerosol reconciles the measured AOT spectrum (coarse mode limited to about 10\,\% of
+AOT(550)) with the SWIR reflectance (backscattering of a coarse mode, $\sim$13 in the units of
+Table~\ref{tab:hygro}): the AOT dependence points either to a term correlated with the AOT that is not of aerosol
+origin, or to particle shapes or sizes outside OPAC.
+
+\begin{table}[h]
+\centering\small
+\caption{OPAC models at several relative humidities (MOPSMAP scattering matrices): Ångström exponents (measured by
+AERONET-OC: 1.51 at 443--865\,nm, 1.39 at 865--1020\,nm), AOT(2200)/AOT(550), single-scattering path reflectance per
+unit AOT(550) ($\times10^{-3}$) at the median geometry of the matchups and phase function at $140^\circ$ and 2200\,nm.}
+\label{tab:hygro}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Model & $\alpha_{450-850}$ & $\alpha_{850-1000}$ & $\tau_{2200}/\tau_{550}$ & 850\,nm & 1600\,nm & 2200\,nm & $P(140^\circ)$ \\
+\midrule
+WASO, RH 0\,\% (LUT)   & 1.63 & 1.84 & 0.040 & 34.9 & 11.4 & 4.6 & 0.44 \\
+WASO, RH 70\,\%        & 1.60 & 1.85 & 0.043 & 31.1 & 11.1 & 4.8 & 0.40 \\
+COAV, RH 70\,\% (LUT)  & 1.43 & 1.47 & 0.121 & 29.3 & 12.0 & 5.0 & 0.17 \\
+COAV, RH 90\,\%        & 1.42 & 1.59 & 0.094 & 26.0 & 11.2 & 5.3 & 0.20 \\
+COAV, RH 95\,\%        & 1.35 & 1.60 & 0.086 & 23.9 & 10.8 & 5.5 & 0.22 \\
+URBA, RH 90\,\%        & 1.42 & 1.56 & 0.104 & 24.6 & 10.0 & 4.7 & 0.22 \\
+MACL, RH 70\,\% (LUT)  & 0.18 & 0.33 & 0.462 & 39.9 & 21.4 & 13.4 & 0.09 \\
+DESE, RH 70\,\% (LUT)  & 0.11 & 0.09 & 0.763 & 54.5 & 43.2 & 32.2 & 0.14 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -417,9 +456,13 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
   (Section~\ref{sec:aerosol_diag}): the proportions of the mixture are excluded, the OPAC models consistent with the
   measured AOT spectrum give too little SWIR reflectance per unit AOT; extending the retrieval to the six models of
   the LUT does not help.
-\item \prio{P1} \textbf{Hygroscopic fine mode in the LUT}: add water-soluble (and continental) models at relative
-  humidities of 70--90\,\% (OSOAA runs), test them on the matchups (same diagnosis script) and select the model
-  with the relative humidity of the site (ERA5).
+\item \textit{Done (November 2026):} \textbf{hygroscopic fine mode} (Section~\ref{sec:aerosol_diag},
+  Table~\ref{tab:hygro}): at most 1.2 times the SWIR reflectance of WASO\_rh0 up to 95\,\% of relative humidity,
+  against 2.2 times needed; no LUT computed.
+\item \prio{P1} \textbf{Term correlated with the AOT}: look for a non-aerosol origin of the AOT dependence (glint
+  and diffuse light coupling at high AOT, spatial and temporal representativeness of the AERONET-OC AOT for the
+  satellite box), and, if none, non-spherical or larger particles than OPAC (MOPSMAP spheroids) in a small OSOAA
+  test.
 \item \prio{P1} \textbf{Make the spectral-AOT retrieval the default} when the AOT spectrum is available, with more
   weight on the near-infrared bands (865, 1020\,nm), where the retrieved mixture is too steep.
 \item \prio{P2} \textbf{Size distribution from AERONET inversions} (almucantar, where available near the sites) to

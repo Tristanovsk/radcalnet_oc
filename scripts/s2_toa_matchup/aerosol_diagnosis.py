@@ -11,6 +11,10 @@ AERONET-OC measurement nearest to the overpass (AOT(550), wind, normalized spect
 3. the mixtures: retrieved with ``kernel.Aerosol`` (DESE/MACL/WASO, as in ``s2_toa_matchup.py``), retrieved with
    the six models (non-negative least squares, proportions summing to 1), and fixed alternatives.
 
+A last test checks whether the hygroscopic growth of the fine mode could explain the missing SWIR reflectance:
+Angstrom exponents and single-scattering path reflectance per unit AOT(550) of OPAC models at relative humidities
+of 0 to 95 % (MOPSMAP scattering matrices, ``--opac-dir``), at the median geometry of the matchups.
+
 The analysis compares the retrieved mixtures with the measured AOT spectrum (residuals at 865 and 1020 nm,
 extrapolation to the SWIR) and, for each alternative mixture, shifts the deficit by the change of R_atm and fits
 again deficit = offset + slope x AOT(550): a mixture that removes the slope explains the AOT dependence.
@@ -208,6 +212,61 @@ def analysis(data):
         D = (1e3 * (ds.D + (alts[name] - R3))).sel(wl=BANDS).to_pandas()
         print(f'  {name}'); print(D.groupby(bins, observed=True).median().round(2).to_string())
 
+    return ds
+
+
+# ---------------------------------------------------------------------------------------------------
+# hygroscopic growth of the fine mode: single scattering from the OPAC (MOPSMAP) scattering matrices
+# ---------------------------------------------------------------------------------------------------
+OPAC_DIR = '/DATA/git/vrtc/mopsmap_tbx/scatmat/ascii'
+HYGRO_CASES = [('WASO', 0), ('WASO', 50), ('WASO', 70), ('COAV', 70), ('COAV', 80), ('COAV', 90), ('COAV', 95),
+               ('URBA', 70), ('URBA', 90), ('MACL', 70), ('MACL', 90), ('DESE', 70)]
+
+
+def opac_optics(model, rh, wl, directory=OPAC_DIR):
+    '''Extinction and scattering cross sections and phase function (mean 1 over the sphere) of an OPAC file.'''
+    f = f'{directory}/scat_mat_opac_{model}_rh{rh}_wl{wl:.1f}.csv'
+    with open(f) as fh:
+        cext = float(fh.readline().split(':')[1])
+        csca = float(fh.readline().split(':')[1])
+    t = pd.read_csv(f, sep=r'\s+', skiprows=4, names=['angle', 's11', 'ms12', 's22', 's33'])
+    theta = np.radians(t.angle.values)
+    return cext, csca, t.angle.values, t.s11.values / (np.trapezoid(t.s11.values * np.sin(theta), theta) / 2)
+
+
+def hygroscopic_test(ds, directory=OPAC_DIR):
+    '''
+    Single-scattering path reflectance per unit AOT(550), omega tau(wl)/tau(550) P(Theta) / (4 mu0 muv), and
+    Angstrom exponents of OPAC models at several relative humidities, at the median geometry of the matchups.
+    '''
+    mu0, muv = np.cos(np.radians(ds.sza.values)), np.cos(np.radians(ds.vza.values))
+    # scattering angle from the glint angle (azimuth convention of the LUT, 0 deg towards the Sun)
+    theta = np.degrees(np.arccos(np.cos(np.radians(ds.glint_angle.values)) - 2 * mu0 * muv))
+    th, m0, mv = np.nanmedian(theta), np.nanmedian(mu0), np.nanmedian(muv)
+    print(f'\n=== 5. hygroscopic growth of the fine mode: OPAC single scattering at the median geometry '
+          f'(scattering angle {th:.0f} deg, p10-p90 {np.nanpercentile(theta, 10):.0f}-'
+          f'{np.nanpercentile(theta, 90):.0f})')
+    rows = {}
+    wls = [450, 550, 850, 1000, 1600, 2200]
+    for model, rh in HYGRO_CASES:
+        c = {wl: opac_optics(model, rh, wl, directory) for wl in wls}
+        n = {wl: c[wl][0] / c[550][0] for wl in wls}
+        r = {'alpha 450-850': -np.log(n[850] / n[450]) / np.log(850 / 450),
+             'alpha 850-1000': -np.log(n[1000] / n[850]) / np.log(1000 / 850),
+             'naot 2200': n[2200]}
+        for wl in (850, 1600, 2200):
+            cext, csca, angle, P = c[wl]
+            r[f'SS/AOT {wl}'] = 1e3 * csca / cext * n[wl] * np.interp(th, angle, P) / (4 * m0 * mv)
+        r['P(theta) 2200'] = np.interp(th, c[2200][2], c[2200][3])
+        rows[f'{model}_rh{rh}'] = r
+    print('    measured (AERONET-OC, median): alpha 443-865 = {:.2f}, alpha 865-1020 = {:.2f}'.format(
+        float((-np.log(ds.naot_meas.sel(wl_aeronet=865) / ds.naot_meas.sel(wl_aeronet=443)) / np.log(865 / 443)).median()),
+        float((-np.log(ds.naot_meas.sel(wl_aeronet=1020) / ds.naot_meas.sel(wl_aeronet=865)) / np.log(1020 / 865)).median())))
+    print(pd.DataFrame(rows).T.round(3).to_string())
+    lut_waso = (1e3 * ds.Ratm_model.sel(model='WASO_rh0', wl=2190) / ds.aot550).median()
+    print(f'    check: path reflectance of WASO_rh0 in the LUT per unit AOT at 2190 nm (Rayleigh and surface '
+          f'included) = {float(lut_waso):.1f} x1e-3')
+
 
 def main():
     p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
@@ -215,9 +274,11 @@ def main():
     p.add_argument('--cache', default=CACHE, help='directory of the per-site results')
     p.add_argument('--n-jobs', type=int, default=4)
     p.add_argument('--max-scenes', type=int, default=None, help='first scenes of each site only (test)')
+    p.add_argument('--opac-dir', default=OPAC_DIR, help='directory of the OPAC (MOPSMAP) scattering matrices')
     args = p.parse_args()
     data = {k: compute(args, k) for k in SITES}
-    analysis(data)
+    ds = analysis(data)
+    hygroscopic_test(ds, args.opac_dir)
 
 
 if __name__ == '__main__':
