@@ -16,10 +16,16 @@ than ``--glint-min`` (0 by default: all the glint angles; 30 for the fit of the 
 checked by inverting the wind of each scene with the fitted statistics: if the distribution is right, the
 equivalent wind no longer depends on the glint angle and follows the station wind.
 
+With ``--core-wind``, the wind dependence of the core is fitted instead: sigma2 = s0 + s1 W (Cox-Munk: 0.003 +
+0.00512 W) with the tail (f_tail, sigma2_tail), scored by the median absolute residual per glint-angle bin averaged
+over the bins (equal weight near and far from the glint, otherwise the many far scenes dominate and the fit drops the
+core); the residual is shown per wind and glint-angle bin.
+
 Example::
 
     python glint_tail_fit.py                  # all glint angles, core scaled
     python glint_tail_fit.py --glint-min 30   # far tail only
+    python glint_tail_fit.py --core-wind      # wind dependence of the core slope variance
 '''
 import argparse
 import itertools
@@ -77,6 +83,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     p.add_argument('--odir', default=ODIR, help='directory of the matchup files')
     p.add_argument('--glint-min', type=float, default=0., help='minimum glint angle of the fit (deg)')
+    p.add_argument('--core-wind', action='store_true', help='fit the wind dependence of the core slope variance')
     args = p.parse_args()
     warnings.simplefilter('ignore')
     pd.set_option('display.width', 200)
@@ -93,6 +100,9 @@ def main():
     gbin = pd.cut(df.glint_angle.values, [b for b in BINS if b >= args.glint_min or b == BINS[-1]])
     print(f'=== {len(df)} matchups; cirrus-corrected excess (x1e-3), median per glint-angle bin: ' +
           '; '.join(f'{b}: {pd.Series(E[b]).groupby(gbin, observed=True).median().round(2).values}' for b in BANDS))
+
+    if args.core_wind:
+        return core_wind(df, E)
 
     rows, best = [], {}
     for stats, grid in GRID.items():
@@ -136,6 +146,46 @@ def main():
               f'{u[ok].corr(pd.Series(df.wind.values)[ok], method="spearman"):.2f}; median U_eq - U '
               f'{(u[ok] - df.wind.values[ok]).median():.1f} m/s')
         print(tab.round(2).to_string())
+
+
+S0 = [0.003, 0.008, 0.013, 0.018, 0.023, 0.03, 0.04]
+S1 = [0., 0.001, 0.002, 0.0035, 0.00512, 0.008]
+TAIL = list(itertools.product([0., 0.03, 0.05, 0.08], [0.08, 0.12, 0.2]))
+
+
+def core_wind(df, E):
+    """Wind dependence of the core slope variance, sigma2 = s0 + s1 W, with the tail of cm_iso_mix."""
+    df = df.reset_index(drop=True)
+    W = df.wind.values
+    gb = pd.cut(df.glint_angle, [0, 25, 30, 40, 60, 90])
+    wb = pd.cut(df.wind, [0, 1.5, 2.5, 3.5, 5, 15])
+    codes = gb.cat.codes.values
+
+    def model(s0, s1, f, st):
+        # effective Cox-Munk wind giving the core slope variance s0 + s1 W
+        return surface(df, (s0 + s1 * W - 3e-3) / 512e-5, 'cm_iso_mix', {'f_tail': f, 'sigma2_tail': st})
+
+    def score(R):
+        return sum(np.mean([np.median(np.abs((E[b] - 1e3 * df[f'T{b}'].values * R)[codes == k]))
+                            for k in np.unique(codes)]) for b in FIT_BANDS)
+
+    res = sorted((score(model(s0, s1, f, st)), s0, s1, f, st)
+                 for s0, s1 in itertools.product(S0, S1) for f, st in TAIL)
+    print('\n=== core slope variance s0 + s1 W with the tail; score: median absolute residual per glint-angle bin, '
+          'averaged over the bins, sum of 1610 and 2190 nm')
+    print('    best 5 (score, s0, s1, f_tail, sigma2_tail): ' +
+          '; '.join(f'{r[0]:.2f}, {r[1]:g}, {r[2]:g}, {r[3]:g}, {r[4]:g}' for r in res[:5]))
+    ref = (score(model(3e-3, 512e-5, 0.05, 0.12)), 3e-3, 512e-5, 0.05, 0.12)
+    print(f'    Cox-Munk core (0.003 + 0.00512 W) with the default tail: score {ref[0]:.2f}')
+    print('    number of scenes per wind (rows, m/s) and glint-angle (columns, deg) bin')
+    print(pd.crosstab(wb, gb).to_string())
+    screened = ((df.glint_angle > 30).values)
+    for label, (sc, s0, s1, f, st) in [('Cox-Munk core', ref), ('fitted core', res[0])]:
+        r = pd.Series(E[2190] - 1e3 * df.T2190.values * model(s0, s1, f, st))
+        print(f'-- {label} (s0 {s0:g}, s1 {s1:g}, f_tail {f:g}, sigma2_tail {st:g}): residual E - G at 2190 nm '
+              f'(x1e-3), slope with the wind {np.polyfit(W, r, 1)[0]:+.2f} per m/s (all), '
+              f'{np.polyfit(W[screened], r[screened], 1)[0]:+.2f} (glint angle > 30 deg)')
+        print(r.groupby([wb, gb], observed=True).median().unstack().round(2).to_string())
 
 
 if __name__ == '__main__':

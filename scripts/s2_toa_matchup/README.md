@@ -114,6 +114,7 @@ measurements of a site. Not part of the package.
 
    ```bash
    python glint_tail_fit.py
+   python glint_tail_fit.py --core-wind   # wind dependence of the core slope variance s0 + s1 W (about 60 s)
    ```
 
 The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
