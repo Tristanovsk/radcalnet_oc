@@ -49,10 +49,17 @@ The TOA reflectance is simulated with the gaseous absorption coupled with the sc
 reflectance and the water-leaving term have their own gaseous transmittances,
 \begin{equation}
 \Rtoa(\lambda) = \pi\, \Rrs(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda)\, T_g^{w}(\lambda)
-+ T_g^{atm}(\lambda)\, R_\mathrm{atm}(\lambda),
++ T_g^{atm}(\lambda)\, R_\mathrm{atm}(\lambda)
++ T_{dir}(\lambda)\, R_{sg},
 \label{eq:rtoa}
 \end{equation}
-given for each term $X\in\{atm, w, E_d\}$ by a photon path-length model (Gamma distribution of the absorber
+where the last term is the direct sunglint: $R_{sg}$ is the Cox--Munk reflectance of the direct sunlight by the
+wind-roughened surface (with wave shadowing), attenuated by the direct transmittance of the
+Sun-surface-sensor path, $T_{dir}(\lambda) = T_g(\lambda, m)\, \exp[-(\tau_r(\lambda)+\tau_a(\lambda))\, m]$
+with $m = 1/\mu_0+1/\mu_v$. The look-up tables contain only the diffuse light, so this term is computed
+separately (\code{coxmunk.Sunglint}) and added for the comparisons with the satellite (Sec.~\ref{sec:matchups}).
+The gaseous transmittances of the path reflectance, the water-leaving term and the irradiance,
+$X\in\{atm, w, E_d\}$, are given by a photon path-length model (Gamma distribution of the absorber
 paths, equivalence theorem),
 \begin{equation}
 T_g^{X}(\lambda) = \left(1 + s_X^2\, \eta_X\, \tau_g(\lambda, m_X)\right)^{-1/s_X^2},
@@ -68,7 +75,7 @@ mass, the AOT and the water vapour column. The path reflectance sees only a frac
 ($\eta\approx1.02$--$1.05$). The downwelling irradiance is $E_d = T^{\downarrow}\, T_g^{E_d}\, E_0$.
 
 For $\eta_X=1$ and $s_X^2\to0$, all terms see the direct beam, $T_g^{atm}=T_g^{w}=T_g^{\downarrow}T_g^{\uparrow}$,
-and Eq.~\eqref{eq:rtoa} reduces to the factorised form of the versions before 1.1,
+and the first two terms of Eq.~\eqref{eq:rtoa} reduce to the factorised form of the versions before 1.1,
 $\Rtoa = T_g^{\downarrow} T_g^{\uparrow}\left[\pi\,\Rrs\,T^{\downarrow}t^{\uparrow} + R_\mathrm{atm}\right]$, which
 underestimates the band TOA reflectance by about 4\,\% (O$_2$-B), 10--15\,\% (720, 820, 900\,nm), 30\,\%
 (O$_2$-A head) and 50--60\,\% (940\,nm). The coupled model is the default in the H$_2$O and O$_2$ windows of
@@ -124,6 +131,7 @@ the absorption tables themselves differ by more than the coupling residual in se
 CKD: $+25$--40\,\% in H$_2$O 720/900/1880/2150\,nm, $-33\,\%$ in H$_2$O 1380\,nm).
 
 \subsection{Sentinel-2/MSI L1C matchups at the TOA}
+\label{sec:matchups}
 
 \paragraph{Protocol} (\code{scripts/s2\_toa\_matchup/s2\_toa\_matchup.py}).
 For each L1C subset around an AERONET-OC site with AERONET-OC data within $\pm2$\,h of the overpass:
