@@ -755,6 +755,44 @@ $>5$ (3, 14, 34, 38)      & $-15.0$ & $-5.8$ & $+0.3$ & $-0.3$ & $-7.0$  & $+0.7
 \end{tabular}
 \end{table}
 
+\paragraph{Core wind coefficient in \code{Sunglint} and retuned statistics.} The core slope variance of the
+isotropic statistics is now a parameter, $\sigma^2 = s_0 + s_1 W$ (\code{sigma2\_coef}, Cox--Munk by default; unit
+tests of the default and of the equivalence with Cox--Munk at the effective wind), also an option of the matchup
+script (\code{--glint-s0}, \code{--glint-s1}; files with the suffix \code{\_cm\_iso\_mix\_core}). With the core
+$0.003 + 0.0035\,W$ and the tail of the fit above ($f=0.05$, $\sigma_t^2=0.08$), the wind term vanishes but a
+glint-angle dependence comes back ($+0.02$ to $+0.07\times10^{-3}$ per degree, $t$ up to 5) and the screened bias at
+2190\,nm worsens ($-37$ against $-24\,\%$): the narrower core removes glint at 30--$60^\circ$ for moderate winds. A
+scan on the clear matchups beyond $30^\circ$ separates the two terms: the wind term depends on the core coefficient
+only ($+0.33$, $+0.14$, $0.00\times10^{-3}$ per m\,s$^{-1}$ for $s_1$ = 0.00512, 0.0043, 0.0035) and the glint-angle term
+on the tail only. The narrower core needs a larger tail fraction: $f = 0.10$, $\sigma_t^2 = 0.08$
+(Table~\ref{tab:glint_core}). This retuned set removes both terms, keeps the offsets and the screened bias of the
+default set, reduces the outliers (176 against 197 of 715) and halves the overestimate of the high near-specular
+glint at 2190\,nm ($+32$ against $+55\,\%$). It is fitted with the wind of the platforms: the defaults of the package
+remain Cox--Munk with the tail (0.05, 0.12), a consistent pair, until the wind dependence is checked with ERA5.
+
+\begin{table}[h]
+\centering\small
+\caption{Deficit with the glint (sim $+$ glint $-$ sat, $\times10^{-3}$) of the matchups without the high and
+near-specular flags (\code{aot\_term\_search.py}, about 510 matchups) and efficiency of the screening (715
+matchups, Section~\ref{sec:glint_levels}), for the default heavy-tailed statistics and the retuned core.}
+\label{tab:glint_core}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcc}
+\toprule
+ & Default \code{cm\_iso\_mix} & Retuned core \\
+ & $0.003 + 0.00512\,W$; $f=0.05$, $\sigma_t^2=0.12$ & $0.003 + 0.0035\,W$; $f=0.10$, $\sigma_t^2=0.08$ \\
+\midrule
+Wind term, 865/1610/2190\,nm (per m\,s$^{-1}$) & $+0.25$/$+0.21$/$+0.20$ ($t\approx3$) & $-0.01$/$-0.07$/$-0.07$ (n.s.) \\
+Glint-angle term, 1610/2190\,nm (per degree) & $+0.01$/$-0.01$ & $+0.01$/$-0.01$ \\
+Offsets with cirrus, 865/1610/2190\,nm & $-0.61$/$+0.05$/$+0.21$ & $-0.59$/$+0.08$/$+0.23$ \\
+Outliers (of 715) & 197 & 176 \\
+Youden, exclude high and near specular & 53.2 & 53.5 \\
+High, near specular, 2190\,nm & $+55\,\%$ & $+32\,\%$ \\
+Screened bias, 865/2190\,nm & $-10.8$/$-24.3\,\%$ & $-10.1$/$-24.1\,\%$ \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
 \paragraph{Caveats.} No pixel-level uncertainty is attached yet to either side; the AERONET-OC $\Rrs$ is
 used at nadir; the matchup files report \code{radcalnet\_oc=1.0.2} although they were produced with the
 development branch (defaults \code{lbl} + \code{path\_length}), which illustrates the traceability gap of
@@ -886,8 +924,11 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
 \item \textit{Done (November 2026):} \textbf{wind dependence of the slope distribution}
   (Section~\ref{sec:glint_wind}): in the core, not in the tail; core $0.003 + 0.0035\,W$ with the tail
   ($f=0.05$, $\sigma_t^2=0.08$--0.12) removes the wind term beyond $30^\circ$.
-\item \prio{P1} \textbf{Core wind coefficient in \code{Sunglint}} (parameter of the \code{cm\_iso} family, default
-  Cox--Munk), then regather the matchups and redo the flag and deficit analyses.
+\item \textit{Done (November 2026):} \textbf{core wind coefficient in \code{Sunglint}} (\code{sigma2\_coef}) and
+  retuned statistics (core $0.003 + 0.0035\,W$, tail $f=0.10$, $\sigma_t^2=0.08$; Table~\ref{tab:glint_core}): wind
+  and glint-angle terms removed, fewer outliers.
+\item \prio{P2} \textbf{Named preset} of the retuned statistics in \code{Sunglint} (e.g.\ for the platform winds) and
+  default of the matchup analyses, once confirmed with ERA5.
 \item \prio{P1} \textbf{ERA5 wind} (speed, direction) per scene, to separate a weaker wind dependence of the
   roughness from the dilution by the errors of the platform wind.
 \item \prio{P1} \textbf{Default screening}: heavy-tailed glint and exclusion of the high and near-specular flags in
@@ -999,6 +1040,9 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
   \code{--flags-exclude glint\_high glint\_near\_specular}.
 \item Wind dependence of the slope distribution (Section~\ref{sec:glint_wind}): \code{glint\_tail\_fit.py --core-wind}
   (about 60\,s).
+\item Retuned core: \code{s2\_toa\_matchup.py} with \code{--reglint}, \code{--glint-stats cm\_iso\_mix},
+  \code{--glint-s1 0.0035}, \code{--glint-f-tail 0.10} and \code{--glint-sigma2-tail 0.08}; analyses with
+  \code{--glint-stats cm\_iso\_mix\_core}.
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}

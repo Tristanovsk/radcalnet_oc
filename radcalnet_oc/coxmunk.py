@@ -90,8 +90,9 @@ class Sunglint:
         self.m = m
         self.tau_atm = tau_atm
 
-    def sunglint(self, ws, wazi=0, stats='cm_dir', shadow=True, slope=False, nu=7., f_tail=0.05, sigma2_tail=0.12):
-        '''
+    def sunglint(self, ws, wazi=0, stats='cm_dir', shadow=True, slope=False, nu=7., f_tail=0.05, sigma2_tail=0.12,
+                 sigma2_coef=(3e-3, 512e-5)):
+        r'''
         Stokes vector of the sunglint reflectance, Eq. :eq:`glint`, without atmospheric transmittance.
 
         :param ws: wind speed (m s-1)
@@ -111,6 +112,10 @@ class Sunglint:
         :param nu: degrees of freedom of ``'cm_iso_t'`` (> 2)
         :param f_tail: fraction of the wide slope component of ``'cm_iso_mix'``
         :param sigma2_tail: total mean square slope of the wide component of ``'cm_iso_mix'``
+        :param sigma2_coef: ``(s0, s1)`` of the mean square slope of the isotropic statistics (``'cm_iso'``,
+            ``'cm_iso_t'``, core of ``'cm_iso_mix'``), :math:`\sigma^2 = s_0 + s_1 W`; Cox and Munk (0.003, 0.00512) by
+            default; (0.003, 0.0035) fits the Sentinel-2 matchups of the AERONET-OC platforms with the wind of the
+            station (scripts/s2_toa_matchup/glint_tail_fit.py --core-wind)
         :return: ``[I, Q, U, V]``, Stokes components of the sunglint reflectance (by default)
         '''
         sza = self.sza
@@ -131,7 +136,7 @@ class Sunglint:
         Rf = self.fresnel(omega)
 
         if stats in ('cm_iso', 'cm_iso_t', 'cm_iso_mix'):  # Original isotropic Cox Munk statistics
-            sigma2 = 3e-3 + 512e-5 * ws
+            sigma2 = sigma2_coef[0] + sigma2_coef[1] * ws
             if stats == 'cm_iso_mix':  # mean square slope of the mixture, for the shadowing
                 sigma2_sh = (1 - f_tail) * sigma2 + f_tail * sigma2_tail
             else:

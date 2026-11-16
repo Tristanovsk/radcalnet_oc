@@ -29,8 +29,10 @@ measurements of a site. Not part of the package.
    scene, 2.3 GB peak memory.
 
    The glint statistics are set with `--glint-stats` (`cm_iso`, or the heavy-tailed `cm_iso_t` and `cm_iso_mix`
-   of `radcalnet_oc.Sunglint`, parameters `--glint-nu`, `--glint-f-tail`, `--glint-sigma2-tail`); the output then
-   gets the suffix `_<glint-stats>`. With `--reglint`, the glint of the cached scenes is recomputed with the
+   of `radcalnet_oc.Sunglint`, parameters `--glint-nu`, `--glint-f-tail`, `--glint-sigma2-tail`, and the core slope
+   variance `--glint-s0 + --glint-s1 W`, Cox-Munk 0.003 + 0.00512 W by default); the output then gets the suffix
+   `_<glint-stats>` (`_core` added for a non Cox-Munk core). Retuned set on the platform winds: `--glint-s1 0.0035
+   --glint-f-tail 0.10 --glint-sigma2-tail 0.08`. With `--reglint`, the glint of the cached scenes is recomputed with the
    atmospheric factor of the cached simulation (exact, a few minutes for all the sites) without new simulation:
 
    ```bash

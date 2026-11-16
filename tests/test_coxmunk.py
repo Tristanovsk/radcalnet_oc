@@ -153,3 +153,17 @@ def test_glint_flags_bits():
     f = glint_flags([0.005, 0.02, 0.2, 0.7, 0.7], [45., 45., 45., 45., 20.])
     assert f.dtype == np.uint8
     np.testing.assert_array_equal(f, [0, 1, 3, 7, 7 | GLINT_FLAGS['glint_near_specular']])
+
+
+@pytest.mark.parametrize('stats', ['cm_iso', 'cm_iso_t', 'cm_iso_mix'])
+def test_core_wind_coefficient(stats):
+    """sigma2_coef: default Cox and Munk; (s0, s1) gives the same glint as Cox and Munk at the effective wind
+    (s0 + s1 W - 0.003) / 0.00512, shadowing included."""
+    s = Sunglint(35., 20., 140.)
+    ws = 4.
+    default = s.sunglint(ws, stats=stats)[0]
+    assert s.sunglint(ws, stats=stats, sigma2_coef=(3e-3, 512e-5))[0] == pytest.approx(default, rel=1e-12)
+    s0, s1 = 0.003, 0.0035
+    w_eff = (s0 + s1 * ws - 3e-3) / 512e-5
+    assert s.sunglint(ws, stats=stats, sigma2_coef=(s0, s1))[0] == pytest.approx(s.sunglint(w_eff, stats=stats)[0],
+                                                                                 rel=1e-12)

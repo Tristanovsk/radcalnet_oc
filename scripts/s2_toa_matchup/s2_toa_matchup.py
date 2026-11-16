@@ -25,7 +25,8 @@ The slope statistics of the direct sunglint are set with ``--glint-stats`` (``cm
 heavy-tailed ``cm_iso_t`` and ``cm_iso_mix`` of ``radcalnet_oc.Sunglint`` with ``--glint-nu``, ``--glint-f-tail``,
 ``--glint-sigma2-tail``). When they differ from those of a cached scene, the glint of the scene is recomputed at the
 gathering, with the atmospheric factor (gaseous and direct transmittances) of the cached simulation, which does not
-depend on the slope statistics; the output file then gets the suffix ``_<glint-stats>``. ``--reglint`` only gathers
+depend on the slope statistics; the output file then gets the suffix ``_<glint-stats>`` (and ``_core`` when the
+core slope variance ``--glint-s0 + --glint-s1 W`` differs from Cox-Munk). ``--reglint`` only gathers
 the cached scenes (no new scene), e.g. to switch the glint statistics without rerunning the simulations.
 
 Example::
@@ -176,6 +177,7 @@ _RECONSTRUCTION = None
 #: wave slope statistics of the sunglint (the wind direction is not measured: isotropic Cox and Munk)
 GLINT_STATS = 'cm_iso'
 #: parameters of the heavy-tailed statistics (fit on the SWIR excess of the matchups, glint_tail_fit.py)
+CM_COEF = (3e-3, 512e-5)  # Cox-Munk mean square slope 0.003 + 0.00512 W
 GLINT_KW = {'cm_iso': {}, 'cm_iso_t': {'nu': 7.}, 'cm_iso_mix': {'f_tail': 0.05, 'sigma2_tail': 0.12}}
 
 
@@ -183,7 +185,16 @@ def glint_kw(args):
     '''Slope statistics and parameters of the command line.'''
     kw = {'cm_iso_t': {'nu': args.glint_nu},
           'cm_iso_mix': {'f_tail': args.glint_f_tail, 'sigma2_tail': args.glint_sigma2_tail}}.get(args.glint_stats, {})
+    coef = (args.glint_s0, args.glint_s1)
+    if coef != CM_COEF:  # core slope variance s0 + s1 W of the isotropic statistics (Cox-Munk by default)
+        kw = {**kw, 'sigma2_coef': coef}
     return args.glint_stats, kw
+
+
+def output_suffix(stats, kw):
+    '''Suffix of the gathered file: '' for cm_iso, _<stats> otherwise, + _core for a non Cox-Munk core.'''
+    sfx = '' if stats == 'cm_iso' else f'_{stats}'
+    return sfx + ('_core' if 'sigma2_coef' in kw else '')
 
 
 def surface_glint(sza, vza, azi, wind, stats=GLINT_STATS, kw=None):
@@ -418,6 +429,9 @@ def main():
     p.add_argument('--glint-f-tail', type=float, default=GLINT_KW['cm_iso_mix']['f_tail'], help='f_tail of cm_iso_mix')
     p.add_argument('--glint-sigma2-tail', type=float, default=GLINT_KW['cm_iso_mix']['sigma2_tail'],
                    help='sigma2_tail of cm_iso_mix')
+    p.add_argument('--glint-s0', type=float, default=CM_COEF[0],
+                   help='core mean square slope s0 + s1 W of the isotropic statistics: s0')
+    p.add_argument('--glint-s1', type=float, default=CM_COEF[1], help='s1 (Cox-Munk 0.00512; 0.0035 fitted)')
     p.add_argument('--reglint', action='store_true',
                    help='only gather the cached scenes (glint recomputed with --glint-stats), no new scene')
     args = p.parse_args()
@@ -426,7 +440,7 @@ def main():
     warnings.filterwarnings('ignore', category=RuntimeWarning)
 
     stats, kw = glint_kw(args)
-    suffix = '' if stats == 'cm_iso' else f'_{stats}'
+    suffix = output_suffix(stats, kw)
     ofile = opj(args.odir, f'{args.site}_{args.level}_s2_toa_matchup{suffix}.nc')
     if args.reglint:
         files = sorted(glob.glob(opj(args.odir, 'scenes', f'{args.site}_{args.level}', '*.nc')))
