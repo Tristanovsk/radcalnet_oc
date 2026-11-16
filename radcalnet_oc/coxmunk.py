@@ -101,15 +101,19 @@ class Sunglint:
         zy = -1 * (sinv * sinazi) / (mu0 + muv)
 
         if stats == 'cm_iso':
-            #TODO check consitency between sigma2 and formulation
-            #Pdist_ = 1. / (np.pi *2.* sigma2) * np.exp(-1./2 * np.tan(thetaN) ** 2 / sigma2)
+            # sigma2 of Cox and Munk is the total mean square slope (upwind + crosswind), i.e. sigma2 / 2 per
+            # axis: 2D Gaussian 1 / (2 pi (sigma2/2)) exp(-(zx^2 + zy^2) / (2 sigma2/2)), with
+            # zx^2 + zy^2 = tan^2(theta_n) (tests/test_coxmunk.py: energy conservation, equivalence with the
+            # directional statistics averaged over the wind directions)
             Pdist_ = 1. / (np.pi * sigma2) * np.exp(- np.tan(thetaN) ** 2 / sigma2)
 
             z_up,z_cr=zx,zy
         else:
             sigma2 = s_cr2 + s_up2
 
-            # TODO check why it is clockwise rotation
+            # components of the slope along the wind (azimuth wazi, counterclockwise from the Sun direction as
+            # the viewing azimuth) and across it: projection on the rotated axes (change of frame, not a
+            # rotation of the slope vector), tests/test_coxmunk.py::test_wind_direction_counterclockwise
             z_up = np.cos(wazi) * zx + np.sin(wazi) * zy
             z_cr = -np.sin(wazi) * zx + np.cos(wazi) * zy
 
@@ -185,10 +189,7 @@ class Sunglint:
             Rf = np.matmul(L2, Rf)
 
         if shadow and vza != 0:
-            Ls = self.Lambda(s_up2, s_cr2, 1, sza)
-            Lr = self.Lambda(s_up2, s_cr2, muazi ** 2, vza)
-            # print(s_up2, s_cr2, muazi ** 2, vza, Ls, Lr)
-            SH = 1 / (1 + Ls + Lr)
+            SH = self.shadowing(s_up2, s_cr2, wazi=np.degrees(wazi))
         else:
             SH = 1.
 
@@ -277,6 +278,22 @@ class Sunglint:
         ang = np.arccos(ang)
 
         return ang
+
+    def shadowing(self, s_up2, s_cr2, wazi=0.):
+        r'''
+        Shadowing and hiding factor of the waves, :math:`1 / (1 + \Lambda_s + \Lambda_v)`, with the Smith function
+        :math:`\Lambda` of the Sun and of the sensor directions (:py:meth:`Lambda`), each for the slope
+        variance in its azimuth relative to the wind (Sun azimuth 0, sensor azimuth ``azi``).
+
+        :param s_up2: upwind slope variance
+        :param s_cr2: crosswind slope variance
+        :param wazi: wind direction (deg), counterclockwise from the Sun direction
+        :return: shadowing factor
+        '''
+        wazi = np.radians(wazi)
+        Ls = self.Lambda(s_up2, s_cr2, np.cos(-wazi) ** 2, self.sza)
+        Lv = self.Lambda(s_up2, s_cr2, np.cos(self.azi - wazi) ** 2, self.vza)
+        return 1 / (1 + Ls + Lv)
 
     def nu(self, sigx2, sigy2, cosphi2, theta):
         r'''

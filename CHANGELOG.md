@@ -7,10 +7,51 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-15
+
 ### Added
+- Traceability of the outputs: global attributes of `Process.radcalnet_db` (and of the command-line output)
+  `radcalnet_oc_version` (with the git commit of a development installation, e.g. `1.0.2+g6439281.dirty`,
+  `process.package_version`), `o2_model`, `gas_coupling`, `gas_coupling_table`, `rrs_extension`,
+  `solar_database`, `default_wind`, `toa_lut` and `toa_lut_doi` (`Process.provenance`). The `source`
+  attribute of the command-line output gives the same version.
+- Regression test on reference outputs (`tests/test_regression.py`): band-averaged `Rtoa`, `Ratm` and `Ed` of
+  the clear-water template with the light LUT (20 bands of 10 nm, 412-2190 nm), default settings and
+  decoupled / REPTRAN O2, against `tests/data/reference_clear_water.nc` (relative tolerance 1e-4). A
+  deliberate change of the results updates the reference with `python tests/reference.py`.
+- Shared AERONET-OC database (`aeronet_oc_db`, optional dependency `pip install radcalnet_oc[aeronet]`):
+  `Aeronet.read_site(site, level)` reads the up-to-date AERONET-OC file of a site, `Aeronet.open_site`
+  returns its netCDF dataset (with `Rrs_Lwn*`), and `Aeronet().aeronet_oc_site_info` comes from the database
+  catalog (all sites, Sentinel-2 tile), with the packaged table as fallback. The location of the database is
+  `$AERONET_OC_ROOT` or `~/.config/aeronet_oc_db/config.toml`. The AERONET-OC tutorials open the data from the
+  database (`aeronet_oc_db.open_site(site, level, legacy_names=True)`, `aeronet_oc_db.site_info(level='lev15')`)
+  instead of `/DATA/AERONET/netcdf/OCv3` and `info_aeronet_oc_v15_location.csv`.
+- Photon path-length model of the gaseous transmittance of the scattered light, option
+  `gas_coupling='path_length'` (`--gas_coupling path_length`): per absorption window and term,
+  T = (1 + s2 eta tau)^(-1/s2) with tau = -ln Tg(m) of the channel (Gamma distribution of the absorber paths,
+  equivalence theorem), applied channel by channel to REPTRAN and line by line to the O2 bands with
+  `o2_model='lbl'`, no smoothing needed. Coefficients `data/auxdata/gas_coupling_ppld.csv` fitted by
+  `scripts/sos_abs_coupling/ppld.py` on the SOS-ABS simulations (CKD intervals decomposed into exponential
+  sums); evaluation `scripts/sos_abs_coupling/ppld_eval.py`. `kernel.path_length_transmittance`,
+  `GasCoupling.path_length`, `GaseousTransmittance.get_path_length_transmittance`,
+  `O2LineByLine.transmittance_path_length`.
+- Coupling of the gaseous absorption with the scattering, option `gas_coupling='effective_air_mass'` of
+  `Process` (`--gas_coupling effective_air_mass` on the command line, `settings: gas_coupling` in the
+  configuration). In seven windows of the O2-B, O2-A and H2O bands of
+  684-990 nm, the transmittances of the path reflectance, of the water-leaving term and of the irradiance
+  are corrected with an effective air mass or, for the path reflectance in the O2-A head and the 940 nm
+  core, a single-scattering blend, with coefficients depending on the air mass, the aerosol optical
+  thickness and the water vapour column (`kernel.GasCoupling`, table `data/auxdata/gas_coupling_eta.csv`,
+  `GaseousTransmittance.get_coupled_transmittance`, attributes `Tg_atm`, `Tg_w`, `Tg_Ed` of `Process`).
+  The coefficients are fitted on SOS-ABS coupled simulations (CKD 5 cm-1; water vapour 0.5-4 g cm-2, solar
+  angles 20-70 deg, AOT(550) 0.05-0.4) and the correction is computed on the transmittance smoothed to
+  5 cm-1, then applied channel by channel keeping the interval means. Band TOA reflectance error against the
+  coupled simulations: from 4-57 % (decoupled) to 1-6 % in median. Scripts `scripts/sos_abs_coupling`
+  (`make_luts.py`: SOS-ABS LUTs with the `sosabs` package; `coupling.py`: analysis and fit) and research
+  tutorial *Gaseous transmittance: coupling with scattering*.
 - Line-by-line O2 absorption in the O2-B (682.6-701.8 nm) and O2-A (754.7-775.2 nm) bands, option
   `o2_model='lbl'` of `GaseousTransmittance` and `Process` (`--o2_model lbl` on the command line,
-  `settings: o2_model` in the configuration; default `'reptran'`, unchanged). The REPTRAN fine table used
+  `settings: o2_model` in the configuration; default `'lbl'`, see Changed). The REPTRAN fine table used
   as a spectrum makes these bands too deep at sub-nanometre resolution (equivalent width at air mass 1.155:
   O2-B 1.53 against 0.82 nm, O2-A 4.42 against 3.42 nm). Table `data/lut/gases/o2_lbl_tau.nc` (1.9 MB,
   HITRAN, Voigt profiles, AFGL midlatitude summer) built by `scripts/make_o2_lbl_lut.py`; class
@@ -24,8 +65,40 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   mean; band names kept as `band` coordinate of the outputs).
 - `Spectral.weights` (weight matrix of all the bands, cached per wavelength grid) and `Spectral.responses`.
 - Warning when the response of a band is truncated by the wavelength range of the signal.
+- Wind speed: optional input variable `wind` (m s-1, per measurement, e.g. ERA5) for the roughness of the
+  sea surface; the TOA and transmittance LUTs are interpolated linearly between their wind nodes
+  (`lut.wind_weights`, 0.5-16 m s-1, clipped outside), one wind node at a time so that the memory does not
+  grow with the spread of the winds. Default `settings: wind: 2.` of the configuration (also for missing
+  values); `wind` is written in the output. With the full LUT, the results without wind input are unchanged.
+- Spectral extension of Rrs beyond the range of the input (e.g. above 1150 nm), `radcalnet_oc.water.extend_rrs`:
+  semi-analytical model with the absorption of pure water (table `data/auxdata/water_coef.txt`, Pope and Fry
+  1997, Kou et al. 1993), particulate backscattering fitted on the near-infrared end of the input, joined to
+  its last values. Option `rrs_extension` of `Process` (`--rrs_extension`, `settings: rrs_extension`):
+  `'pure_water'` (default) or `'zero'`. The fitted backscattering is written in the output (`bbp_nir`).
+- Hyperspectral reconstruction of multispectral Rrs (AERONET-OC bands) with the `invRrs` model `two_modes`,
+  `radcalnet_oc.reconstruction` (optional dependency, extra `[invrrs]`), 350-1150 nm, at the geometry of the
+  measurement and at nadir, with the retrieved parameters and the fit residual; settings of the AERONET-OC
+  chain of invRrs (unweighted fit, fixed initial values, 100 evaluations).
 
 ### Changed
+- Rrs is no longer set to zero beyond the spectral range of the input (`rrs_extension='pure_water'`): Rtoa
+  increases in the short-wave infrared for turbid waters (e.g. turbid template: Rrs about 1e-3 sr-1 at
+  1240 nm) and is unchanged within the range of the input. The `Rrs` attribute `unit` is `sr-1` (was `-`) and
+  its `source` no longer mentions an interpolation by InvRrs.
+- `LUT.lut_preparation(wind=...)` interpolates between the wind nodes instead of taking the nearest one; with
+  the light LUT of the package (nodes 0.5 and 4 m s-1), the default 2 m s-1 is now interpolated.
+- The gaseous transmittance of the scattered light uses the photon path-length model by default
+  (`settings: gas_coupling: 'path_length'`): the TOA reflectance, the path reflectance and the irradiance change in
+  the O2 and H2O bands of 684-990 nm and are unchanged elsewhere. For the clear-water template (REPTRAN O2,
+  10 nm bands, 5 nm in O2-B, OLCI widths in O2-A): band TOA reflectance +7 to +12 % in O2-B, +4 to +63 % in
+  O2-A, +17 to +31 % at 822 and 900 nm, x2.1 to x3.0 at 940 nm; irradiance -0.2 to -1.6 %.
+  `gas_coupling='decoupled'` gives the previous results.
+- The O2 absorption is computed line by line by default (`settings: o2_model: 'lbl'`), closer to the CKD of
+  the coupling fit (2 % against 9-18 % more absorbing for REPTRAN). Only the O2-B (682.6-701.8 nm) and O2-A
+  (754.7-775.2 nm) bands change; for the clear-water template (with the path-length coupling) the mean TOA
+  reflectance increases by +7 to +10 % in 686-696 nm and +14 to +16 % in 759-770 nm (+33 to +39 % in the
+  O2-A head, 760-762 nm), the irradiance by +9 to +10 % and +15 to +16 %. Processing about 15 % slower.
+  `o2_model='reptran'` gives the previous O2 absorption.
 - `Spectral` convolutions use a single matrix product for all the bands, with the weights and prepared
   matrices cached per wavelength grid: 3-4 times faster for repeated convolutions on the same grid
   (e.g. the band variables of `run.py`), same results for `convolve` (Gaussian, < 2e-7).
@@ -39,6 +112,17 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 - `Spectral.convolve_` and `Spectral.convolve2_` (numba per-band loops, not used since the band weights).
+
+### Fixed
+- `Sunglint`: the shadowing of the waves (Smith function) used the azimuths of the Sun and of the sensor
+  relative to the Sun direction instead of the wind direction, i.e. the slope variances of a wind along the
+  solar plane whatever `wazi`. Directional statistics (`cm_dir`, `bh2006`) with `wazi` other than 0 or 180
+  deg change; the isotropic statistics (`cm_iso`, used by the Sentinel-2 matchups) and `wazi=0` are unchanged
+  (`Sunglint.shadowing`). The two open questions of the module are settled and tested
+  (`tests/test_coxmunk.py`): the isotropic `sigma2` is the total mean square slope (sigma2 / 2 per axis), and
+  the wind direction turns counterclockwise from the Sun direction, as the viewing azimuth.
+- `LUT.toa_lut` failed (`KeyError`) when adding the missing tables of a call to a full cache removed tables of
+  the same call read from the cache.
 
 ## [1.0.2] - 2026-11-02
 
@@ -132,6 +216,8 @@ First release published on PyPI (`pip install radcalnet_oc`).
 
 - Initial version.
 
+[Unreleased]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Tristanovsk/radcalnet_oc/releases/tag/v1.0.0

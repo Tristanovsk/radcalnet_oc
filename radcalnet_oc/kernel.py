@@ -30,8 +30,28 @@ AEROSOL_COMBINATION = config['settings']['aerosol_combination']
 NETCDF_ENGINE = config['processor']['netcdf_engine']
 # absorption of O2: 'reptran' (REPTRAN fine table) or 'lbl' (line by line in the O2-B and O2-A bands)
 O2_MODELS = ('reptran', 'lbl')
-O2_MODEL = config['settings'].get('o2_model', 'reptran')
+O2_MODEL = config['settings'].get('o2_model', 'lbl')
 O2_LBL_FILE = files('radcalnet_oc.data.lut.gases') / 'o2_lbl_tau.nc'
+# coupling of the gaseous absorption with the scattering (GasCoupling): 'path_length' (photon path-length model,
+# default), 'effective_air_mass' (per-window effective air masses) or 'decoupled' (direct-beam air mass for all
+# the terms)
+GAS_COUPLINGS = ('decoupled', 'effective_air_mass', 'path_length')
+GAS_COUPLING = config['settings'].get('gas_coupling', 'path_length')
+GAS_COUPLING_FILE = files('radcalnet_oc.data.auxdata') / 'gas_coupling_eta.csv'
+GAS_COUPLING_PPLD_FILE = files('radcalnet_oc.data.auxdata') / 'gas_coupling_ppld.csv'
+S2_MIN = 1e-4  # minimum relative variance of the photon path-length distribution
+
+
+def path_length_transmittance(x, s2):
+    r'''
+    Transmittance for a Gamma distribution of the absorber optical paths of mean :math:`x` and relative variance
+    :math:`s^2` (Laplace transform): :math:`(1 + s^2 x)^{-1/s^2}`, :math:`e^{-x}` when :math:`s^2 \to 0`.
+
+    :param x: mean absorber optical path (:math:`\eta\, m\, \tau`)
+    :param s2: relative variance of the distribution (clipped to ``S2_MIN``)
+    '''
+    s2 = np.maximum(s2, S2_MIN)
+    return np.exp(-np.log1p(s2 * x) / s2)
 
 class Aerosol:
     '''
@@ -223,8 +243,9 @@ class O2LineByLine:
         ok = (idx >= 0) & (idx < len(wl))
         self.tau = tau.values.astype(float)[ok]
         idx = idx[ok]
-        # the table wavelengths are increasing: the points of a cell are contiguous
-        self.starts = np.r_[0, np.flatnonzero(np.diff(idx)) + 1]
+        # the table wavelengths are increasing: the points of a cell are contiguous (no cell when the grid
+        # does not cover the bands)
+        self.starts = np.r_[0, np.flatnonzero(np.diff(idx)) + 1] if len(idx) else np.zeros(0, dtype=int)
         self.cells = idx[self.starts]
         self.counts = np.diff(np.r_[self.starts, len(idx)])
         self.mask = np.zeros(len(wl), dtype=bool)
@@ -242,10 +263,246 @@ class O2LineByLine:
         factor = np.asarray(factor, dtype=float)
         flat = factor.reshape(-1)
         out = np.ones((flat.size, self.nwl))
-        for i in range(0, flat.size, self.block):
+        for i in range(0, flat.size if len(self.cells) else 0, self.block):
             t = np.exp(-flat[i:i + self.block, None] * self.tau[None, :])
             out[i:i + self.block, self.cells] = np.add.reduceat(t, self.starts, axis=1) / self.counts
         return out.reshape(factor.shape + (self.nwl,))
+
+    def transmittance_path_length(self, factor, eta, s2, tau_add):
+        r'''
+        Cell-averaged transmittance of the photon path-length model (:py:func:`path_length_transmittance`)
+        for the O2 lines plus an absorption constant in each cell (other gases, REPTRAN):
+        :math:`\langle (1 + s^2 \eta\, (\tau_c + f \tau_{O_2}))^{-1/s^2} \rangle` in the cells of the bands,
+        :math:`(1 + s^2 \eta\, \tau_c)^{-1/s^2}` elsewhere.
+
+        :param factor: :math:`f = c_{O_2}\, m\, P/P_{lbl}`, array of N paths
+        :param eta: ratio of the mean path to the geometric path, N values
+        :param s2: relative variance of the path distribution, N values
+        :param tau_add: optical path of the other absorbers along the geometric path, array (N, len(wl))
+        :return: array (N, len(wl))
+        '''
+        factor, eta, s2 = (np.asarray(v, dtype=float).reshape(-1) for v in (factor, eta, s2))
+        tau_add = np.asarray(tau_add, dtype=float).reshape(factor.size, self.nwl)
+        out = path_length_transmittance(eta[:, None] * tau_add, s2[:, None])
+        if len(self.cells):
+            point_cell = np.repeat(self.cells, self.counts)
+            for i in range(0, factor.size, self.block):
+                b = slice(i, i + self.block)
+                x = eta[b, None] * (tau_add[b][:, point_cell] + factor[b, None] * self.tau[None, :])
+                t = path_length_transmittance(x, s2[b, None])
+                out[b, self.cells] = np.add.reduceat(t, self.starts, axis=1) / self.counts
+        return out
+
+
+class GasCoupling:
+    r'''
+    Gaseous transmittance of the scattered light, per absorption window: coupling of the absorption with
+    the scattering.
+
+    The transmittance :math:`T_g(m)` of the direct beam is exact for the direct light only. The photons
+    scattered by the molecules and aerosols above the absorbers shortcut part of the path (less absorption
+    for the path reflectance, especially for the water vapour, in the lowest kilometres), while the skylight
+    reaching the surface has longer paths than the direct beam (more absorption for the water-leaving term
+    and the irradiance). The table ``data/auxdata/gas_coupling_eta.csv``, fitted on coupled
+    absorption-scattering simulations (SOS-ABS, correlated k; ``scripts/sos_abs_coupling``), gives for each
+    window and term a coefficient
+
+    .. math:: c = c_0 + c_1\,(m - 2) + c_2\,(\tau_{550} - 0.1) + c_3 \ln(U / 2\,\mathrm{g\,cm^{-2}})
+       + c_4\, \tau_g
+
+    used in one of two forms (column ``form``):
+
+    * ``'eta'``: effective air mass, :math:`T = T_g(\eta\, m)` with :math:`\eta = c`;
+    * ``'blend'``: single-scattering blend, :math:`T = T_g(m)^{1-k}\, T_{ss}^{\,k}` with :math:`k = c` and
+      :math:`T_{ss} = (1 - T_g(m)) / (-\ln T_g(m))`, the transmittance seen in single scattering by the light
+      scattered uniformly along the absorber column (effective air mass :math:`m/2` for a weak absorption,
+      less when the absorption saturates).
+
+    The terms are ``'atm'`` (path reflectance, :math:`m = 1/\mu_0 + 1/\mu_v`), ``'w'`` (water-leaving term,
+    same :math:`m`) and ``'Ed'`` (downwelling irradiance, :math:`m = 1/\mu_0`); :math:`U` is the water vapour
+    column (:math:`c_3 = 0` in the O2 windows) and :math:`\tau_g = -\ln \bar T_g(m)` the absorption strength
+    at the resolution of the fit (blend form only). :math:`m`, :math:`\tau_{550}`, :math:`U` and
+    :math:`\tau_g` are clipped to the ranges of the simulations.
+
+    :ivar table: :py:class:`pandas.DataFrame` of the coefficients (columns ``window``, ``wl_min``,
+        ``wl_max``, ``term``, ``form``, ``c0``-``c4``, ``m_min``, ``m_max``, ``aot_min``, ``aot_max``,
+        ``h2o_min``, ``h2o_max``, ``tau_max``; ``h2o`` in g cm-2)
+    '''
+    TERMS = ('atm', 'w', 'Ed')
+    FORMS = ('eta', 'blend', 'ppld')
+    H2O_REF = 2.  # g cm-2
+    RESOLUTION = 5.  # cm-1, spectral resolution of the transmittances of the fit (CKD intervals)
+
+    def __init__(self, file=GAS_COUPLING_FILE, resolution=RESOLUTION):
+        '''
+        :param file: table of the coefficients, file or :py:class:`pandas.DataFrame`
+        :param resolution: spectral resolution (cm-1) at which the correction is computed (see
+            :py:meth:`correction`); None: channel by channel (not consistent with the fit for the
+            saturated channels of a fine table, for tests only)
+        '''
+        self.resolution = resolution
+        import pandas as pd
+        if isinstance(file, pd.DataFrame):
+            table = file.copy()
+        else:
+            with open(file) as f:
+                table = pd.read_csv(f, comment='#')
+        # defaults of the tables without H2O term or form (first version)
+        defaults = {'form': 'eta', 'c3': 0., 'c4': 0., 'h2o_min': self.H2O_REF, 'h2o_max': self.H2O_REF,
+                    'tau_max': np.inf, 's0': 0., 's1': 0., 's2': 0., 's3': 0.}
+        for k, v in defaults.items():
+            if k not in table:
+                table[k] = v
+        if not table.form.isin(self.FORMS).all():
+            raise ValueError(f'form must be one of {self.FORMS}')
+        self.table = table
+
+    @property
+    def windows(self):
+        '''Absorption windows: dict ``{name: (wl_min, wl_max)}`` (nm).'''
+        t = self.table.drop_duplicates('window')
+        return {r.window: (float(r.wl_min), float(r.wl_max)) for r in t.itertuples()}
+
+    def row(self, term, window):
+        '''Coefficients of a term and a window (:py:class:`pandas.Series`).'''
+        if term not in self.TERMS:
+            raise ValueError(f'term must be one of {self.TERMS}, not {term!r}')
+        r = self.table[(self.table.window == window) & (self.table.term == term)]
+        if len(r) != 1:
+            raise KeyError(f'no coefficients for window {window!r} and term {term!r}')
+        return r.iloc[0]
+
+    def form(self, term, window):
+        '''Form of the correction of a term in a window, ``'eta'`` or ``'blend'``.'''
+        return self.row(term, window).form
+
+    def coefficient(self, term, window, air_mass, aot550, h2o=None, tau=None):
+        r'''
+        Coefficient :math:`c` of a term: :math:`\eta` (form ``'eta'``) or :math:`k` (form ``'blend'``).
+
+        :param term: ``'atm'``, ``'w'`` or ``'Ed'``
+        :param window: name of the absorption window (see :py:attr:`windows`)
+        :param air_mass: geometric air mass :math:`m` of the term
+        :param aot550: aerosol optical thickness at 550 nm
+        :param h2o: water vapour column (g cm-2); None: 2 g cm-2
+        :param tau: absorption strength :math:`\tau_g = -\ln \bar T_g(m)` (blend form); None: 0
+        :return: broadcast of ``air_mass``, ``aot550``, ``h2o`` and ``tau``
+        '''
+        r = self.row(term, window)
+        m = np.clip(air_mass, r.m_min, r.m_max)
+        aot = np.clip(aot550, r.aot_min, r.aot_max)
+        out = r.c0 + r.c1 * (m - 2) + r.c2 * (aot - 0.1)
+        if r.c3 != 0 and h2o is not None:
+            out = out + r.c3 * np.log(np.clip(h2o, r.h2o_min, r.h2o_max) / self.H2O_REF)
+        if r.c4 != 0 and tau is not None:
+            out = out + r.c4 * np.clip(tau, 0., r.tau_max)
+        return out
+
+    def path_length(self, term, window, air_mass, aot550, h2o=None):
+        r'''
+        Parameters of the photon path-length model (form ``'ppld'``): ratio :math:`\eta` of the mean absorber path
+        to the geometric one (coefficients ``c0``-``c3``) and relative variance :math:`s^2` of the path
+        distribution (coefficients ``s0``-``s3``), both linear in :math:`m - 2`, :math:`\tau_{550} - 0.1` and
+        :math:`\ln(U/2)`.
+
+        :return: ``(eta, s2)``, broadcast of ``air_mass``, ``aot550`` and ``h2o``
+        '''
+        r = self.row(term, window)
+        m = np.clip(air_mass, r.m_min, r.m_max)
+        aot = np.clip(aot550, r.aot_min, r.aot_max)
+        lu = 0. if h2o is None else np.log(np.clip(h2o, r.h2o_min, r.h2o_max) / self.H2O_REF)
+        eta = r.c0 + r.c1 * (m - 2) + r.c2 * (aot - 0.1) + r.c3 * lu
+        s2 = r.s0 + r.s1 * (m - 2) + r.s2 * (aot - 0.1) + r.s3 * lu
+        return eta, np.maximum(s2, S2_MIN)
+
+    def eta(self, term, window, air_mass, aot550, h2o=None):
+        r'''Ratio :math:`\eta` of the effective to the geometric air mass (form ``'eta'``, see
+        :py:meth:`coefficient`).'''
+        if self.form(term, window) != 'eta':
+            raise ValueError(f'{term} in {window}: form {self.form(term, window)!r}, not eta')
+        return self.coefficient(term, window, air_mass, aot550, h2o)
+
+    @staticmethod
+    def smooth(T, resolution=RESOLUTION):
+        r'''
+        Running mean of a transmittance over ``resolution`` (cm-1) in wavenumber, weighted by the widths
+        of the cells of the wavelength grid: transmittance of the intervals of the CKD simulations on which
+        the coefficients are fitted.
+
+        :param T: :py:class:`xarray.DataArray` with a ``wl`` dimension (nm, increasing)
+        '''
+        wl = T.wl.values
+        edges = np.r_[wl[0] - (wl[1] - wl[0]) / 2, 0.5 * (wl[1:] + wl[:-1]), wl[-1] + (wl[-1] - wl[-2]) / 2]
+        dw = np.diff(edges)
+        nu = 1e7 / wl
+        lo = np.searchsorted(wl, 1e7 / (nu + resolution / 2), side='left')
+        hi = np.searchsorted(wl, 1e7 / (nu - resolution / 2), side='right')
+        dims = [d for d in T.dims if d != 'wl'] + ['wl']
+        x = T.transpose(*dims)
+        c = np.concatenate([np.zeros(x.shape[:-1] + (1,)), np.cumsum(x.values * dw, axis=-1)], axis=-1)
+        w = np.r_[0, np.cumsum(dw)]
+        mean = (c[..., hi] - c[..., lo]) / (w[hi] - w[lo])
+        return x.copy(data=mean).transpose(*T.dims)
+
+    def correction(self, term, window, Tg_of_m, air_mass, aot550, h2o=None):
+        r'''
+        Effective transmittance of a term in a window.
+
+        The coefficients are fitted on the transmittances of 5 cm-1 intervals, much less saturated than the
+        channels of a fine table (REPTRAN, line by line): applied channel by channel, the blend would
+        over-correct the saturated channels. The correction is therefore computed on the transmittances
+        smoothed to the resolution of the fit, :math:`\bar T = \langle T_g \rangle_{5\,cm^{-1}}`, and applied
+        to each channel so as to keep the interval means, by scaling the absorptance when the absorption
+        decreases (path reflectance) and the transmittance when it increases:
+
+        .. math:: T = 1 - (1 - T_g(m))\, \frac{1 - \bar T^{model}}{1 - \bar T(m)} \quad \text{or} \quad
+           T = T_g(m)\, \frac{\bar T^{model}}{\bar T(m)},
+
+        with :math:`\bar T^{model} = \langle T_g(\eta m) \rangle` (form ``'eta'``) or
+        :math:`\bar T(m)^{1-k}\, T_{ss}(\bar T(m))^k` (form ``'blend'``, :math:`k` with
+        :math:`\tau_g = -\ln \bar T(m)`). The band average of the corrected
+        transmittance is then that of the simulations whatever the resolution of the table.
+
+        :param term: ``'atm'``, ``'w'`` or ``'Ed'``
+        :param window: name of the absorption window
+        :param Tg_of_m: function of the air mass returning the transmittance of the coupled gases on the
+            wavelengths of the window
+        :param air_mass: geometric air mass :math:`m`
+        :param aot550: aerosol optical thickness at 550 nm
+        :param h2o: water vapour column (g cm-2)
+        :return: corrected transmittance of the coupled gases
+        '''
+        T0 = Tg_of_m(air_mass)
+        eta_form = self.form(term, window) == 'eta'
+        if eta_form:
+            c = self.coefficient(term, window, air_mass, aot550, h2o)
+        if self.resolution is None:
+            if eta_form:
+                return Tg_of_m(c * air_mass)
+            c = self.coefficient(term, window, air_mass, aot550, h2o, tau=-np.log(T0))
+            return T0 ** (1 - c) * self.single_scattering(T0) ** c
+        T0s = self.smooth(T0, self.resolution)
+        if eta_form:
+            Ts = self.smooth(Tg_of_m(c * air_mass), self.resolution)
+        else:
+            c = self.coefficient(term, window, air_mass, aot550, h2o, tau=-np.log(T0s))
+            Ts = T0s ** (1 - c) * self.single_scattering(T0s) ** c
+        # less absorption (path reflectance): absorptance scaled, T0 <= T <= 1; more absorption (water-leaving
+        # term, irradiance): transmittance scaled, 0 <= T <= T0; both keep the interval means
+        less = Ts >= T0s
+        absorptance = ((1 - Ts) / (1 - T0s)).where(T0s < 1., 1.)
+        factor = (Ts / T0s).where(T0s > 1e-300, 1.)
+        return xr.where(less, 1 - (1 - T0) * absorptance, T0 * factor)
+
+    @staticmethod
+    def single_scattering(Tg):
+        r'''
+        :math:`T_{ss} = (1 - T_g) / (-\ln T_g)`, transmittance averaged over the absorber amounts
+        :math:`x\, \tau m` for :math:`x` uniform in [0, 1] (1 for :math:`T_g = 1`).
+        '''
+        tau = -np.log(Tg)
+        small = tau < 1e-12
+        return xr.where(small, 1., -np.expm1(-tau) / xr.where(small, 1., tau))
 
 
 class GaseousTransmittance(Gases):
@@ -281,7 +538,7 @@ class GaseousTransmittance(Gases):
         :param zenith_angle: zenith angle of the path (solar or viewing, deg), used to set the air mass
             :math:`m = 1/\cos\theta`
         :param o2_model: absorption of O2, ``'reptran'`` or ``'lbl'`` (line by line in the O2-B and O2-A
-            bands); by default ``settings: o2_model`` of the configuration (``'reptran'``)
+            bands); by default ``settings: o2_model`` of the configuration (``'lbl'``)
         '''
         Gases.__init__(self)
         self.air_mass = 1. / np.cos(np.radians(zenith_angle))
@@ -290,6 +547,7 @@ class GaseousTransmittance(Gases):
         if self.o2_model not in O2_MODELS:
             raise ValueError(f'o2_model must be one of {O2_MODELS}, not {self.o2_model!r}')
         self._o2_lbl = None
+        self._windows = {}
 
     @property
     def o2_lbl(self):
@@ -352,13 +610,15 @@ class GaseousTransmittance(Gases):
 
     def get_gaseous_transmittance(self,
                                   gases=['ch4', 'no2', 'o3', 'h2o'],
-                                  background=True):
+                                  background=True,
+                                  o2_lbl=True):
         '''
         Total direct transmittance of the absorbing gases, product of the transmittance of each gas.
 
         :param gases: names of the variable gases to include
         :param background: if True, include the background gases (:py:meth:`Tgas_background`); with
             ``o2_model='lbl'`` also the line-by-line O2 bands (:py:meth:`Tgas_o2_lbl`)
+        :param o2_lbl: if False, leave out the line-by-line O2 bands (with ``o2_model='lbl'``)
         :return: transmittance at the wavelengths of the gaseous LUT
         '''
 
@@ -372,10 +632,97 @@ class GaseousTransmittance(Gases):
 
         if background:
             Tg_tot = Tg_tot * self.Tgas_background()
-            if self.o2_model == 'lbl':
+            if self.o2_model == 'lbl' and o2_lbl:
                 Tg_tot = Tg_tot * self.Tgas_o2_lbl()
 
         return Tg_tot
+
+    def get_path_length_transmittance(self, air_mass, eta, s2, gases=('h2o',)):
+        r'''
+        Transmittance of the given gases and of the background gases for the photon path-length model,
+        channel by channel: :math:`(1 + s^2 \eta\, \tau)^{-1/s^2}` with :math:`\tau = -\ln T_g(m)` the optical
+        path of the channel along the geometric air mass (a REPTRAN channel is a single exponential); with
+        ``o2_model='lbl'``, averaged over the O2 lines of each cell (:py:meth:`O2LineByLine.transmittance_path_length`).
+
+        :param air_mass: geometric air mass :math:`m`
+        :param eta: ratio of the mean absorber path to the geometric one
+        :param s2: relative variance of the path distribution
+        :param gases: variable gases included
+        :return: transmittance at the wavelengths of the gaseous LUT
+        '''
+        self.air_mass = air_mass
+        tau = -np.log(self.get_gaseous_transmittance(gases=list(gases), background=True, o2_lbl=False))
+        if self.o2_model != 'lbl' or not self.o2_lbl.mask.any():
+            return path_length_transmittance(eta * tau, s2)
+        lbl = self.o2_lbl
+        factor = self.coef_abs_scat['o2'] * self.air_mass * self.pressure / lbl.p_ref
+        args = [x if isinstance(x, xr.DataArray) else xr.DataArray(x) for x in (factor, eta, s2)]
+        ref = xr.broadcast(tau.isel(wl=0, drop=True), *args)[0]
+        dims = list(ref.dims)
+        f, e, v = (x.broadcast_like(ref).transpose(*dims) for x in args)
+        tau = tau.broadcast_like(ref).transpose(*dims, 'wl')
+        out = lbl.transmittance_path_length(f.values, e.values, v.values, tau.values)
+        return tau.copy(data=out.reshape(tau.shape))
+
+    # gases whose transmittance is corrected by GasCoupling (with the background gases: O2, O4, CO2, CO);
+    # O3 and NO2, mostly above the scatterers, and CH4 keep the direct-beam air mass
+    COUPLED_GASES = ['h2o']
+    UNCOUPLED_GASES = ['ch4', 'no2', 'o3']
+
+    def _window(self, wl_min, wl_max):
+        """GaseousTransmittance on the wavelengths of an absorption window (built once)."""
+        key = (wl_min, wl_max)
+        if key not in self._windows:
+            self._windows[key] = GaseousTransmittance(self.gas_lut.sel(wl=slice(wl_min, wl_max)),
+                                                      o2_model=self.o2_model)
+        return self._windows[key]
+
+    def get_coupled_transmittance(self, air_mass, term, aot550, coupling):
+        r'''
+        Effective gaseous transmittance of a term of the signal, with the absorption-scattering coupling.
+
+        In each absorption window of ``coupling``, the transmittance of the water vapour and of the background
+        gases (O2...) is corrected as given by ``coupling``: photon path-length model channel by channel
+        (form ``'ppld'``, :py:meth:`get_path_length_transmittance`), or effective air mass :math:`\eta\, m` or
+        single-scattering blend at the resolution of the fit (:py:meth:`GasCoupling.correction`), with the
+        water vapour column ``gas_tc['h2o']``;
+        elsewhere, and for the other gases, the air mass :math:`m` is used, as in
+        :py:meth:`get_gaseous_transmittance`. ``pressure`` and ``gas_tc`` are set before the call.
+
+        :param air_mass: geometric air mass :math:`m` of the term
+        :param term: ``'atm'``, ``'w'`` or ``'Ed'`` (see :py:class:`GasCoupling`)
+        :param aot550: aerosol optical thickness at 550 nm
+        :param coupling: :py:class:`GasCoupling` object
+        :return: transmittance at the wavelengths of the gaseous LUT
+        '''
+        self.air_mass = air_mass
+        Tg = self.get_gaseous_transmittance()
+        h2o = self.gas_tc['h2o'] / 10.  # kg m-2 -> g cm-2
+        parts = []
+        for name, (wl_min, wl_max) in coupling.windows.items():
+            sub = self._window(wl_min, wl_max)
+            sub.pressure, sub.pressure_gas_ref = self.pressure, self.pressure_gas_ref
+            sub.gas_tc, sub.coef_abs_scat = self.gas_tc, self.coef_abs_scat
+            sub.air_mass = air_mass
+            Tg_other = sub.get_gaseous_transmittance(gases=self.UNCOUPLED_GASES, background=False)
+
+            def Tg_coupled_of(m, sub=sub):
+                sub.air_mass = m
+                return sub.get_gaseous_transmittance(gases=self.COUPLED_GASES, background=True)
+
+            if coupling.form(term, name) == 'ppld':
+                eta, s2 = coupling.path_length(term, name, air_mass, aot550, h2o)
+                Tg_coupled = sub.get_path_length_transmittance(air_mass, eta, s2, gases=self.COUPLED_GASES)
+            else:
+                Tg_coupled = coupling.correction(term, name, Tg_coupled_of, air_mass, aot550, h2o)
+            parts.append(Tg_other * Tg_coupled)
+        self.air_mass = air_mass
+        if not parts:
+            return Tg
+        out = xr.concat(parts, 'wl')
+        # contiguous windows share their boundary channel (inclusive selection): keep the first window
+        out = out.isel(wl=~out.get_index('wl').duplicated()).combine_first(Tg)
+        return out.transpose(*[d for d in Tg.dims if d in out.dims], ...)
 
 
 class Misc:

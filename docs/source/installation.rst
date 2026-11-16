@@ -75,7 +75,8 @@ Default configuration:
    settings:
      aerosol_combination: [0, 0.5, 0, 0.5, 0., 0.]
      aerosol_models: ['ARCT_rh70', 'COAV_rh70', 'DESE_rh70', 'MACL_rh70', 'URBA_rh70', 'WASO_rh0']
-     o2_model: 'reptran'   # or 'lbl': line-by-line O2-B and O2-A bands
+     o2_model: 'lbl'      # line-by-line O2-B and O2-A bands, or 'reptran'
+     gas_coupling: 'path_length'   # or 'effective_air_mass', 'decoupled' (no absorption-scattering coupling)
 
    processor:
      ncpu: 8
@@ -93,8 +94,9 @@ proportions:
      aerosol_combination: [0, 0, 0, 1, 0, 0]
 
 ``aerosol_combination`` gives the default proportions of the ``aerosol_models`` (see
-:ref:`methods-aerosol`). ``o2_model`` selects the absorption of the O\ :sub:`2` bands, ``'lbl'`` for
-sub-nanometre resolution (see :ref:`methods-o2-lbl`). Run ``radcalnet_oc_config`` to print the resulting configuration.
+:ref:`methods-aerosol`). ``o2_model`` selects the absorption of the O\ :sub:`2` bands, ``'lbl'`` (default, line by line) or
+``'reptran'`` (as before version 1.1; see :ref:`methods-o2-lbl`). ``gas_coupling`` selects the air mass of the gaseous
+transmittance of the scattered light (see :ref:`methods-gas-coupling`). Run ``radcalnet_oc_config`` to print the resulting configuration.
 
 Run the tests
 -------------

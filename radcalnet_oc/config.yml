@@ -29,9 +29,22 @@ zenodo:
 settings:
   aerosol_combination: [0, 0.5, 0, 0.5, 0.,0.]
   aerosol_models: ['ARCT_rh70', 'COAV_rh70', 'DESE_rh70', 'MACL_rh70', 'URBA_rh70', 'WASO_rh0']
-  # absorption of O2: 'reptran' (REPTRAN fine table, as for the other gases) or 'lbl' (line by line in the
-  # O2-B and O2-A bands, 683-702 and 755-775 nm; recommended for sub-nanometre resolution, e.g. FLEX)
-  o2_model: 'reptran'
+  # wind speed (m s-1) of the sea-surface roughness when the input has no 'wind' variable (or for its
+  # missing values); the LUTs are interpolated between their wind nodes (0.5-16 m s-1)
+  wind: 2.
+  # absorption of O2: 'lbl' (line by line in the O2-B and O2-A bands, 683-702 and 755-775 nm; default, closer
+  # to the CKD of the coupling fit and needed at sub-nanometre resolution, e.g. FLEX) or 'reptran' (REPTRAN
+  # fine table, as for the other gases; as before version 1.1)
+  o2_model: 'lbl'
+  # gaseous transmittance of the scattered light in the O2 and H2O bands of 684-990 nm (radcalnet_oc.kernel.GasCoupling):
+  # 'path_length' (photon path-length model, channel by channel; default), 'effective_air_mass' (effective air
+  # masses per absorption window, computed at 5 cm-1) or 'decoupled' (air mass of the direct beam for all the
+  # terms, as before version 1.1)
+  gas_coupling: 'path_length'
+  # remote-sensing reflectance beyond the spectral range of the input (e.g. above 1150 nm): 'pure_water'
+  # (semi-analytical model with the absorption of pure water, particulate backscattering fitted on the
+  # near-infrared end of the input; default) or 'zero' (as before version 1.1)
+  rrs_extension: 'pure_water'
 
 processor:
   ncpu: 8

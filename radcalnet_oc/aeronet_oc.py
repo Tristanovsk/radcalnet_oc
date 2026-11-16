@@ -1,6 +1,11 @@
 '''
 Readers of the AERONET and AERONET-OC files (see :doc:`/processing_chain` for the preparation of the
 input of the simulation).
+
+The AERONET-OC data are shared with the other packages through the AERONET-OC database
+(``aeronet_oc_db``, optional dependency: ``pip install radcalnet_oc[aeronet]``): location from
+``$AERONET_OC_ROOT`` or ``~/.config/aeronet_oc_db/config.toml``, updated with ``aeronet-oc-db update``.
+Without it, the site table packaged with radcalnet_oc is used and the files are read from explicit paths.
 '''
 
 import os
@@ -39,10 +44,41 @@ class Aeronet:
 
     def get_aeronet_oc_site_info(self):
         '''
-        Load the AERONET-OC sites and their location in the Sentinel-2 tiles (file of the package) into
-        ``aeronet_oc_site_info``.
+        Load the AERONET-OC sites and their location in the Sentinel-2 tiles into ``aeronet_oc_site_info``
+        (index ``site``, columns ``latitude``, ``longitude``, ``s2_tile``): from the AERONET-OC database if
+        it is installed and built, else from the table packaged with radcalnet_oc.
         '''
-        self.aeronet_oc_site_info = pd.read_csv(aeronet_oc_location_file, index_col=0)
+        info = None
+        try:
+            import aeronet_oc_db
+            info = aeronet_oc_db.site_info()
+        except (ImportError, OSError):
+            pass
+        if info is None or info.empty:
+            info = pd.read_csv(aeronet_oc_location_file, index_col=0)
+        self.aeronet_oc_site_info = info[['latitude', 'longitude', 's2_tile']]
+
+    def read_site(self, site, level='lev20'):
+        '''
+        Read the AERONET-OC file of a site from the AERONET-OC database (raw file, kept up to date by
+        ``aeronet-oc-db update``), see :meth:`read_aeronet_ocv3`.
+
+        :param site: AERONET site name (e.g. ``'AAOT'``)
+        :param level: ``'lev15'`` or ``'lev20'``
+        '''
+        import aeronet_oc_db
+        return self.read_aeronet_ocv3(str(aeronet_oc_db.raw_file(site, level)))
+
+    @staticmethod
+    def open_site(site, level='lev20', legacy_names=False):
+        '''
+        :py:class:`xarray.Dataset` (time, wl) of a site from the AERONET-OC database, including the remote
+        sensing reflectances ``Rrs_Lwn``, ``Rrs_Lwn_fQ`` and ``Rrs_Lwn_IOP`` (see ``aeronet_oc_db``).
+
+        :param legacy_names: variable names of the former ``AERONET/netcdf/OCv3`` files
+        '''
+        import aeronet_oc_db
+        return aeronet_oc_db.open_site(site, level, legacy_names=legacy_names)
 
 
 

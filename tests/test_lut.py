@@ -7,7 +7,7 @@ import xarray as xr
 from radcalnet_oc import lut as lut_module
 from radcalnet_oc.config import LUT_FILE_BACKUP
 from radcalnet_oc.lut import (LUT, AuxData, SolarIrradiance, Spectral, Gamma2sigma, gaussian,
-                              super_gaussian, super_gaussian_fwhm2sigma)
+                              super_gaussian, super_gaussian_fwhm2sigma, wind_weights)
 
 from conftest import FULL_LUT, requires_full_lut
 
@@ -253,6 +253,45 @@ def test_aerosol_combination(light_lut):
     np.testing.assert_allclose(rdiff['mix'], 0.5 * (rdiff['COAV'] + rdiff['MACL']), rtol=1e-5)
 
 
+def test_wind_weights():
+    nodes = [0.5, 2., 4., 8.]
+    w = wind_weights(2., nodes)                          # a node: one weight of 1, the other nodes dropped
+    np.testing.assert_array_equal(w.wind, [2.])
+    np.testing.assert_array_equal(w, [1.])
+    w = wind_weights(3., nodes)
+    np.testing.assert_allclose(w.sel(wind=[2., 4.]), [0.5, 0.5])
+    wind = xr.DataArray([1., 6., 20.], dims='time', coords={'time': [0, 1, 2]})
+    w = wind_weights(wind, nodes)                        # 20 m s-1 clipped to the last node
+    assert w.dims == ('wind', 'time')
+    np.testing.assert_allclose(w.sum('wind'), 1)
+    np.testing.assert_allclose((w * w.wind).sum('wind'), [1., 6., 8.])
+    with pytest.raises(ValueError):
+        wind_weights(xr.DataArray([np.nan, 2.], dims='time'), nodes)
+
+
+def test_lut_preparation_wind(light_lut):
+    """Linear interpolation in wind speed: exact at the nodes, in between elsewhere, and a wind per
+    measurement gives the same result as a scalar wind for each measurement."""
+    kwargs = dict(vza=[0.], azi=[90.], aot_refs=[0., 0.2])
+    rdiff = {}
+    for wind in [0.5, 2., 4.]:
+        light_lut.lut_preparation(wind=wind, sza=[40.], **kwargs)
+        rdiff[wind] = light_lut.Rdiff_lut.squeeze()
+    nodes = light_lut.aero_lut.wind.values                 # [0.5, 4]
+    weight = (2. - nodes[0]) / (nodes[1] - nodes[0])
+    np.testing.assert_allclose(rdiff[2.], (1 - weight) * rdiff[0.5] + weight * rdiff[4.], rtol=1e-6)
+    assert not np.allclose(rdiff[0.5], rdiff[4.])        # the wind matters (sky and Sun reflection)
+
+    time = {'time': [0, 1]}
+    sza = xr.DataArray([40., 40.], dims='time', coords=time)
+    wind = xr.DataArray([0.5, 2.], dims='time', coords=time)
+    light_lut.lut_preparation(wind=wind, sza=sza, **kwargs)
+    np.testing.assert_allclose(light_lut.Rdiff_lut.isel(time=0).squeeze(), rdiff[0.5], rtol=1e-6)
+    np.testing.assert_allclose(light_lut.Rdiff_lut.isel(time=1).squeeze(), rdiff[2.], rtol=1e-6)
+    assert ((light_lut.trans_Ed > 0) & (light_lut.trans_Ed <= 1)).all()
+    assert 'wind' not in light_lut.Rdiff_lut.dims and 'wind' not in light_lut.trans_Ed.dims
+
+
 def test_toa_lut_cache(light_lut):
     lut_module.TOA_LUT_CACHE.clear()
     kwargs = dict(sza=[30.], vza=[0.], azi=[100.], aot_refs=[0.1])
@@ -262,6 +301,21 @@ def test_toa_lut_cache(light_lut):
     LUT(lut_file=LUT_FILE_BACKUP).lut_preparation(**kwargs)    # new object, same tables: no new entry
     assert len(lut_module.TOA_LUT_CACHE) == size
     assert all(key[0] == str(LUT_FILE_BACKUP) for key in lut_module.TOA_LUT_CACHE)
+
+
+def test_toa_lut_cache_full(light_lut, monkeypatch):
+    """Regression: with a full cache, adding the missing tables of a call must not remove the tables of
+    the same call read from the cache."""
+    lut_module.TOA_LUT_CACHE.clear()
+    monkeypatch.setattr(lut_module, 'TOA_LUT_CACHE_SIZE', 2)
+    models = light_lut.aero_lut.model.values[:3]
+    wind = float(light_lut.aero_lut.wind[0])
+    light_lut.toa_lut(wind, models[:1], [90.])
+    light_lut.toa_lut(wind, models[2:3], [90.])          # cache full: [model 0, model 2]
+    toa = light_lut.toa_lut(wind, models, [90.])         # model 1 missing: model 0 removed from the cache
+    np.testing.assert_array_equal(toa.model, models)
+    assert len(lut_module.TOA_LUT_CACHE) == 2
+    lut_module.TOA_LUT_CACHE.clear()
 
 
 @requires_full_lut

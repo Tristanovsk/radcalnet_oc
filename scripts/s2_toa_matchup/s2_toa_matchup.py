@@ -1,0 +1,400 @@
+'''
+Sentinel-2 / RadCalNet-OC matchups at the top of atmosphere (TOA) over an AERONET-OC site.
+
+For each Sentinel-2 L1C scene (subsets around the AERONET-OC sites, see grstbx) with AERONET-OC
+measurements within ``--window`` hours of the overpass:
+
+1. satellite: TOA reflectance statistics of the valid pixels in a box of ``2 * --half-size`` m centred
+   on the site, and mean sun and viewing geometry;
+2. in situ: AERONET-OC data from the shared database (``aeronet_oc_db``), hyperspectral Rrs
+   reconstructed with invRrs (``radcalnet_oc.reconstruction``, nadir view);
+3. simulation: radcalnet-oc TOA reflectance of each AERONET-OC measurement, computed for the sun and
+   viewing geometry of the satellite scene (the atmosphere and water of the measurement, the geometry
+   of the overpass), band-integrated with the spectral responses of the scene (solar-irradiance
+   weighted, as the L1C reflectance), without and with the direct sunglint (Cox and Munk, wind speed
+   of the measurement), which the look-up tables of radcalnet-oc do not contain.
+
+One netCDF file per scene is cached in ``<odir>/scenes`` (already processed scenes are skipped), and
+the matchups are gathered into ``<odir>/<site>_<level>_s2_toa_matchup.nc``:
+
+- dimensions ``time`` (overpass) and ``wl`` (nominal band wavelength, nm);
+- ``sat_*`` satellite statistics, ``sim_*`` statistics of the simulations of the measurements of the
+  window, ``rec_*`` (dimension ``rec``) the simulation of each measurement.
+
+Example::
+
+    python s2_toa_matchup.py --site AAOT --level lev20 --n-jobs 4
+'''
+import argparse
+import glob
+import logging
+import os
+import re
+import time as _time
+import warnings
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+from pyproj import Transformer
+
+import aeronet_oc_db
+import radcalnet_oc as radoc
+from radcalnet_oc.reconstruction import Reconstruction
+
+opj = os.path.join
+
+S2_ROOT = '/data/satellite/Sentinel-2/subset/aeronet/L1C'
+ODIR = '/data/radcalnet/matchup/sentinel2'
+
+# radcalnet-oc input variables taken from the AERONET-OC measurements
+AERONET_VARS = ['tcwv', 'tco3', 'tcno2', 'pressure', 'wind', 'aot550', 'aot865', 'ang_exp', 'chl', 'sza_aeronet']
+RECONSTRUCTION_VARS = ['chl_invrrs', 'spm_norm', 'rmsd']
+
+
+# ---------------------------------------------------------------------------------------------------
+# AERONET-OC
+# ---------------------------------------------------------------------------------------------------
+def aeronet_inputs(site, level):
+    '''AERONET-OC data of the site with the radcalnet-oc input variables (time series).'''
+    ds = aeronet_oc_db.open_site(site, level, legacy_names=True).sortby('wl')
+    aod = ds['Aerosol_Optical_Depth'].interpolate_na('wl')
+    out = xr.Dataset(coords={'time': ds.time})
+    out['tcwv'] = ds['Total_Precipitable_Water(cm)'] * 10            # kg m-2
+    out['tco3'] = ds['Total_Ozone(Du)'] * 2.14485e-5                  # kg m-2
+    out['tcno2'] = ds['Total_NO2(DU)'] * 2.055482e-5                  # kg m-2
+    out['pressure'] = ds['Pressure(hPa)']
+    out['wind'] = ds['Wind_Speed(ms)']
+    out['aot550'] = aod.interp(wl=550)
+    out['aot865'] = aod.interp(wl=865)
+    out['ang_exp'] = -np.log(out.aot550 / out.aot865) / np.log(550 / 865)
+    out['naot'] = (ds['Aerosol_Optical_Depth'] / out.aot550).rename({'wl': 'wl_aeronet'})
+    out['chl'] = ds['Chlorophyll-a']
+    out['sza_aeronet'] = ds['SZA']
+    out['Rrs_Lwn'] = ds['Rrs_Lwn']
+    return out.reset_coords(drop=True)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Sentinel-2
+# ---------------------------------------------------------------------------------------------------
+def s2_inventory(tile, root=S2_ROOT):
+    '''L1C subsets of a tile: DataFrame (index: sensing time) with satellite, product name and path.'''
+    files = sorted(glob.glob(opj(root, tile, '*', '*MSIL1C*.nc')))
+    rows = []
+    for f in files:
+        name = os.path.basename(f)[:-3]
+        sat, _, sensing, baseline, orbit, _, processing = name.split('_')
+        rows.append(dict(time=pd.Timestamp(sensing), satellite=sat, baseline=baseline, orbit=orbit,
+                         processing=processing, product=name, path=f))
+    df = pd.DataFrame(rows).set_index('time').sort_index()
+    # several processings of the same acquisition: keep the latest
+    return df.sort_values('processing').groupby(level=0).tail(1).sort_index()
+
+
+def s2_extract(path, lon, lat, half_size=600., swir_max=0.03, cirrus_max=0.01):
+    '''
+    TOA reflectance statistics in the box of ``2 * half_size`` m centred on (lon, lat).
+
+    Two sets of pixels:
+
+    - ``sat_*``: finite reflectance in all the bands, SWIR-1 (1610 nm) < ``swir_max`` (clouds, land,
+      strong sunglint) and cirrus (1375 nm) < ``cirrus_max``;
+    - ``satg_*``: same without the SWIR-1 threshold, i.e. keeping the sunglint (but also the low clouds:
+      to be screened with the simulation, e.g. with the SWIR residual after adding the simulated glint).
+    '''
+    with xr.open_dataset(path) as ds:
+        epsg = int(re.search(r'AUTHORITY\["EPSG","(\d+)"\]\]$', ds.spatial_ref.attrs['crs_wkt']).group(1))
+        x0, y0 = Transformer.from_crs(4326, epsg, always_xy=True).transform(lon, lat)
+        box = ds.sel(x=slice(x0 - half_size, x0 + half_size), y=slice(y0 + half_size, y0 - half_size)).load()
+        srf = ds.SRF.load()
+        wl_true = ds.wl_true.load()
+    bands = box.bands
+    n_tot = bands.sizes['x'] * bands.sizes['y']
+    if n_tot == 0:  # subset made around another site
+        return None, None
+    cirrus_ok = bands.notnull().all('wl') & (bands.sel(wl=1375) < cirrus_max)
+    out = xr.Dataset(coords={'wl': box.wl.values})
+    for prefix, valid in [('sat', cirrus_ok & (bands.sel(wl=1610) < swir_max)), ('satg', cirrus_ok)]:
+        stacked = bands.where(valid).stack(pix=('y', 'x')).dropna('pix', how='all')
+        n_valid = stacked.sizes['pix']
+        if n_valid > 0:
+            out[prefix + '_median'] = stacked.median('pix')
+            out[prefix + '_q25'] = stacked.quantile(0.25, 'pix').drop_vars('quantile')
+            out[prefix + '_q75'] = stacked.quantile(0.75, 'pix').drop_vars('quantile')
+            out[prefix + '_mean'] = stacked.mean('pix')
+            out[prefix + '_std'] = stacked.std('pix')
+        else:
+            for v in ['median', 'q25', 'q75', 'mean', 'std']:
+                out[prefix + '_' + v] = ('wl', np.full(box.sizes['wl'], np.nan))
+        out = out.reset_coords(drop=True)
+        suffix = '' if prefix == 'sat' else '_glint'
+        out['n_pix' + suffix] = n_valid
+        out['frac_valid' + suffix] = n_valid / n_tot
+    out['wl_true'] = wl_true
+    out = out.reset_coords(drop=True)
+    out['sza'] = float(box.sza.mean())
+    out['vza_band'] = box.vza.mean(['x', 'y'])
+    out['vza'] = float(box.vza.mean())
+    # relative azimuth of the subsets: (viewing - solar azimuth) % 360; azimuth of the radiative transfer
+    # (0 deg: viewing direction towards the Sun, sunglint): (180 - raa) % 360 folded on [0, 180]
+    raa = float(np.degrees(np.angle(np.exp(1j * np.radians(box.raa)).mean())) % 360)
+    azi = (180. - raa) % 360
+    out['raa'] = raa
+    out['azi'] = azi if azi <= 180 else 360 - azi
+    # angle between the viewing direction and the specular reflection of the Sun (deg)
+    s0, sv, a = np.radians(out.sza), np.radians(out.vza), np.radians(out.azi)
+    out['glint_angle'] = np.degrees(np.arccos(np.cos(s0) * np.cos(sv) + np.sin(s0) * np.sin(sv) * np.cos(a)))
+    out['time'] = box.time.values
+    return out, srf
+
+
+def band_integration(Rtoa, E0, srf):
+    '''
+    Band TOA reflectances: :math:`\\int R E_0 S d\\lambda / \\int E_0 S d\\lambda`, with the spectral
+    responses ``srf`` (wl, wl_hr) interpolated on the wavelengths of the simulation.
+    '''
+    wl = Rtoa.wl.values
+    s = srf.rename(wl_hr='wl_sim', wl='band').interp(wl_sim=wl).fillna(0).values  # (band, wl)
+    num = np.trapezoid(Rtoa.values[..., None, :] * E0.values[..., None, :] * s, wl, axis=-1)
+    den = np.trapezoid(E0.values[..., None, :] * s, wl, axis=-1)
+    return num / den
+
+
+# ---------------------------------------------------------------------------------------------------
+# simulation
+# ---------------------------------------------------------------------------------------------------
+_RECONSTRUCTION = None
+#: wave slope statistics of the sunglint (the wind direction is not measured: isotropic Cox and Munk)
+GLINT_STATS = 'cm_iso'
+
+
+def sunglint_toa(process, ds, sza, vza, azi, stats=GLINT_STATS):
+    '''
+    Direct sunglint at the TOA, not included in the look-up tables of radcalnet-oc (see the tutorial
+    *Sunglint contribution to the TOA signal*): Cox and Munk reflectance of the wind speed of each
+    measurement, attenuated by the direct transmittance (Rayleigh + aerosol, Beer-Lambert) and by the
+    gaseous transmittance of the simulation along the Sun-surface-sensor path.
+
+    :return: TOA sunglint reflectance (time, wl), surface sunglint reflectance (time)
+    '''
+    full_wl = process.full_wl
+    mu0, muv = np.cos(np.radians(sza)), np.cos(np.radians(vza))
+    tau_r = process.lut.rot.interp(wl=full_wl, kwargs={'fill_value': 'extrapolate'}) * ds.pressure / 1013.25
+    tau_a = process.lut.aot_lut.interp(aot_ref=ds.aot550).interp(wl=full_wl, method='quadratic')
+    Tdir = np.exp(-(tau_r + tau_a) * (1 / mu0 + 1 / muv))
+    Tg = (process.Tg_d.sel(wl=full_wl) * process.Tg_u.sel(wl=full_wl)).squeeze(drop=True)
+    wind = process.wind.values
+    Rg = np.array([max(radoc.Sunglint(sza, vza, 180. - azi).sunglint(float(w), stats=stats)[0], 0.)
+                   for w in wind])
+    Rg = xr.DataArray(Rg, coords={'time': ds.time}, dims='time')
+    Rg_toa = (Tg * Tdir * Rg).reset_coords(drop=True).transpose('time', 'wl')
+    return Rg_toa, Rg
+
+
+def simulate(records, sat, srf):
+    '''radcalnet-oc simulation of the measurements ``records`` for the geometry of the scene ``sat``.'''
+    global _RECONSTRUCTION
+    if _RECONSTRUCTION is None:
+        _RECONSTRUCTION = Reconstruction()
+    hyp = _RECONSTRUCTION.reconstruct(records.Rrs_Lwn, records.sza_aeronet, chl=records.chl)
+    hyp = hyp.where(hyp.success, drop=True)
+    if hyp.sizes['time'] == 0:
+        return None
+    records = records.sel(time=hyp.time)
+
+    ds = records[AERONET_VARS + ['naot']].copy()
+    ds['Rrs'] = hyp.Rrs_nadir
+    ds['chl_invrrs'] = hyp.chl
+    ds['spm_norm'] = hyp.spm_norm
+    ds['rmsd'] = hyp.rmsd
+    # geometry and date of the overpass
+    t = pd.Timestamp(sat.time.values)
+    ds['sza'] = xr.full_like(ds.aot550, float(sat.sza))
+    ds['day_of_year'] = xr.full_like(ds.aot550, t.dayofyear)
+
+    single = ds.sizes['time'] == 1
+    if single:
+        # radcalnet_oc.Process squeezes a time dimension of size 1: duplicate the measurement
+        ds = xr.concat([ds, ds.assign_coords(time=ds.time + np.timedelta64(1, 's'))], 'time')
+    naot = ds.naot.dropna('wl_aeronet', how='all')
+    process = radoc.Process(ds, vza=xr.DataArray([float(sat.vza)], coords={'vza': [float(sat.vza)]}, dims='vza'),
+                            azi=xr.DataArray([float(sat.azi)], coords={'azi': [float(sat.azi)]}, dims='azi'))
+    aerosol = radoc.Aerosol(naot, process.lut.naot_lut)
+    aerosol.process()
+    process.execute(aerosol_combination=aerosol.model_db.aerosol_combination)
+    db = process.radcalnet_db
+    Rtoa = db.Rtoa.transpose('time', 'wl')
+    E0 = db.E0.transpose('time', 'wl')
+    Rglint, Rg = sunglint_toa(process, ds, float(sat.sza), float(sat.vza), float(sat.azi))
+    if single:
+        ds, Rtoa, E0 = ds.isel(time=[0]), Rtoa.isel(time=[0]), E0.isel(time=[0])
+        Rglint, Rg = Rglint.isel(time=[0]), Rg.isel(time=[0])
+    rec = xr.Dataset(coords={'time': ds.time.values, 'wl': sat.wl.values})
+    rec['Rtoa'] = (('time', 'wl'), band_integration(Rtoa, E0, srf))
+    rec['Rglint'] = (('time', 'wl'), band_integration(Rglint, E0, srf))
+    rec['Rg_surface'] = ('time', Rg.values)
+    for v in AERONET_VARS + RECONSTRUCTION_VARS:
+        rec[v] = ds[v]
+    # spectra at 1 nm (Gaussian 3 nm FWHM), for the plots
+    spectral = radoc.Spectral(np.arange(350, 2500, 1), 3)
+    rec['Rtoa_spectrum'] = spectral.convolve2(Rtoa.rename('Rtoa'), expon=2)['Rtoa'].rename(wl='wl_spectrum')
+    rec['Rglint_spectrum'] = spectral.convolve2(Rglint.rename('Rglint'), expon=2)['Rglint'].rename(
+        wl='wl_spectrum')
+    return rec.reset_coords(drop=True)
+
+
+def process_scene(product, path, site, lon, lat, records, args):
+    filename = opj(args.odir, 'scenes', f'{site}_{args.level}', product + '.nc')
+    if os.path.exists(filename) and not args.overwrite:
+        return filename, 'cached'
+    t0 = _time.time()
+    try:
+        sat, srf = s2_extract(path, lon, lat, args.half_size, args.swir_max, args.cirrus_max)
+        if sat is None:
+            status = 'site outside the subset'
+            sat, rec = xr.Dataset(), None
+        elif int(sat.n_pix_glint) == 0:
+            status = 'no valid pixel'
+            rec = None
+        else:
+            rec = simulate(records, sat, srf)
+            status = 'no valid in situ' if rec is None else f'{rec.sizes["time"]} measurements'
+    except Exception as e:  # not cached: retried at the next run
+        logging.exception(f'{product}: failed')
+        return None, f'error: {e!r}'
+    scene = sat.copy()
+    scene['product'] = product
+    if rec is not None:
+        t = pd.Timestamp(sat.time.values)
+        rec = rec.rename(time='rec_time').rename({v: 'rec_' + v for v in rec.data_vars})
+        rec['rec_dt'] = ('rec_time', ((rec.rec_time.values - t.to_datetime64()) / np.timedelta64(1, 'm')))
+        rec['rec_dt'].attrs['unit'] = 'min'
+        scene = xr.merge([scene, rec], compat='override', join='outer')
+    scene.attrs.update(site=site, level=args.level, status=status)
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    scene.to_netcdf(filename + '.tmp')
+    os.replace(filename + '.tmp', filename)
+    logging.info(f'{product}: {status} ({_time.time() - t0:.0f} s)')
+    return filename, status
+
+
+# ---------------------------------------------------------------------------------------------------
+# gathering
+# ---------------------------------------------------------------------------------------------------
+def gather(files, site, level):
+    scenes, recs = [], []
+    for f in files:
+        with xr.open_dataset(f) as s:
+            s = s.load()
+        if 'rec_Rtoa' not in s:
+            continue
+        t = s.time.values
+        r = s[[v for v in s.data_vars if v.startswith('rec_')]].rename(rec_time='rec')
+        r = r.assign_coords(rec_time=('rec', r.rec.values)).drop_vars('rec')
+        r['rec_scene'] = ('rec', np.full(r.sizes['rec'], t))
+        recs.append(r)
+        sim = s.rec_Rtoa
+        inear = int(np.argmin(np.abs(s.rec_dt.values)))
+        sc = s.drop_dims('rec_time')
+        sc['sim_median'] = sim.median('rec_time')
+        sc['sim_q25'] = sim.quantile(0.25, 'rec_time').drop_vars('quantile')
+        sc['sim_q75'] = sim.quantile(0.75, 'rec_time').drop_vars('quantile')
+        sc['sim_mean'] = sim.mean('rec_time')
+        sc['sim_std'] = sim.std('rec_time')
+        sc['sim_count'] = sim.sizes['rec_time']
+        # simulation of the measurement nearest to the overpass
+        sc['sim_nearest'] = sim.isel(rec_time=inear, drop=True)
+        sc['dt_nearest'] = float(s.rec_dt[inear])
+        sc['sim_spectrum_median'] = s.rec_Rtoa_spectrum.median('rec_time')
+        # with the direct sunglint
+        simg = s.rec_Rtoa + s.rec_Rglint
+        sc['simg_median'] = simg.median('rec_time')
+        sc['simg_q25'] = simg.quantile(0.25, 'rec_time').drop_vars('quantile')
+        sc['simg_q75'] = simg.quantile(0.75, 'rec_time').drop_vars('quantile')
+        sc['simg_std'] = simg.std('rec_time')
+        sc['simg_nearest'] = simg.isel(rec_time=inear, drop=True)
+        sc['glint_median'] = s.rec_Rglint.median('rec_time')
+        sc['Rg_surface'] = s.rec_Rg_surface.median('rec_time')
+        sc['glint_spectrum_median'] = s.rec_Rglint_spectrum.median('rec_time')
+        for v in AERONET_VARS + RECONSTRUCTION_VARS:
+            sc[v] = s['rec_' + v].median('rec_time')
+        sc = sc.drop_vars('time', errors='ignore')
+        scenes.append(sc.expand_dims(time=[t]))
+    out = xr.concat(scenes, 'time', data_vars='all', coords='minimal', compat='override', join='outer')
+    rec = xr.concat(recs, 'rec', data_vars='all', coords='minimal', compat='override', join='outer')
+    out = xr.merge([out, rec], compat='override', join='outer')
+    out.attrs = dict(title=f'Sentinel-2 / RadCalNet-OC TOA matchups, {site} {level}',
+                     site=site, level=level,
+                     created=pd.Timestamp.now('UTC').isoformat(),
+                     radcalnet_oc=radoc.process.package_version(), aeronet_oc_db=aeronet_oc_db.__version__,
+                     glint_stats=GLINT_STATS,
+                     comment='sat_*: satellite statistics in the box around the site (clear pixels, SWIR '
+                             'threshold); satg_*: same without the SWIR threshold (sunglint kept); sim_*: '
+                             'statistics of the radcalnet-oc simulations of the AERONET-OC measurements '
+                             'within the time window, for the geometry of the overpass, without sunglint; '
+                             'simg_*: same with the direct sunglint; glint_*: TOA sunglint; rec_*: each '
+                             'simulation')
+    return out
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    p.add_argument('--site', default='AAOT')
+    p.add_argument('--level', default='lev20')
+    p.add_argument('--tile', default=None, help='Sentinel-2 tile (default: aeronet_oc_db site table)')
+    p.add_argument('--start', default='2017-01-01')
+    p.add_argument('--end', default=None)
+    p.add_argument('--window', type=float, default=2., help='half time window around the overpass (h)')
+    p.add_argument('--half-size', type=float, default=600., help='half size of the box (m)')
+    p.add_argument('--swir-max', type=float, default=0.03)
+    p.add_argument('--cirrus-max', type=float, default=0.01)
+    p.add_argument('--s2-root', default=S2_ROOT)
+    p.add_argument('--odir', default=ODIR)
+    p.add_argument('--n-jobs', type=int, default=1)
+    p.add_argument('--overwrite', action='store_true')
+    p.add_argument('--limit', type=int, default=None, help='process the first N scenes only (tests)')
+    args = p.parse_args()
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+    logging.getLogger('radcalnet_oc').setLevel(logging.WARNING)
+    warnings.filterwarnings('ignore', category=RuntimeWarning)
+
+    info = aeronet_oc_db.site_info(level=args.level).loc[args.site]
+    tile = args.tile or info.s2_tile
+    lon, lat = float(info.longitude), float(info.latitude)
+    insitu = aeronet_inputs(args.site, args.level).load()
+
+    inv = s2_inventory(tile, args.s2_root)
+    inv = inv.loc[args.start:args.end]
+    window = pd.Timedelta(hours=args.window)
+    tasks = []
+    for t, row in inv.iterrows():
+        rec = insitu.sel(time=slice(t - window, t + window))
+        rec = rec.where(rec.aot550.notnull() & (rec.Rrs_Lwn.count('wl') >= 5), drop=True)
+        if rec.sizes['time'] > 0:
+            tasks.append((row['product'], row.path, rec))
+    if args.limit:
+        tasks = tasks[:args.limit]
+    logging.info(f'{args.site} {args.level}, tile {tile}: {len(inv)} scenes, {len(tasks)} with AERONET-OC '
+                 f'data within {args.window:g} h')
+
+    if args.n_jobs > 1:
+        from joblib import Parallel, delayed
+        results = Parallel(n_jobs=args.n_jobs, verbose=0)(
+            delayed(process_scene)(prod, path, args.site, lon, lat, rec, args) for prod, path, rec in tasks)
+    else:
+        results = [process_scene(prod, path, args.site, lon, lat, rec, args) for prod, path, rec in tasks]
+
+    errors = [st for f, st in results if f is None]
+    if errors:
+        logging.warning(f'{len(errors)} scene(s) failed (see the log), they will be retried at the next run')
+    out = gather([f for f, _ in results if f is not None], args.site, args.level)
+    out.attrs.update(window_h=args.window, half_size_m=args.half_size, swir_max=args.swir_max,
+                     cirrus_max=args.cirrus_max, tile=tile)
+    ofile = opj(args.odir, f'{args.site}_{args.level}_s2_toa_matchup.nc')
+    out.to_netcdf(ofile)
+    logging.info(f'{out.sizes["time"]} matchups, {out.sizes["rec"]} simulations -> {ofile}')
+
+
+if __name__ == '__main__':
+    main()

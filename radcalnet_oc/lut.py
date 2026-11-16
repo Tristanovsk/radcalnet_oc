@@ -51,6 +51,8 @@ NETCDF_ENGINE = config['processor']['netcdf_engine']
 
 AEROSOL_MODELS = config['settings']['aerosol_models']
 AEROSOL_COMBINATION = config['settings']['aerosol_combination']
+# wind speed (m s-1) used when the input has none
+WIND = float(config['settings'].get('wind', 2.))
 
 # in-memory cache of the decompressed TOA radiance tables (see LUT.toa_lut), shared by the LUT objects
 # (a Process creates a new LUT object at each run); one entry per aerosol model, wind speed and azimuth
@@ -75,6 +77,36 @@ def open_lut(path):
     if key not in OPEN_LUTS:
         OPEN_LUTS[key] = xr.open_dataset(path, engine=NETCDF_ENGINE)
     return OPEN_LUTS[key].copy()
+
+
+def wind_weights(wind, nodes):
+    '''
+    Weights of the wind speed nodes of a look-up table for a linear interpolation in wind speed.
+
+    The wind speed is clipped to the range of the nodes (with a warning); only the nodes of non-zero weight
+    for at least one wind speed are kept, so that the tables of the other nodes are not read.
+
+    :param wind: wind speed (m s-1), scalar or :py:class:`xarray.DataArray` (e.g. with a ``time`` dimension)
+    :param nodes: wind speeds of the table (m s-1), increasing
+    :return: :py:class:`xarray.DataArray` with a ``wind`` dimension (the nodes) and the dimensions of
+        ``wind``; the weights sum to 1 over ``wind``
+    '''
+    nodes = np.asarray(nodes, dtype=float)
+    wind = wind if isinstance(wind, xr.DataArray) else xr.DataArray(float(wind))
+    if wind.isnull().any():
+        raise ValueError('wind speed with missing values')
+    clipped = wind.clip(nodes[0], nodes[-1])
+    if (clipped != wind).any():
+        logging.warning(f'wind speed out of the range of the look-up table ({nodes[0]:g}-{nodes[-1]:g} m s-1): '
+                        f'clipped for {int((clipped != wind).sum())} value(s)')
+    values = clipped.values
+    if len(nodes) == 1:
+        weights = np.ones((1, *values.shape))
+    else:
+        weights = np.stack([np.interp(values, nodes, np.eye(len(nodes))[i]) for i in range(len(nodes))])
+    used = (weights != 0).reshape(len(nodes), -1).any(axis=1)
+    return xr.DataArray(weights[used], dims=('wind', *wind.dims),
+                        coords={**{k: v for k, v in wind.coords.items() if k != 'wind'}, 'wind': nodes[used]})
 
 
 @njit(fastmath=True)
@@ -228,7 +260,7 @@ class LUT:
         self.Twv_lut = open_lut(self.water_vapor_transmittance_file)
 
     def lut_preparation(self,
-                        wind=2,
+                        wind=WIND,
                         sza=[20, 40, 60],
                         vza=[0],
                         azi=[0],
@@ -241,7 +273,9 @@ class LUT:
         The tables of the aerosol models are combined linearly with the proportions ``aerosol_combination``
         (:ref:`methods-aerosol`) and interpolated at the reference aerosol optical thicknesses ``aot_refs``.
 
-        :param wind: wind speed (m s-1); the nearest wind speed of the tables is used
+        :param wind: wind speed (m s-1), scalar or :py:class:`xarray.DataArray` (e.g. one value per
+            measurement along ``time``, aligned with ``sza``); the tables are interpolated linearly between
+            their wind nodes (0.5-16 m s-1, out-of-range values clipped)
         :param sza: solar zenith angles (deg)
         :param vza: viewing zenith angles (deg)
         :param azi: relative azimuth angles (deg)
@@ -279,11 +313,14 @@ class LUT:
             models = aerosol_combination.model.values
         aerosol_combination = aerosol_combination.sel(model=models)
 
-        aero_lut = self.aero_lut.sel(wind=wind, method='nearest')
-        trans_lut = self.trans_lut.sel(wind=wind, method='nearest').sel(model=models)
-        # TOA radiance of the Rayleigh atmosphere (first model, aot_ref=0) and of the aerosol models, in memory
+        aero_lut = self.aero_lut
+        # linear interpolation in wind speed: weights of the bracketing wind nodes of each table
+        self.wind = wind
+        w_toa = wind_weights(wind, self.aero_lut.wind.values)
+        w_trans = wind_weights(wind, self.trans_lut.wind.values)
+        trans_lut = self.trans_lut.sel(wind=w_trans.wind.values).sel(model=models)
+        # TOA radiance of the Rayleigh atmosphere (first model, aot_ref=0) and of the aerosol models
         lut_models = [aero_lut.model.values[0], *[model for model in models if model != aero_lut.model.values[0]]]
-        toa_lut = self.toa_lut(aero_lut.wind.values, lut_models, azi)
 
         # -----------------------------
         # interpolation transmittance
@@ -291,14 +328,14 @@ class LUT:
         # -----------------------------
 
         self.trans_Ed = trans_lut.interp(sza=sza)#.sortby('sza') #, *vza
-        self.trans_Ed = (self.trans_Ed * aerosol_combination).sum('model')
+        self.trans_Ed = (self.trans_Ed * aerosol_combination * w_trans).sum(['model', 'wind'])
         self.trans_Ed = self.trans_Ed.interp(aot_ref=aot_refs, method='quadratic')
         #self.trans_aero_lut = self.trans_aero_lut.interp(wl=self.wl, method='quadratic')
         # clean up the xarray DataArray object:
         self.trans_Ed = self.trans_Ed.to_dataarray().squeeze().reset_coords(drop=True)
 
         self.trans_Eu = trans_lut.interp(sza=vza).sortby('sza').rename({'sza': 'vza'})
-        self.trans_Eu = (self.trans_Eu * aerosol_combination).sum('model')
+        self.trans_Eu = (self.trans_Eu * aerosol_combination * w_trans).sum(['model', 'wind'])
         self.trans_Eu = self.trans_Eu.interp(aot_ref=aot_refs, method='quadratic')
         self.trans_Eu = self.trans_Eu.to_dataarray().squeeze().reset_coords(drop=True)
         self.trans_Lu = self.trans_Eu**TLu_exponent
@@ -306,16 +343,25 @@ class LUT:
         # -----------------------------
         # interpolation Rayleigh
         # -----------------------------
-        # aot_ref=0 is a node of the table: selecting it is exact and avoids interpolating all the aot_ref
-        self.Rray = self._interp_geometry(toa_lut.isel(model=0).sel(aot_ref=0), sza, vza, azi)
+        # (with the interpolation of the atmospheric diffuse light below)
+        # the wind nodes are read and interpolated one after the other and accumulated with their weights,
+        # so that the memory needed does not grow with the number of wind nodes spanned by the input
+        self.Rray, self.Rdiff_lut = 0, 0
+        for w in w_toa.wind.values:
+            toa_lut = self.toa_lut(w, lut_models, azi)
+            weight = w_toa.sel(wind=w, drop=True)
+            # aot_ref=0 is a node of the table: selecting it is exact and avoids interpolating all the aot_ref
+            self.Rray = self.Rray + weight * self._interp_geometry(
+                toa_lut.isel(model=0).sel(aot_ref=0), sza, vza, azi)
+            self.Rdiff_lut = self.Rdiff_lut + weight * (
+                self._interp_geometry(toa_lut.sel(model=models), sza, vza, azi) * aerosol_combination).sum('model')
+            del toa_lut
         self.Rray = self.Rray / np.cos(np.radians(self.Rray.sza))
         #self.Rray = self.Rray.interp(wl=self.wl, method='quadratic')
 
         # -----------------------------
         # interpolation atmo diffuse light
         # -----------------------------
-        self.Rdiff_lut = self._interp_geometry(toa_lut.sel(model=models), sza, vza, azi)
-        self.Rdiff_lut = (self.Rdiff_lut * aerosol_combination).sum('model')
         self.Rdiff_lut = self.Rdiff_lut.interp(aot_ref=aot_refs, method='quadratic')
         self.Rdiff_lut = self.Rdiff_lut / np.cos(np.radians(self.Rdiff_lut.sza))
         #self.Rdiff_lut = self.Rdiff_lut.interp(wl=self.wl, method='quadratic')
@@ -360,18 +406,21 @@ class LUT:
         i1 = max(min(int(np.searchsorted(azis, np.max(azi), side='right')) + 1, len(azis)), i0 + 2)
 
         keys = {model: (str(self.lut_file), float(wind), str(model), i0, i1) for model in models}
-        missing = [model for model in models if keys[model] not in TOA_LUT_CACHE]
+        # tables of this call held here: adding the missing ones to the cache may remove the others from it
+        tables = {model: TOA_LUT_CACHE[keys[model]] for model in models if keys[model] in TOA_LUT_CACHE}
+        missing = [model for model in models if model not in tables]
         if missing:
             # read the missing models at once: they can share the chunks of the compressed file
             lut = self.aero_lut.I.sel(wind=wind, model=missing).isel(azi=slice(i0, i1)).load()
             for model in missing:
+                # copy: the entry must not keep the array of all the models alive
+                tables[model] = lut.sel(model=model).copy()
                 if len(TOA_LUT_CACHE) >= TOA_LUT_CACHE_SIZE:
                     # remove the oldest entry
                     TOA_LUT_CACHE.pop(next(iter(TOA_LUT_CACHE)))
-                # copy: the entry must not keep the array of all the models alive
-                TOA_LUT_CACHE[keys[model]] = lut.sel(model=model).copy()
+                TOA_LUT_CACHE[keys[model]] = tables[model]
 
-        return xr.concat([TOA_LUT_CACHE[keys[model]] for model in models], dim='model')
+        return xr.concat([tables[model] for model in models], dim='model')
 
     @staticmethod
     def _interp_geometry(lut, sza, vza, azi):
@@ -392,7 +441,7 @@ class LUT:
         return lut.interp(azi=azi).interp(vza=vza).interp(sza=sza)
 
     def lut_preparation_all_models(self,
-                                   wind=2,
+                                   wind=WIND,
                                    sza=[20, 40, 60],
                                    vza=[0],
                                    azi=[0],

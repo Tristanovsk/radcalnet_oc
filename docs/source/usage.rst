@@ -19,8 +19,9 @@ The input is an :py:class:`xarray.Dataset` with a ``time`` dimension (one row pe
      - Description
    * - ``Rrs``
      - time, wl
-     - remote-sensing reflectance (sr\ :sup:`-1`), hyperspectral or interpolated from the
-       AERONET-OC bands
+     - remote-sensing reflectance (sr\ :sup:`-1`), hyperspectral, e.g. reconstructed from the
+       AERONET-OC bands with :py:func:`~radcalnet_oc.reconstruction.reconstruct_rrs`; interpolated
+       linearly and extended beyond its spectral range (:ref:`methods-rrs`)
    * - ``sza``
      - time
      - solar zenith angle (deg)
@@ -39,6 +40,12 @@ The input is an :py:class:`xarray.Dataset` with a ``time`` dimension (one row pe
    * - ``tcwv``, ``tco3``, ``tcno2``
      - time
      - total columns of water vapour, ozone and nitrogen dioxide (kg m\ :sup:`-2`)
+   * - ``wind`` (optional)
+     - time
+     - wind speed at 10 m (m s\ :sup:`-1`, e.g. ERA5), roughness of the sea surface for the reflection of the
+       sky and the Sun; the look-up tables are interpolated linearly between their nodes (0.5-16 m s\ :sup:`-1`,
+       values out of this range clipped). Without it, or for its missing values, ``settings: wind`` of the
+       configuration (2 m s\ :sup:`-1`)
 
 Examples are shipped with the package in ``radcalnet_oc/data/template``
 (``template_clear_water.nc``, ``template_turbid_water.nc``).
@@ -115,7 +122,7 @@ the full spectral resolution of the simulation (350--2500 nm):
      - total reflectance at TOA, :math:`R_{toa}`
    * - ``Ratm``
      - --
-     - atmosphere (intrinsic + surface-reflected) reflectance at TOA, :math:`T_g^{\downarrow}T_g^{\uparrow}R_{atm}`
+     - atmosphere (intrinsic + surface-reflected) reflectance at TOA, :math:`T_g^{atm}R_{atm}`
    * - ``Rrs``
      - sr\ :sup:`-1`
      - remote-sensing reflectance used for the simulation
@@ -133,4 +140,4 @@ the full spectral resolution of the simulation (350--2500 nm):
      - proportion of each aerosol model used for the simulation
 
 together with the input atmospheric parameters (``tcwv``, ``tco3``, ``tcno2``, ``pressure``,
-``aot550``, ``aot865``, ``ang_exp``).
+``aot550``, ``aot865``, ``ang_exp``) and the wind speed (``wind``, input or default).

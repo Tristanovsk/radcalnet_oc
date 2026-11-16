@@ -18,12 +18,19 @@ validation (Cal/Val) of passive optical satellite sensors over ocean and coastal
 `radcalnet_oc` propagates the water-leaving radiance measured at the surface, typically by AERONET-OC
 stations, up to the top of the atmosphere (TOA). It accounts for gaseous absorption, Rayleigh and
 aerosol scattering (OPAC aerosol models) and the reflection of the sky by the wind-roughened sea
-surface, from radiative transfer look-up tables:
+surface, from radiative transfer look-up tables, with the gaseous absorption coupled with the scattering:
 
 $$
-R_{toa}(\lambda) = T_g^{\downarrow} T_g^{\uparrow}
-\left[ \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda) + R_{atm}(\lambda) \right]
+R_{toa}(\lambda) = \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda)\, T_g^{w}(\lambda)
++ T_g^{atm}(\lambda)\, R_{atm}(\lambda),
+\qquad
+T_g^{X} = \left(1 + s_X^2\, \eta_X\, \tau_g\right)^{-1/s_X^2}
 $$
+
+The path reflectance $R_{atm}$ and the water-leaving term have their own gaseous transmittances
+($\tau_g$ optical thickness of the absorbers along the geometric path; $\eta_X$, $s_X^2$ mean and relative
+variance of the absorber paths of each term), from a photon path-length model fitted on full radiative
+transfer simulations of the coupled absorption and scattering (SOS-ABS).
 
 The simulated hyperspectral TOA reflectance (350–2500 nm) is then convolved with the spectral
 responses of the satellite bands (Sentinel-2, Sentinel-3, Landsat...) for comparison with the satellite
@@ -114,7 +121,8 @@ pytest
 
 The unit tests use the light look-up table of the package and never download the full one. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the tests, the look-up tables and the release recipe, and
-[CHANGELOG.md](CHANGELOG.md) for the version history.
+[CHANGELOG.md](CHANGELOG.md) for the version history, and [ROADMAP.md](ROADMAP.md) for the planned
+improvements.
 
 ## License
 
