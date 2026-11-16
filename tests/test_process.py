@@ -184,6 +184,17 @@ def test_turbid_water_brighter_in_red():
     assert (rtoa['turbid'] > rtoa['clear']).all()
 
 
+def test_single_measurement():
+    """A single measurement (time of length 1) gives the same spectrum as within a series."""
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=[0, 1])
+    kwargs = dict(vza=angles('vza', [10.]), azi=angles('azi', [90.]))
+    series = Process(input_db=input_db, **kwargs)
+    series.execute()
+    single = Process(input_db=input_db.isel(time=[0]), **kwargs)
+    single.execute()
+    np.testing.assert_allclose(single.radcalnet_db.Rtoa, series.radcalnet_db.Rtoa.isel(time=0), rtol=1e-6)
+
+
 def test_aerosol_combination_argument():
     process = Process()
     process.execute(aerosol_combination=[0, 0, 0, 1, 0, 0])
