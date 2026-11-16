@@ -7,6 +7,24 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- Tutorial *Simulate the TOA signal from user settings* (`docs/source/tutorials/radcalnet_oc_toa_simulation.ipynb`),
+  first of the documentation: input built from the settings of geometry, atmosphere (AOT, aerosol models,
+  gas columns), sea-surface roughness (wind) and water reflectance, options of version 1.1 (`gas_coupling`,
+  `o2_model`, `rrs_extension`), direct sunglint added to `Rtoa`, provenance attributes, sensitivity
+  studies and convolution with sensor bands. It replaces *TOA atmosphere radiation*.
+- Direct sunglint term $T_{dir} R_{sg}$ in the TOA equation of the README and of the documentation.
+
+### Changed
+- One folder for the rendered tutorials: `docs/source/notebook` is moved to `docs/source/tutorials` (the
+  pages move from `notebook/<name>.html` to `tutorials/<name>.html`); the working notebooks of
+  `docs/source/tutorials/examples` are moved out of the documentation, to `examples/`, without their
+  three development versions of the rendered tutorials.
+
+### Fixed
+- `Process.execute` failed for a single measurement (time dimension of length 1) when squeezing the
+  prepared look-up table.
+
 ## [1.1.0] - 2026-11-15
 
 ### Added

@@ -22,7 +22,8 @@ surface, from radiative transfer look-up tables, with the gaseous absorption cou
 
 $$
 R_{toa}(\lambda) = \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda)\, T_g^{w}(\lambda)
-+ T_g^{atm}(\lambda)\, R_{atm}(\lambda),
++ T_g^{atm}(\lambda)\, R_{atm}(\lambda)
++ T_{dir}(\lambda)\, R_{sg},
 \qquad
 T_g^{X} = \left(1 + s_X^2\, \eta_X\, \tau_g\right)^{-1/s_X^2}
 $$
@@ -30,7 +31,11 @@ $$
 The path reflectance $R_{atm}$ and the water-leaving term have their own gaseous transmittances
 ($\tau_g$ optical thickness of the absorbers along the geometric path; $\eta_X$, $s_X^2$ mean and relative
 variance of the absorber paths of each term), from a photon path-length model fitted on full radiative
-transfer simulations of the coupled absorption and scattering (SOS-ABS).
+transfer simulations of the coupled absorption and scattering (SOS-ABS). The last term is the direct
+sunglint: the Cox and Munk reflectance $R_{sg}$ of the direct sunlight, attenuated by the direct transmittance
+$T_{dir}$ of the Sun-surface-sensor path (Beer-Lambert). The look-up tables contain only the diffuse light,
+so the sunglint is computed separately (`radcalnet_oc.coxmunk.Sunglint`) and added to the output of
+`Process`.
 
 The simulated hyperspectral TOA reflectance (350–2500 nm) is then convolved with the spectral
 responses of the satellite bands (Sentinel-2, Sentinel-3, Landsat...) for comparison with the satellite

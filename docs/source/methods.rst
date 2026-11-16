@@ -126,9 +126,15 @@ of the two terms do not cross the same amounts of absorbers (:ref:`methods-gas-c
    :label: rtoa_rrs
 
    R_{toa}(\lambda) = \pi\, R_{rs}(\lambda)\, T^{\downarrow}(\lambda)\, t^{\uparrow}(\lambda)\,
-   T_g^{w}(\lambda) + T_g^{atm}(\lambda)\, R_{atm}(\lambda),
+   T_g^{w}(\lambda) + T_g^{atm}(\lambda)\, R_{atm}(\lambda) + T_{dir}(\lambda)\, R_{sg},
 
-with, for each term :math:`X \in \{atm, w, E_d\}` (path reflectance, water-leaving term, downwelling
+where the last term is the direct sunglint: the Cox and Munk reflectance :math:`R_{sg}` of the direct sunlight
+by the wind-roughened surface (Eq. :eq:`glint`, :math:`R_{sg} = I_g`), attenuated by the direct transmittance
+:math:`T_{dir}` of the Sun-surface-sensor path (Eq. :eq:`tdir`). The look-up tables contain only the
+diffuse light, so this term is not included in the TOA reflectance of
+:py:class:`~radcalnet_oc.process.Process`: it is computed separately with
+:py:class:`~radcalnet_oc.coxmunk.Sunglint` (`Sunglint`_) and added to it. The gaseous transmittances of the
+first two terms are given, for each term :math:`X \in \{atm, w, E_d\}` (path reflectance, water-leaving term, downwelling
 irradiance), the photon path-length model
 
 .. math::
@@ -154,7 +160,7 @@ Written with the water-leaving radiance,
    :label: rtoa
 
    R_{toa}(\lambda) = \frac{\pi\, t^{\uparrow}(\lambda)\, L_w^{*}(\lambda)}{E_0(\lambda)}
-   + T_g^{atm}(\lambda)\, R_{atm}(\lambda), \qquad L_w^{*} = R_{rs}\, T^{\downarrow}\, T_g^{w}\, E_0,
+   + T_g^{atm}(\lambda)\, R_{atm}(\lambda) + T_{dir}(\lambda)\, R_{sg}, \qquad L_w^{*} = R_{rs}\, T^{\downarrow}\, T_g^{w}\, E_0,
 
 where :math:`L_w^{*}` differs from the water-leaving radiance at the surface,
 :math:`L_w = R_{rs} E_d` with :math:`E_d = T^{\downarrow} T_g^{E_d} E_0` (Eq. :eq:`ed`), only by the
@@ -162,8 +168,8 @@ gaseous transmittance of the whole Sun-surface-sensor path, :math:`T_g^{w}`, rep
 irradiance.
 
 **Decoupled limit.** For :math:`\eta_X = 1` and :math:`s_X^2 \to 0`, every term sees the direct-beam
-transmittance, :math:`T_g^{atm} = T_g^{w} = T_g^{\downarrow} T_g^{\uparrow}`, and Eq. :eq:`rtoa_rrs` reduces
-to the factorised form of the versions before 1.1 (``gas_coupling='decoupled'``),
+transmittance, :math:`T_g^{atm} = T_g^{w} = T_g^{\downarrow} T_g^{\uparrow}`, and the first two terms of
+Eq. :eq:`rtoa_rrs` reduce to the factorised form of the versions before 1.1 (``gas_coupling='decoupled'``),
 
 .. math::
    :label: rtoa_decoupled

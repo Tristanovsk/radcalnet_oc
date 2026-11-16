@@ -355,8 +355,10 @@ class Process():
         self.get_irradiance_transmittance()
         self.get_radiance_transmittance()
 
-        Ratm = self.lut.Rdiff_lut.squeeze().interp(aot_ref=self.aot550
-                                                   ).interp(wl=self.full_wl, method='quadratic')
+        # squeeze the single geometries but keep the time dimension, also for a single measurement
+        Rdiff = self.lut.Rdiff_lut
+        Rdiff = Rdiff.squeeze([d for d in Rdiff.dims if d != 'time' and Rdiff.sizes[d] == 1])
+        Ratm = Rdiff.interp(aot_ref=self.aot550).interp(wl=self.full_wl, method='quadratic')
         # Sun-surface-sensor gaseous transmittance (Tg_d * Tg_u, computed for the whole path, or with the
         # effective air mass of the path reflectance, see get_gas_transmittance)
         Ratm = self.Tg_atm * Ratm

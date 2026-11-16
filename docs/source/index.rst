@@ -42,12 +42,12 @@ full radiative transfer simulations of the coupled absorption and scattering (se
    :maxdepth: 2
    :caption: Tutorials
 
-   notebook/radcalnet_oc_aeronet_oc_toa
-   notebook/radcalnet_oc_gaseous_transmittance
-   notebook/radcalnet_oc_solar_irradiance
-   notebook/radcalnet_oc_downwelling_irradiance
-   notebook/radcalnet_oc_toa_atmosphere_radiation
-   notebook/sentinel3_radcalnet_oc_matchup
+   tutorials/radcalnet_oc_toa_simulation
+   tutorials/radcalnet_oc_aeronet_oc_toa
+   tutorials/radcalnet_oc_gaseous_transmittance
+   tutorials/radcalnet_oc_solar_irradiance
+   tutorials/radcalnet_oc_downwelling_irradiance
+   tutorials/sentinel3_radcalnet_oc_matchup
    tutorials/research/index
 
 .. toctree::

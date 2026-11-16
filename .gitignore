@@ -15,7 +15,7 @@ docs/_build/
 .idea/
 .vscode/
 
-# Working notebooks (examples copied to docs/source/tutorials/examples)
+# Working notebooks (examples copied to examples/)
 /notebook/
 
 # SOS-ABS coupling LUTs (link to a local data directory)
