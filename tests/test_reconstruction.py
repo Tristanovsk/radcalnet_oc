@@ -13,7 +13,7 @@ from radcalnet_oc.reconstruction import PARAMETERS, Reconstruction, reconstruct_
 
 from conftest import angles
 
-AAOT = Path(__file__).parents[1] / 'docs/source/tutorials/examples/minimal_chain/data/AAOT_OCv3.lev20.nc'
+AAOT = Path(__file__).parents[1] / 'examples/minimal_chain/data/AAOT_OCv3.lev20.nc'
 pytestmark = pytest.mark.skipif(not AAOT.exists(), reason='AERONET-OC example file not available')
 
 

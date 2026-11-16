@@ -93,7 +93,7 @@ Python
 
 The convolution is vectorized over all the spectra and also works on a simulation read lazily with dask,
 e.g. ``xr.open_mfdataset(files, chunks={'time': 1}).Rtoa`` (see :ref:`spectral_convolution` and the
-tutorial :doc:`notebook/sentinel3_radcalnet_oc_matchup`).
+tutorial :doc:`tutorials/sentinel3_radcalnet_oc_matchup`).
 
 When several simulations are run in the same Python session (e.g. one per month or per site), the
 parts of the atmosphere look-up table read by the first run are kept in memory
