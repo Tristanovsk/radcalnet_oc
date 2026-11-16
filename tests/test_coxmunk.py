@@ -83,3 +83,56 @@ def test_shadowing_follows_the_wind_direction():
     np.testing.assert_allclose(s.shadowing(s_up2, s_cr2, wazi=90.),
                                1 / (1 + s.Lambda(s_up2, s_cr2, 0., s.sza) + s.Lambda(s_up2, s_cr2, 1., s.vza)),
                                atol=1e-12)
+
+
+def test_heavy_tailed_limits():
+    """The heavy-tailed isotropic statistics reduce to cm_iso: Student t for nu -> inf, mixture for f_tail = 0."""
+    for vza, azi in [(10., 160.), (30., 120.), (45., 60.)]:
+        iso = glint(35., vza, azi, 5., stats='cm_iso')
+        assert glint(35., vza, azi, 5., stats='cm_iso_t', nu=1e7) == pytest.approx(iso, rel=1e-4)
+        assert glint(35., vza, azi, 5., stats='cm_iso_mix', f_tail=0.) == pytest.approx(iso, rel=1e-12)
+
+
+@pytest.mark.parametrize('kwargs', [{'stats': 'cm_iso_t', 'nu': 3.}, {'stats': 'cm_iso_mix', 'f_tail': 0.05}])
+def test_heavy_tailed_slope_pdf(kwargs):
+    """Slope pdf of the heavy-tailed statistics: normalised, Student t with the Cox and Munk mean square slope,
+    and a heavier tail than the Gaussian far from the specular direction."""
+    ws = 3.
+    sigma2 = 3e-3 + 512e-5 * ws
+    # slope pdf p(tan theta_n) through slope=True for geometries spanning the facet tilt
+    t = np.linspace(0., 3., 3001)
+    # direct evaluation of the pdf as in Sunglint (isotropic: function of tan^2 theta_n only)
+    if kwargs['stats'] == 'cm_iso_t':
+        nu = kwargs['nu']
+        s2 = sigma2 * (nu - 2) / (2 * nu)
+        p = 1. / (2 * np.pi * s2) * (1 + t ** 2 / (nu * s2)) ** (-(nu + 2) / 2)
+    else:
+        f, s2w = kwargs['f_tail'], 0.1
+        p = (1 - f) / (np.pi * sigma2) * np.exp(-t ** 2 / sigma2) + f / (np.pi * s2w) * np.exp(-t ** 2 / s2w)
+    norm = np.trapezoid(2 * np.pi * t * p, t)
+    assert norm == pytest.approx(1., abs=0.02)
+    if kwargs['stats'] == 'cm_iso_t':
+        # mean square slope (converges slowly for nu = 3: integrate analytically beyond t = 3)
+        msq = np.trapezoid(2 * np.pi * t ** 3 * p, t)
+        assert msq == pytest.approx(sigma2, rel=0.25)
+    # check against Sunglint: ratio to cm_iso at the specular point and far from it
+    s = Sunglint(30., 30., 180.)  # specular geometry (theta_n = 0)
+    peak = s.sunglint(ws, stats=kwargs['stats'], shadow=False, slope=True,
+                      **{k: v for k, v in kwargs.items() if k != 'stats'})[3]
+    assert peak == pytest.approx(p[0], rel=1e-6)
+    far = dict(sza=50., vza=10., azi=90.)  # facet tilt 26 deg (glint angle about 50 deg)
+    tail = glint(far['sza'], far['vza'], far['azi'], ws, shadow=False, **kwargs)
+    iso = glint(far['sza'], far['vza'], far['azi'], ws, stats='cm_iso', shadow=False)
+    assert tail > 100 * iso
+
+
+@pytest.mark.parametrize('kwargs', [{'stats': 'cm_iso_t', 'nu': 4.}, {'stats': 'cm_iso_mix', 'f_tail': 0.05}])
+def test_heavy_tailed_hemispherical_albedo(kwargs):
+    """Energy conservation of the heavy-tailed statistics (no shadowing), as for cm_iso."""
+    sza, ws = 30., 2.
+    vza = np.radians(np.arange(0.25, 89.9, 0.5))
+    azi = np.radians(np.arange(0.5, 360., 1.))
+    R = np.array([[glint(sza, np.degrees(v), np.degrees(a), ws, shadow=False, **kwargs) for a in azi]
+                  for v in vza])
+    albedo = (R * (np.cos(vza) * np.sin(vza))[:, None]).sum() * np.radians(0.5) * np.radians(1.) / np.pi
+    assert albedo == pytest.approx(fresnel_unpolarised(np.radians(sza)), rel=0.05)

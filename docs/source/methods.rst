@@ -567,6 +567,30 @@ With an isotropic distribution, the slope variance depends on the wind speed :ma
    \sigma^2 = 0.003 + 5.12\times10^{-3}\, W, \qquad
    p(\theta_n) = \frac{1}{\pi\sigma^2}\exp\left( -\frac{\tan^2\theta_n}{\sigma^2} \right).
 
+Two heavy-tailed isotropic distributions with the same :math:`\sigma^2` are available (``stats='cm_iso_t'``
+and ``stats='cm_iso_mix'``): a 2-D Student t with :math:`\nu` degrees of freedom (same mean square slope, lower
+peak, power-law tail),
+
+.. math::
+   :label: cm_iso_t
+
+   p(\theta_n) = \frac{1}{2\pi s^2}\left(1 + \frac{\tan^2\theta_n}{\nu s^2}\right)^{-(\nu+2)/2},
+   \qquad s^2 = \sigma^2\,\frac{\nu-2}{2\nu},
+
+and the Cox and Munk Gaussian plus a fraction :math:`f` of wide slopes of mean square slope
+:math:`\sigma_t^2`,
+
+.. math::
+   :label: cm_iso_mix
+
+   p(\theta_n) = \frac{1-f}{\pi\sigma^2}\exp\left( -\frac{\tan^2\theta_n}{\sigma^2} \right)
+   + \frac{f}{\pi\sigma_t^2}\exp\left( -\frac{\tan^2\theta_n}{\sigma_t^2} \right).
+
+Both reduce to Eq. :eq:`cm_iso` for :math:`\nu\to\infty` and :math:`f = 0`. On the Sentinel-2 matchups of the
+AERONET-OC platforms (glint angles of 30--90°, station wind), the far glint is reproduced with :math:`f\approx0.05`
+and :math:`\sigma_t^2\approx0.08` (``scripts/s2_toa_matchup/glint_tail_fit.py``), a tail that does not scale with
+the wind of the station.
+
 With the directional statistics, the upwind and crosswind variances are
 
 .. math::

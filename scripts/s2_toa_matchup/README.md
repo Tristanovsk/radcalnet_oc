@@ -79,6 +79,14 @@ measurements of a site. Not part of the package.
    python glint_slope_inversion.py
    ```
 
+8. **Heavy-tailed slope statistics** (`glint_tail_fit.py`): the `cm_iso_t` (Student t) and `cm_iso_mix`
+   (Gaussian + wide slopes) statistics of `radcalnet_oc.Sunglint` fitted on the cirrus-corrected SWIR excess at the
+   station wind, and wind inverted per scene with the fitted statistics (about 25 s):
+
+   ```bash
+   python glint_tail_fit.py
+   ```
+
 The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
 `reports/validation_roadmap_2026-11`. The output files record the radcalnet_oc version and settings
 (`radcalnet_oc` attribute) since the traceability change of ROADMAP task 2.

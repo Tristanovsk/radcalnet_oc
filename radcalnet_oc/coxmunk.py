@@ -39,7 +39,7 @@ class Sunglint:
         self.m = m
         self.tau_atm = tau_atm
 
-    def sunglint(self, ws, wazi=0, stats='cm_dir', shadow=True, slope=False):
+    def sunglint(self, ws, wazi=0, stats='cm_dir', shadow=True, slope=False, nu=4., f_tail=0.05, sigma2_tail=0.1):
         '''
         Stokes vector of the sunglint reflectance, Eq. :eq:`glint`, without atmospheric transmittance.
 
@@ -47,12 +47,19 @@ class Sunglint:
         :param wazi: wind direction (deg), downwind, counterclockwise from the Sun direction
             (0 deg: wind blowing towards the Sun)
         :param stats: wave slope statistics: ``'cm_iso'`` (isotropic Cox and Munk), ``'cm_dir'``
-            (directional Cox and Munk, Gram-Charlier expansion) or ``'bh2006'`` (Bréon and Henriot, 2006)
+            (directional Cox and Munk, Gram-Charlier expansion), ``'bh2006'`` (Bréon and Henriot, 2006), or the
+            heavy-tailed isotropic statistics ``'cm_iso_t'`` (2-D Student t with the Cox and Munk mean square slope,
+            ``nu`` degrees of freedom) and ``'cm_iso_mix'`` (Cox and Munk Gaussian plus a fraction ``f_tail`` of
+            wide slopes of mean square slope ``sigma2_tail``); both reduce to ``'cm_iso'`` for ``nu`` -> inf and
+            ``f_tail = 0``
         :param shadow: if True, apply the shadowing and hiding correction of the waves (Smith function,
             Ross and Dion, 2005, 2007); only for a non-nadir view
         :param slope: output selection: False for the Stokes vector, True for
             ``[z_up, z_cr, Rf[0, 0], p]`` (upwind and crosswind slopes, Fresnel reflectance and slope
             probability), ``'check'`` for ``[Rf[0, 0], Rf[1, 0], Rf[2, 0], Rf[3, 0], p, cos(theta_n), S]``
+        :param nu: degrees of freedom of ``'cm_iso_t'`` (> 2)
+        :param f_tail: fraction of the wide slope component of ``'cm_iso_mix'``
+        :param sigma2_tail: total mean square slope of the wide component of ``'cm_iso_mix'``
         :return: ``[I, Q, U, V]``, Stokes components of the sunglint reflectance (by default)
         '''
         sza = self.sza
@@ -72,10 +79,14 @@ class Sunglint:
 
         Rf = self.fresnel(omega)
 
-        if stats == 'cm_iso':  # Original isotropic Cox Munk statistics
+        if stats in ('cm_iso', 'cm_iso_t', 'cm_iso_mix'):  # Original isotropic Cox Munk statistics
             sigma2 = 3e-3 + 512e-5 * ws
-            s_cr2 = sigma2 / 2
-            s_up2 = sigma2 / 2
+            if stats == 'cm_iso_mix':  # mean square slope of the mixture, for the shadowing
+                sigma2_sh = (1 - f_tail) * sigma2 + f_tail * sigma2_tail
+            else:
+                sigma2_sh = sigma2
+            s_cr2 = sigma2_sh / 2
+            s_up2 = sigma2_sh / 2
         elif stats == 'cm_dir':  # historical values from directional COX MUNK
             s_cr2 = 0.003 + 1.92e-3 * ws
             s_up2 = 3.16e-3 * ws
@@ -108,6 +119,19 @@ class Sunglint:
             Pdist_ = 1. / (np.pi * sigma2) * np.exp(- np.tan(thetaN) ** 2 / sigma2)
 
             z_up,z_cr=zx,zy
+        elif stats == 'cm_iso_t':
+            # 2-D Student t of total mean square slope sigma2 (scale s2 per axis, variance s2 nu / (nu - 2) =
+            # sigma2 / 2): same mean square slope as Cox and Munk, lower peak and power-law tail
+            s2 = sigma2 * (nu - 2) / (2 * nu)
+            Pdist_ = 1. / (2 * np.pi * s2) * (1 + np.tan(thetaN) ** 2 / (nu * s2)) ** (-(nu + 2) / 2)
+            z_up, z_cr = zx, zy
+        elif stats == 'cm_iso_mix':
+            # Cox and Munk Gaussian plus a fraction f_tail of wide slopes (steep facets of short waves, swell or
+            # breaking), fitted on the Sentinel-2 matchups (scripts/s2_toa_matchup/glint_tail_fit.py)
+            t2 = np.tan(thetaN) ** 2
+            Pdist_ = ((1 - f_tail) / (np.pi * sigma2) * np.exp(-t2 / sigma2) +
+                      f_tail / (np.pi * sigma2_tail) * np.exp(-t2 / sigma2_tail))
+            z_up, z_cr = zx, zy
         else:
             sigma2 = s_cr2 + s_up2
 

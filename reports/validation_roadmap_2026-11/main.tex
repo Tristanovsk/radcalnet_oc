@@ -517,6 +517,7 @@ The SWIR excess is therefore compatible with direct glint from a small fraction 
 swell, breaking) not represented by the Gaussian slope statistics at the station wind, rather than with a wrong
 mean roughness. Since $E$ is a residual, any spectrally flat term decreasing with the glint angle would look the
 same; the glint angle is however a better predictor than the SZA in the SWIR (Section~\ref{sec:aot_term}).
+Heavy-tailed statistics are fitted in Section~\ref{sec:glint_tail}.
 
 \begin{table}[h]
 \centering\small
@@ -535,6 +536,54 @@ $\theta_n$ & $N$ & Glint angle & 865\,nm & 1610\,nm & 2190\,nm & Station & 5\,m\
 27.5--30$^\circ$ & 44  & $57^\circ$ & 0.024  & 0.012   & 0.010   & 1.2e-5 & 3.0e-4 & 0.023 \\
 30--35$^\circ$   & 80  & $66^\circ$ & 0.000  & $-0.003$ & 0.000  & 1.3e-7 & 4.6e-6 & 2.5e-3 \\
 35--45$^\circ$   & 30  & $74^\circ$ & $-0.008$ & $-0.007$ & $-0.003$ & 4e-11 & 1.5e-8 & 1.2e-4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Heavy-tailed slope statistics}
+\label{sec:glint_tail}
+Two isotropic heavy-tailed distributions with the Cox--Munk mean square slope $\sigma^2 = 0.003 + 5.12\times10^{-3}W$
+were added to \code{radcalnet\_oc.Sunglint} (branch \code{feature/glint\_tail}, unit tests of normalisation,
+energy conservation and limits):
+\begin{itemize}
+\item \code{cm\_iso\_t}: 2-D Student $t$ with $\nu$ degrees of freedom and the same mean square slope,
+  $p = (2\pi s^2)^{-1}(1+\tan^2\theta_n/\nu s^2)^{-(\nu+2)/2}$, $s^2 = \sigma^2(\nu-2)/2\nu$;
+\item \code{cm\_iso\_mix}: the Cox--Munk Gaussian plus a fraction $f$ of wide slopes of mean square slope
+  $\sigma_t^2$, $p = (1-f)\,p_\mathrm{CM}(\sigma^2) + f\,p_\mathrm{CM}(\sigma_t^2)$.
+\end{itemize}
+Both reduce to \code{cm\_iso} for $\nu\to\infty$ and $f=0$. Their parameters were fitted at the wind of the station
+on the cirrus-corrected excess, by minimising the median absolute residual (MAD) at 1610 and 2190\,nm
+(\code{scripts/s2\_toa\_matchup/glint\_tail\_fit.py}, Table~\ref{tab:glint_tail}).
+
+\begin{itemize}
+\item \textbf{Both reduce the misfit by about 20\,\%.} The mixture with $f = 0.05$ and $\sigma_t^2 = 0.08$ (a tail
+  equivalent to $\sim$15\,m\,s$^{-1}$) is the best: it removes the bias at 30--40$^\circ$ and halves it at
+  40--60$^\circ$. The Student $t$ is best for $\nu = 7$, with a slightly larger residual bias near the glint.
+\item \textbf{The inverted roughness depends less on the geometry.} Inverting the wind of each scene with the fitted
+  statistics, the Spearman correlation of the equivalent wind with the glint angle falls from 0.85 to 0.51
+  (\code{cm\_iso\_t}) and 0.54 (\code{cm\_iso\_mix}), and its median excess over the station wind from 2.3 to
+  1.2--1.3\,m\,s$^{-1}$: the dependence is reduced, not removed.
+\item \textbf{The tail does not follow the station wind.} A tail scaling with the wind ($\sigma_t^2 = k\sigma^2$,
+  $k$ = 2--12) fits worse than a fixed one (MAD sum 1.79 against 1.66 at best), which points to a roughness of the
+  open sea (swell, fetch) not represented by the wind measured on the platform.
+\item \textbf{865\,nm keeps a residual} of about $1\times10^{-3}$ at 30--60$^\circ$ with all statistics,
+  confirming an additional 865\,nm term.
+\end{itemize}
+
+\begin{table}[h]
+\centering\small
+\caption{Glint statistics at the station wind against the cirrus-corrected excess (511 matchups,
+\code{glint\_tail\_fit.py}): median absolute residual and median residual (excess $-$ glint) per glint-angle bin at
+2190\,nm ($\times10^{-3}$); Spearman correlation of the wind inverted per scene at 2190\,nm with the glint angle.}
+\label{tab:glint_tail}
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+Statistics & \multicolumn{3}{c}{MAD} & \multicolumn{4}{c}{Residual at 2190\,nm} & $\rho(U_\mathrm{eq},\theta_g)$ \\
+ & 865 & 1610 & 2190 & 30--40$^\circ$ & 40--50$^\circ$ & 50--60$^\circ$ & $>60^\circ$ & \\
+\midrule
+\code{cm\_iso}                         & 1.67 & 1.15 & 0.87 & $+0.90$ & $+0.99$ & $+0.54$ & $-0.12$ & 0.85 \\
+\code{cm\_iso\_t}, $\nu=7$             & 1.48 & 0.95 & 0.73 & $+0.21$ & $+0.51$ & $+0.32$ & $-0.24$ & 0.51 \\
+\code{cm\_iso\_mix}, $f=0.05$, $\sigma_t^2=0.08$ & 1.36 & 0.92 & 0.73 & $-0.02$ & $+0.38$ & $+0.33$ & $-0.18$ & 0.54 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -657,10 +706,12 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
   (Section~\ref{sec:glint_inv}): the equivalent wind grows with the glint angle (3.6 to 11.6\,m\,s$^{-1}$); the
   excess requires a heavy-tailed slope distribution ($\sim$5\,\% of steep facets), beyond the Cox--Munk and
   Bréon--Henriot statistics.
-\item \prio{P1} \textbf{Heavy-tailed slope statistics in \code{Sunglint}}: fit a peakedness (Gram--Charlier) or a
-  two-component distribution on the matchups and check that the inverted roughness no longer depends on the
-  geometry; compare the wide component with the ERA5 wind (speed and direction) and the significant wave height
-  (swell).
+\item \textit{Done (November 2026):} \textbf{heavy-tailed slope statistics in \code{Sunglint}}, Student $t$
+  and Gaussian mixture (Section~\ref{sec:glint_tail}): the mixture $f = 0.05$, $\sigma_t^2 = 0.08$ reduces the SWIR misfit by 20\,\% and halves the geometry dependence of the inverted wind.
+\item \prio{P1} \textbf{Sea state of the open sea}: ERA5 wind (speed, direction) and significant wave height (swell)
+  per scene, to drive the tail fraction by the sea state instead of a fixed value.
+\item \prio{P1} \textbf{Matchups with the heavy-tailed statistics}: \code{cm\_iso\_mix} as the glint statistics of
+  the matchup script, then rerun the deficit, AOT and cirrus analyses.
 \item \prio{P2} \textbf{Additional 865\,nm term} (excess above the SWIR glint, 0.3--$1.5\times10^{-3}$ decreasing
   with the glint angle): test an SZA-dependent diffuse term.
 \item \prio{P1} \textbf{Cirrus term}: the deficit follows the B10 reflectance (about $-1$ per unit,
@@ -753,6 +804,8 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
   folder (reads the cache of \code{aerosol\_diagnosis.py}, about 35\,s).
 \item Slope variance inversion (Section~\ref{sec:glint_inv}): \code{glint\_slope\_inversion.py} in the same folder
   (about 35\,s).
+\item Heavy-tailed slope statistics (Section~\ref{sec:glint_tail}): \code{glint\_tail\_fit.py} in the same folder,
+  branch \code{feature/glint\_tail} (about 25\,s).
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}
