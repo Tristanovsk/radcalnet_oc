@@ -205,7 +205,8 @@ Left: relative; right: absolute, with the interquartile range.}
   $-1.1\times10^{-3}$ for glint angles of 30--40, 40--50, 50--60 and $>60^\circ$ (Galata: $-5.4$ to $-1.2$);
   2190\,nm behaves the same (Fig.~\ref{fig:glint}). With MSI near nadir, the glint angle is strongly correlated
   with the solar zenith angle (Spearman $\rho\approx0.5$ for both); in a joint regression the glint angle wins
-  in the SWIR, the two remaining inseparable at 865\,nm (Section~\ref{sec:aot_term}).
+  in the SWIR, the two remaining inseparable at 865\,nm (Section~\ref{sec:aot_term}). Interpreted as direct
+  glint, it requires a slope distribution with a much heavier tail than Cox--Munk (Section~\ref{sec:glint_inv}).
 \item \textbf{Dependence on the aerosol load.} The NIR--SWIR deficit increases with AOT (AAOT, 2190\,nm:
   $-0.8$, $-1.5$, $-2.2\times10^{-3}$ for AOT $<0.08$, 0.08--0.15, 0.15--0.3). The AOT-proportional part is
   spectrally flat ($-9$ to $-11\times10^{-3}$ per unit AOT from 865 to 2190\,nm) and larger for coarse aerosols
@@ -437,8 +438,8 @@ from 40 to $60^\circ$ where $G\approx0$. The deficit follows $-0.4$ to $-0.6\,G$
 deficit with the glint, $D+G$, still depends on the glint angle ($+0.07$, $+0.04$, $+0.02$ per degree, $t = 5.9$,
 4.3, 2.2, with B10 in the regression). A wider slope distribution than given by the station wind (swell, wind
 over the open sea, heavier tails of the slope statistics) would lower the glint peak and raise its far tail as
-observed. The term correlated with the AOT is therefore the glint-angle term of finding~3, plus the
-cirrus term; no aerosol-model change is required by the matchups at this stage.
+observed (tested in Section~\ref{sec:glint_inv}). The term correlated with the AOT is therefore the glint-angle
+term of finding~3, plus the cirrus term; no aerosol-model change is required by the matchups at this stage.
 
 \begin{table}[h]
 \centering\small
@@ -471,6 +472,69 @@ Glint angle & $N$ & AOT(550) & \multicolumn{3}{c}{865\,nm} & \multicolumn{3}{c}{
 40--50$^\circ$ & 137 & 0.12 & 0.02 & $-3.25$ & $-3.00$ & 0.02 & $-2.08$ & $-1.76$ \\
 50--60$^\circ$ & 80  & 0.09 & 0.00 & $-2.09$ & $-2.00$ & 0.00 & $-1.34$ & $-1.20$ \\
 $>60^\circ$    & 110 & 0.07 & 0.00 & $-1.18$ & $-1.18$ & 0.00 & $-0.71$ & $-0.70$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Slope variance inverted from the SWIR excess}
+\label{sec:glint_inv}
+If the glint-angle term is direct glint, a slope variance $\sigma^2$ exists for each scene such that the TOA glint
+equals the excess $E = -D$ (satellite minus simulation without glint): $E(\lambda) = T(\lambda)\,R_g(\sigma^2)$,
+with $R_g$ the isotropic Cox--Munk reflectance with shadowing of \code{radcalnet\_oc.Sunglint} and $T = T_g T_\mathrm{dir}$
+the atmospheric factor of the matchup script (0.84, 0.90, 0.86 at 865, 1610, 2190\,nm; it reproduces the stored
+glint within 0.1\,\%). $\sigma^2$ is solved on the rising branch ($\sigma^2 < \tan^2\theta_n$) and expressed as the
+equivalent Cox--Munk wind $U_\mathrm{eq} = (\sigma^2-0.003)/0.00512$, for the raw excess and for the excess
+corrected for the cirrus term ($E = -(D - e\,R_\mathrm{B10})$, $e$ of Section~\ref{sec:aot_term};
+\code{scripts/s2\_toa\_matchup/glint\_slope\_inversion.py}).
+
+\begin{itemize}
+\item \textbf{The inverted roughness depends on the geometry.} At 2190\,nm (cirrus-corrected), $U_\mathrm{eq}$ is
+  3.6, 5.8, 8.5 and 11.6\,m\,s$^{-1}$ for glint angles of 30--40, 40--50, 50--60 and $>60^\circ$, against
+  2.7--3.7\,m\,s$^{-1}$ at the station (raw excess: 3.8 to 14.2\,m\,s$^{-1}$). $U_\mathrm{eq}$ follows the glint
+  angle (Spearman 0.85) more than the station wind (0.28): a wrong wind alone would give the same $U_\mathrm{eq}$
+  at all glint angles. Beyond $60^\circ$, 56\,\% of the scenes have no excess once the cirrus is removed.
+\item \textbf{The excess is spectrally consistent with glint in the SWIR.} 1610 and 2190\,nm give the same
+  $U_\mathrm{eq}$ (median 5.3 and 5.1\,m\,s$^{-1}$, Spearman 0.99). At 865\,nm, an excess of 1.5, 1.0, 0.8 and
+  $0.3\times10^{-3}$ per glint-angle bin remains above the glint of the 2190\,nm solution.
+\item \textbf{The slope distribution has a heavy tail.} The empirical slope pdf $p = E/(T K)$, with $K$ the Fresnel,
+  shadowing and geometry factor of $R_g$, decreases by a factor $\sim$12 from facet tilts of 15--20$^\circ$ to
+  27.5--30$^\circ$ (Table~\ref{tab:glint_pdf}), against $\sim$4000 for the Gaussian of the station wind and 40
+  at 10\,m\,s$^{-1}$, while near the specular direction it is a third of the Gaussian at 5\,m\,s$^{-1}$. It
+  vanishes beyond $30^\circ$ (glint angle $>60^\circ$): no constant offset remains once the cirrus is removed.
+\item \textbf{The directional statistics are not enough.} At the station wind and averaged over the wind
+  directions (not measured), the directional Cox--Munk (Gram--Charlier) and Bréon and Henriot (2006) statistics
+  raise the glint at 2190\,nm from 0.67 to 1.24 and $1.53\times10^{-3}$ at 30--40$^\circ$, but give only 0.10--0.14
+  and 0.02--$0.03\times10^{-3}$ at 40--50 and 50--60$^\circ$, against an excess of 1.26 and $0.59\times10^{-3}$.
+\item \textbf{A two-component distribution fits the shape.} $(1-f)\,p(\sigma^2_\mathrm{station}) +
+  f\,p(\sigma^2_\mathrm{wide})$, fitted by least absolute deviations, gives in the SWIR $f\approx0.05$ of steep
+  slopes with $\sigma^2_\mathrm{wide}\approx0.09$--0.12 (17--23\,m\,s$^{-1}$ equivalent) and an offset close to
+  zero, reducing the median absolute residual by about 30\,\% (2190\,nm: 0.69 against 0.99); it still
+  underestimates the medians per glint-angle bin by a factor 1.5--2. At 865\,nm it requires $f = 0.08$--0.11,
+  consistent with an additional 865\,nm term.
+\end{itemize}
+
+The SWIR excess is therefore compatible with direct glint from a small fraction of steep facets (short waves,
+swell, breaking) not represented by the Gaussian slope statistics at the station wind, rather than with a wrong
+mean roughness. Since $E$ is a residual, any spectrally flat term decreasing with the glint angle would look the
+same; the glint angle is however a better predictor than the SZA in the SWIR (Section~\ref{sec:aot_term}).
+
+\begin{table}[h]
+\centering\small
+\caption{Empirical slope pdf $p = E/(TK)$ of the cirrus-corrected excess per bin of facet tilt $\theta_n$
+(medians), and isotropic Cox--Munk pdfs at the station wind and at 5 and 10\,m\,s$^{-1}$
+(\code{glint\_slope\_inversion.py}).}
+\label{tab:glint_pdf}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+$\theta_n$ & $N$ & Glint angle & 865\,nm & 1610\,nm & 2190\,nm & Station & 5\,m\,s$^{-1}$ & 10\,m\,s$^{-1}$ \\
+\midrule
+15--20$^\circ$   & 182 & $35^\circ$ & 0.177  & 0.144   & 0.119   & 0.048  & 0.32  & 0.90 \\
+20--22.5$^\circ$ & 72  & $42^\circ$ & 0.087  & 0.072   & 0.054   & 0.0021 & 0.060 & 0.38 \\
+22.5--25$^\circ$ & 64  & $48^\circ$ & 0.067  & 0.049   & 0.040   & 6.5e-4 & 0.012 & 0.16 \\
+25--27.5$^\circ$ & 39  & $52^\circ$ & 0.036  & 0.023   & 0.024   & 1.7e-4 & 2.5e-3 & 0.070 \\
+27.5--30$^\circ$ & 44  & $57^\circ$ & 0.024  & 0.012   & 0.010   & 1.2e-5 & 3.0e-4 & 0.023 \\
+30--35$^\circ$   & 80  & $66^\circ$ & 0.000  & $-0.003$ & 0.000  & 1.3e-7 & 4.6e-6 & 2.5e-3 \\
+35--45$^\circ$   & 30  & $74^\circ$ & $-0.008$ & $-0.007$ & $-0.003$ & 4e-11 & 1.5e-8 & 1.2e-4 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -588,8 +652,17 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
   the observed SWIR reflectance with the Cox--Munk tail versus the glint angle and the wind speed; use the
   wind direction (ERA5) with anisotropic Cox--Munk statistics; test the sky-glint term of the LUT at the measured
   wind. The direct glint at the station wind is too peaked and its far tail too weak
-  (Table~\ref{tab:aot_glint}): invert a slope variance per scene from the SWIR deficit and compare it with the
-  AERONET-OC and ERA5 winds and with heavier-tailed slope statistics.
+  (Table~\ref{tab:aot_glint}).
+\item \textit{Done (November 2026):} \textbf{slope variance inverted per scene} from the SWIR excess
+  (Section~\ref{sec:glint_inv}): the equivalent wind grows with the glint angle (3.6 to 11.6\,m\,s$^{-1}$); the
+  excess requires a heavy-tailed slope distribution ($\sim$5\,\% of steep facets), beyond the Cox--Munk and
+  Bréon--Henriot statistics.
+\item \prio{P1} \textbf{Heavy-tailed slope statistics in \code{Sunglint}}: fit a peakedness (Gram--Charlier) or a
+  two-component distribution on the matchups and check that the inverted roughness no longer depends on the
+  geometry; compare the wide component with the ERA5 wind (speed and direction) and the significant wave height
+  (swell).
+\item \prio{P2} \textbf{Additional 865\,nm term} (excess above the SWIR glint, 0.3--$1.5\times10^{-3}$ decreasing
+  with the glint angle): test an SZA-dependent diffuse term.
 \item \prio{P1} \textbf{Cirrus term}: the deficit follows the B10 reflectance (about $-1$ per unit,
   Section~\ref{sec:aot_term}); either screen on B10 or add an empirical high-cloud term to the matchups, and
   investigate the observed B10 level (finding~6).
@@ -678,6 +751,8 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
   subfolder \code{aerosol\_diagnosis} of the matchup folder.
 \item Search for the AOT-correlated term (Section~\ref{sec:aot_term}): \code{aot\_term\_search.py} in the same
   folder (reads the cache of \code{aerosol\_diagnosis.py}, about 35\,s).
+\item Slope variance inversion (Section~\ref{sec:glint_inv}): \code{glint\_slope\_inversion.py} in the same folder
+  (about 35\,s).
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
 \end{itemize}

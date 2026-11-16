@@ -70,6 +70,15 @@ measurements of a site. Not part of the package.
    python aot_term_search.py
    ```
 
+7. **Slope variance inverted from the SWIR excess** (`glint_slope_inversion.py`): per scene, the isotropic Cox-Munk
+   slope variance whose TOA glint matches the excess sat - sim (raw and cirrus-corrected), compared with the
+   AERONET-OC wind; empirical slope pdf per facet tilt, directional statistics (Cox-Munk, Breon-Henriot) averaged
+   over the wind directions, and two-component slope distribution fit (about 35 s):
+
+   ```bash
+   python glint_slope_inversion.py
+   ```
+
 The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
 `reports/validation_roadmap_2026-11`. The output files record the radcalnet_oc version and settings
 (`radcalnet_oc` attribute) since the traceability change of ROADMAP task 2.
