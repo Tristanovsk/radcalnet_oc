@@ -18,7 +18,13 @@ mostly a seasonal confound with the glint angle (high AOT in summer, small glint
 contradict the measured AOT spectrum. Open: a near-infrared term of about -1e-3 at 865 nm; the blue bias
 (-3 to -4 % at 443 nm), which does not follow the pressure dependence that the Rayleigh scaling predicts (task 24).
 
-**Suggested order:** 23 (release 1.2), then 9 with 8 alongside, the open points of 10 and 24; then 15 and 17.
+**Cross-package review (17 November 2026)** of the recent work in GRS, hGRS, invRrs and shallowat: tasks 25-29 (the pressure statistics of GRS and hGRS are in task 24).
+GRS and hGRS moved their LUT wavelength interpolation to log-log space; the same change in radcalnet_oc moves
+the path reflectance by 1.2-1.6 % at 443 nm and 0.3-0.5e-3 at 865 nm, in the direction of the two open residuals
+of the matchups (task 25).
+
+**Suggested order:** 25 (wavelength interpolation), 23 (release 1.2), 27; then 9 with 8 alongside, 26, the open
+points of 10 and 24; then 15 and 17.
 
 ## Tier 1: quick wins (hours to a day each)
 
@@ -44,6 +50,20 @@ contradict the measured AOT spectrum. Open: a near-infrared term of about -1e-3 
 6. ~~**Reproducibility of the scripts.**~~ *Done:* README of `scripts/sos_abs_coupling` (`sosabs` dependency, data
    `SOS_ABS_V3` ~0.7 GB, steps simulations → fit → notebook; whether the candidate CSV is tracked) and of
    `scripts/s2_toa_matchup` (L1C subsets, `aeronet_oc_db`, invRrs, outputs, `matchup_analysis.py`).
+25. **Wavelength interpolation of the TOA LUT in log-log space** (as GRS 916399f and hGRS 6e290e6). The path
+    reflectance, the diffuse transmittances and the spectral AOT are interpolated quadratically in linear space
+    between the 10 nodes (`LUT.lut_preparation`, `Process`). Leave-one-out on the LUT: 1-10 % error at 400-800 nm
+    and up to 60 % at 1000 nm, against 0.1-1.5 % in log-log. Validate with the OSOAA runs between the nodes that the
+    LUT leaves out (0.45, 0.55, 0.65, 0.75, 0.85, 0.9, 2.4 um, `scripts/wl_interpolation`), switch the scheme,
+    update the regression reference, and recompute the matchup residuals at 443 and 865 nm (tasks 10, 24).
+    *Done for the path reflectance* (branch `feature/wl_interpolation`): median error < 0.1 % for AOT <= 0.1
+    (0.4 % at 900 nm, 0.6 % at 2400 nm) against -1 % at 450 and 850 nm and -4 to -9 % at 1150-1400 nm before; TOA
+    reflectance of the template +1.3 % (+1.6e-3) at 443 nm, +0.9 % at 865 nm, +7.1 % at 1240 nm. Remaining: recompute
+    the matchup residuals; at AOT 0.35 log-log overestimates by 1-2 % at 1150-1400 nm (interpolate the Rayleigh and
+    aerosol parts separately?).
+27. **Provenance of the Rrs reconstruction.** `reconstruction.py` uses the default sediment n_i shape of invRrs,
+    which changed twice on 16 November 2026 (now `'atd_ext:0.5'`): record the invRrs version and settings in
+    `provenance()`, set a minimum version, pin the shape in radcalnet_oc.
 23. **Release 1.2.** The `[Unreleased]` section has changed the default results (Rayleigh pressure scaling on by
     default: about -0.06 % of the TOA reflectance per hPa below 1015.2 hPa in the blue) and added the direct
     sunglint and its flags, the first uncertainty budget and the logging scheme: release them with a tag, so
@@ -80,12 +100,26 @@ contradict the measured AOT spectrum. Open: a near-infrared term of about -1e-3 
     the coupled terms can be tested on their own.
 13. **Limits of the TOA LUT**: viewing zenith angles stop at 48.9° (below the swath edges of OLCI and VIIRS):
     quantify the extrapolation; check whether the LUT is scalar or vector.
+26. **EnMAP and PRISMA radiometric closure** with the current radcalnet_oc: rerun the closure of hGRS
+    (`hgrs/validation/aeronet_oc/closure.py`, EnMAP L1C against radcalnet_oc at the AERONET-OC stations, written
+    with linear Rrs interpolation, before the pressure scaling and the glint) with version 1.2, the invRrs
+    reconstruction and the direct glint; per-band gains with uncertainties; extend to PRISMA. It tells whether the
+    VNIR/SWIR offset that hGRS corrects empirically (29c54ea), still seen in the red by the shallowat ACTIUM study,
+    is a sensor effect.
 24. **Blue bias and pressure.** With the Rayleigh pressure scaling (done, validated with OSOAA), the residual at
     443 nm should decrease by about 0.64 % per % of pressure, but the matchups give -0.11 (t = -0.6), about three
     standard errors away: another blue term correlated with the pressure is likely present (Rrs used at nadir,
     task 15; clear and calm days at high pressure). Investigate before using the blue bias of the matchups.
     Close the real-scene check of the scaling in GRS (223 Sentinel-2 images) and hGRS (103 EnMAP matchups)
     against AERONET-OC (`scripts/rayleigh_pressure`; runs in progress).
+
+28. **Shared physics across radcalnet_oc, GRS and hGRS.** The path-length coupling, the Rayleigh pressure
+    scaling and the log-log interpolation are implemented three times: a set of reference values (inputs and
+    expected outputs) tested in the CI of each package, so that they do not drift apart (e.g. the reference
+    pressure 1013.2 hPa of the linear scaling of GRS against 1015.2 hPa of the LUT runs).
+29. **One wind source for the glint.** Refit the heavy-tailed glint statistics with the ERA5 or CAMS wind (GRS
+    uses CAMS) before changing the defaults of `Sunglint` (with task 7); then test the glint-fraction flags of
+    radcalnet_oc as the glint screening of GRS (hook: its new `p_slope` switch).
 
 ## Tier 3: substantial (weeks)
 

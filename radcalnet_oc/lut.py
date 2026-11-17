@@ -81,6 +81,31 @@ def open_lut(path):
     return OPEN_LUTS[key].copy()
 
 
+def interp_wl_loglog(da, wl, method='quadratic'):
+    '''
+    Interpolate `da` in wavelength in log-log space: :math:`\ln y` against :math:`\ln \lambda`.
+
+    The path reflectance of the TOA LUT varies roughly as a power of the wavelength between its 10 nodes; its
+    interpolation in log-log space follows the OSOAA runs between the nodes within 0.1 % at 450 and 850 nm,
+    against an underestimate of about 1 % in linear space (``scripts/wl_interpolation``). Where `da` is not
+    positive at all the nodes, the interpolation is done in linear space.
+
+    :param da: :py:class:`xarray.DataArray` with the dimension ``wl``
+    :param wl: wavelengths of the result (same unit as ``da.wl``)
+    :param method: interpolation method of :py:meth:`xarray.DataArray.interp`
+    :return: `da` at the wavelengths `wl`
+    '''
+    wl_out = np.asarray(wl)
+    positive = (da > 0).all('wl')
+    log_da = np.log(da.where(positive, 1.)).assign_coords(wl=np.log(da.wl.values.astype(float)))
+    out = np.exp(log_da.interp(wl=np.log(wl_out.astype(float)), method=method))
+    out = out.assign_coords(wl=wl if isinstance(wl, xr.DataArray) and wl.dims == ('wl',) else wl_out)
+    if not bool(positive.all()):
+        out = out.where(positive, da.interp(wl=wl_out, method=method))
+    out.attrs = da.attrs
+    return out
+
+
 def wind_weights(wind, nodes):
     '''
     Weights of the wind speed nodes of a look-up table for a linear interpolation in wind speed.
@@ -482,7 +507,7 @@ class LUT:
         toa_lut = self.toa_lut(aero_lut.wind.values, aero_lut.model.values, azi)
         self.Rray = self._interp_geometry(toa_lut.sel(aot_ref=0), sza, vza, azi)
         self.Rray = self.Rray / np.cos(np.radians(self.Rray.sza))
-        self.Rray = self.Rray.interp(wl=self.wl, method='quadratic')
+        self.Rray = interp_wl_loglog(self.Rray, self.wl)
 
         # -----------------------------
         # interpolation atmo diffuse light
@@ -490,7 +515,7 @@ class LUT:
         self.Rdiff_lut = self._interp_geometry(toa_lut, sza, vza, azi)
         self.Rdiff_lut = self.Rdiff_lut.interp(aot_ref=aot_refs, method='quadratic')
         self.Rdiff_lut = self.Rdiff_lut / np.cos(np.radians(self.Rdiff_lut.sza))
-        self.Rdiff_lut = self.Rdiff_lut.interp(wl=self.wl, method='quadratic')
+        self.Rdiff_lut = interp_wl_loglog(self.Rdiff_lut, self.wl)
 
         self.aot_lut = aero_lut.aot.interp(aot_ref=aot_refs, method='quadratic').interp(wl=self.wl, method='quadratic')
 

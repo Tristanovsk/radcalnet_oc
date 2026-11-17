@@ -509,6 +509,16 @@ look-up table, simulated for a rough sea surface:
 
 The pure Rayleigh reflectance :math:`R_r` is obtained in the same way for :math:`\tau_a = 0`.
 
+The look-up table has 10 wavelength nodes (350, 400, 500, 600, 700, 800, 1000, 1600, 2200 and 2500 nm).
+Between them, :math:`R_{atm}` and :math:`R_r` are interpolated quadratically in log-log space
+(:math:`\ln R` against :math:`\ln\lambda`, :py:func:`~radcalnet_oc.lut.interp_wl_loglog`), the path reflectance
+decreasing roughly as a power of the wavelength. Against the OSOAA runs of the same configuration between the
+nodes (450-900 nm, 1150, 1250, 1400 and 2400 nm, ``scripts/wl_interpolation``), the median error is below 0.1 %
+for AOT(550) :math:`\leq` 0.1 (0.4 % at 900 nm, 0.6 % at 2400 nm) and within 1.8 % for AOT 0.35; the quadratic interpolation
+in linear space, used before version 1.2, underestimated :math:`R_{atm}` by about 1 % at 450 and 850 nm and by 4-9 %
+between 1000 and 1600 nm for clean atmospheres. The spectral aerosol optical thickness and the transmittances
+are interpolated quadratically in linear space (median error of the AOT < 0.7 %).
+
 Sunglint
 --------
 

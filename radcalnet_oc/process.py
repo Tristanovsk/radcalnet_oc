@@ -22,7 +22,7 @@ from importlib.resources import files
 from . import GaseousTransmittance, GasCoupling, Misc, LUT, SolarIrradiance, __version__
 from .kernel import GAS_COUPLING, GAS_COUPLINGS, GAS_COUPLING_FILE, GAS_COUPLING_PPLD_FILE
 from .config import load_config, LUT_FILE_BACKUP
-from .lut import WIND
+from .lut import WIND, interp_wl_loglog
 #: pressure of the Rayleigh optical thickness of the OSOAA runs of the look-up tables (hPa): AP.MOT of the runs is the
 #: Bodhaine et al. (1999) optical thickness at 1015.2 hPa (e.g. 0.360251 at 400 nm against 0.359559 at 1013.25 hPa)
 LUT_PRESSURE = 1015.2
@@ -386,7 +386,7 @@ class Process():
         # squeeze the single geometries but keep the time dimension, also for a single measurement
         Rdiff = self.lut.Rdiff_lut
         Rdiff = Rdiff.squeeze([d for d in Rdiff.dims if d != 'time' and Rdiff.sizes[d] == 1])
-        Ratm = Rdiff.interp(aot_ref=self.aot550).interp(wl=self.full_wl, method='quadratic')
+        Ratm = interp_wl_loglog(Rdiff.interp(aot_ref=self.aot550), self.full_wl)
         if self.rayleigh_pressure:
             dRray, fd, fu = self.rayleigh_pressure_correction()
             Ratm = Ratm + dRray
@@ -618,7 +618,7 @@ class Process():
                            Rray, input_core_dims=[['wl']], output_core_dims=[['wl']])
         x = self.input_db['pressure'] / LUT_PRESSURE
         full_wl = self.full_wl
-        Rray_full = Rray.interp(wl=full_wl, method='quadratic')
+        Rray_full = interp_wl_loglog(Rray, full_wl)
         D_full = D.interp(wl=full_wl)
         dRray = (Rray_full * (x ** D_full - 1)).reset_coords(drop=True)
         dtau = self.lut.rot.interp(wl=full_wl, kwargs={'fill_value': 'extrapolate'}) * (x - 1)
