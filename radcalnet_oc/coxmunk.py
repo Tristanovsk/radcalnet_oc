@@ -7,6 +7,95 @@ Sunglint reflectance of a rough sea surface from the Cox and Munk wave slope sta
 import numpy as np
 from scipy import special
 
+#: sunglint flags (bitmask, CF ``flag_masks``): cumulative levels of the direct glint relative to the TOA
+#: reflectance at the reference wavelength (a high-glint case has the three level bits set), and geometry
+#: close to the specular direction, where the glint model is the least reliable (overestimated by ~40 % at glint
+#: angles of 20--25 deg on the Sentinel-2 matchups of the AERONET-OC platforms)
+#: (the uncertainty of the glint is flagged per wavelength, see :func:`uncertain_attrs`)
+GLINT_FLAGS = {'glint_low': 1, 'glint_moderate': 2, 'glint_high': 4, 'glint_near_specular': 8}
+#: glint fractions of the TOA reflectance of the levels low, moderate and high
+GLINT_LEVELS = (0.01, 0.1, 0.5)
+#: glint angle (deg) below which ``glint_near_specular`` is set
+GLINT_ANGLE_MIN = 30.
+#: plausible wave slope statistics of the glint uncertainty: Cox and Munk, Student t, heavy-tailed mixture, and the
+#: mixture with the core and tail retuned on the Sentinel-2 matchups of the AERONET-OC platforms (station wind)
+GLINT_ENSEMBLE = (('cm_iso', {}),
+                  ('cm_iso_t', {'nu': 7.}),
+                  ('cm_iso_mix', {'f_tail': 0.05, 'sigma2_tail': 0.12}),
+                  ('cm_iso_mix', {'f_tail': 0.10, 'sigma2_tail': 0.08, 'sigma2_coef': (3e-3, 35e-4)}))
+#: uncertainty of the wind speed of the glint (m s-1): platform wind against the roughness of the scene
+WIND_UNC = 1.5
+#: relative uncertainty of the TOA reflectance due to the glint above which a wavelength is flagged
+#: ``glint_uncertain`` (operational flag of the simulations distributed for Cal/Val, all wavelengths)
+GLINT_UNC_THRESHOLD = 0.05
+
+
+def glint_uncertainty(sza, vza, azi, wind, ensemble=GLINT_ENSEMBLE, wind_unc=WIND_UNC):
+    '''
+    Uncertainty of the surface glint: half range of the glint of the statistics of ``ensemble`` at the wind speeds
+    ``wind - wind_unc`` (>= 0), ``wind`` and ``wind + wind_unc``.
+
+    :param sza: solar zenith angle (deg)
+    :param vza: viewing zenith angle (deg)
+    :param azi: relative azimuth (deg), convention of :py:class:`Sunglint` (180 deg in the specular direction)
+    :param wind: wind speed (m s-1)
+    :return: half range, minimum and maximum of the surface glint reflectance
+    '''
+    g = Sunglint(sza, vza, azi)
+    values = [max(g.sunglint(max(w, 0.), stats=stats, **kw)[0], 0.)
+              for stats, kw in ensemble for w in (wind - wind_unc, wind, wind + wind_unc)]
+    return (max(values) - min(values)) / 2, min(values), max(values)
+
+
+def glint_angle(sza, vza, azi):
+    '''
+    Angle (deg) between the viewing direction and the direction of specular reflection of the Sun.
+
+    :param sza: solar zenith angle (deg)
+    :param vza: viewing zenith angle (deg)
+    :param azi: relative azimuth (deg), convention of the look-up tables: 0 deg when the sensor looks towards
+        the Sun (specular reflection for ``vza = sza``)
+    '''
+    s, v, a = np.radians(sza), np.radians(vza), np.radians(azi)
+    c = np.cos(s) * np.cos(v) + np.sin(s) * np.sin(v) * np.cos(a)
+    return np.degrees(np.arccos(np.clip(c, -1, 1)))
+
+
+def glint_flags(fraction, angle, levels=GLINT_LEVELS, angle_min=GLINT_ANGLE_MIN):
+    '''
+    Sunglint bitmask (:data:`GLINT_FLAGS`).
+
+    :param fraction: direct glint divided by the total TOA reflectance (with glint) at the reference wavelength
+    :param angle: glint angle (deg)
+    :param levels: fractions of the levels low, moderate and high
+    :param angle_min: glint angle below which the near-specular bit is set
+    :return: flags (uint8), same shape as the broadcast inputs
+    '''
+    fraction, angle = np.broadcast_arrays(np.asarray(fraction, float), np.asarray(angle, float))
+    flags = np.zeros(fraction.shape, dtype=np.uint8)
+    for name, level in zip(['glint_low', 'glint_moderate', 'glint_high'], levels):
+        flags |= np.where(fraction >= level, GLINT_FLAGS[name], 0).astype(np.uint8)
+    flags |= np.where(angle < angle_min, GLINT_FLAGS['glint_near_specular'], 0).astype(np.uint8)
+    return flags
+
+
+def flag_attrs(levels=GLINT_LEVELS, angle_min=GLINT_ANGLE_MIN, wl_ref=865.):
+    '''CF attributes of the sunglint flags.'''
+    return {'flag_masks': np.array(list(GLINT_FLAGS.values()), dtype=np.uint8),
+            'flag_meanings': ' '.join(GLINT_FLAGS),
+            'description': f'sunglint flags: direct glint >= {levels[0]:g}, {levels[1]:g}, {levels[2]:g} of the TOA '
+                           f'reflectance (with glint) at {wl_ref:g} nm (cumulative levels low, moderate, high); '
+                           f'glint angle < {angle_min:g} deg (near specular, glint model least reliable)'}
+
+
+def uncertain_attrs(threshold=GLINT_UNC_THRESHOLD, wind_unc=WIND_UNC, ensemble=GLINT_ENSEMBLE):
+    '''CF attributes of the spectral flag of the glint uncertainty.'''
+    return {'flag_values': np.array([0, 1], dtype=np.uint8), 'flag_meanings': 'glint_ok glint_uncertain',
+            'description': f'1 where the uncertainty of the direct glint (half range of the slope statistics '
+                           f'{[s for s, _ in ensemble]} at the wind +/- {wind_unc:g} m s-1) exceeds {threshold:g} of '
+                           f'the TOA reflectance with glint at this wavelength: band not suitable for Cal/Val',
+            'threshold': threshold, 'wind_unc': wind_unc}
+
 
 class Sunglint:
     '''
@@ -39,20 +128,32 @@ class Sunglint:
         self.m = m
         self.tau_atm = tau_atm
 
-    def sunglint(self, ws, wazi=0, stats='cm_dir', shadow=True, slope=False):
-        '''
+    def sunglint(self, ws, wazi=0, stats='cm_dir', shadow=True, slope=False, nu=7., f_tail=0.05, sigma2_tail=0.12,
+                 sigma2_coef=(3e-3, 512e-5)):
+        r'''
         Stokes vector of the sunglint reflectance, Eq. :eq:`glint`, without atmospheric transmittance.
 
         :param ws: wind speed (m s-1)
         :param wazi: wind direction (deg), downwind, counterclockwise from the Sun direction
             (0 deg: wind blowing towards the Sun)
         :param stats: wave slope statistics: ``'cm_iso'`` (isotropic Cox and Munk), ``'cm_dir'``
-            (directional Cox and Munk, Gram-Charlier expansion) or ``'bh2006'`` (Bréon and Henriot, 2006)
+            (directional Cox and Munk, Gram-Charlier expansion), ``'bh2006'`` (Bréon and Henriot, 2006), or the
+            heavy-tailed isotropic statistics ``'cm_iso_t'`` (2-D Student t with the Cox and Munk mean square slope,
+            ``nu`` degrees of freedom) and ``'cm_iso_mix'`` (Cox and Munk Gaussian plus a fraction ``f_tail`` of
+            wide slopes of mean square slope ``sigma2_tail``); both reduce to ``'cm_iso'`` for ``nu`` -> inf and
+            ``f_tail = 0``
         :param shadow: if True, apply the shadowing and hiding correction of the waves (Smith function,
             Ross and Dion, 2005, 2007); only for a non-nadir view
         :param slope: output selection: False for the Stokes vector, True for
             ``[z_up, z_cr, Rf[0, 0], p]`` (upwind and crosswind slopes, Fresnel reflectance and slope
             probability), ``'check'`` for ``[Rf[0, 0], Rf[1, 0], Rf[2, 0], Rf[3, 0], p, cos(theta_n), S]``
+        :param nu: degrees of freedom of ``'cm_iso_t'`` (> 2)
+        :param f_tail: fraction of the wide slope component of ``'cm_iso_mix'``
+        :param sigma2_tail: total mean square slope of the wide component of ``'cm_iso_mix'``
+        :param sigma2_coef: ``(s0, s1)`` of the mean square slope of the isotropic statistics (``'cm_iso'``,
+            ``'cm_iso_t'``, core of ``'cm_iso_mix'``), :math:`\sigma^2 = s_0 + s_1 W`; Cox and Munk (0.003, 0.00512) by
+            default; (0.003, 0.0035) fits the Sentinel-2 matchups of the AERONET-OC platforms with the wind of the
+            station (scripts/s2_toa_matchup/glint_tail_fit.py --core-wind)
         :return: ``[I, Q, U, V]``, Stokes components of the sunglint reflectance (by default)
         '''
         sza = self.sza
@@ -72,10 +173,14 @@ class Sunglint:
 
         Rf = self.fresnel(omega)
 
-        if stats == 'cm_iso':  # Original isotropic Cox Munk statistics
-            sigma2 = 3e-3 + 512e-5 * ws
-            s_cr2 = sigma2 / 2
-            s_up2 = sigma2 / 2
+        if stats in ('cm_iso', 'cm_iso_t', 'cm_iso_mix'):  # Original isotropic Cox Munk statistics
+            sigma2 = sigma2_coef[0] + sigma2_coef[1] * ws
+            if stats == 'cm_iso_mix':  # mean square slope of the mixture, for the shadowing
+                sigma2_sh = (1 - f_tail) * sigma2 + f_tail * sigma2_tail
+            else:
+                sigma2_sh = sigma2
+            s_cr2 = sigma2_sh / 2
+            s_up2 = sigma2_sh / 2
         elif stats == 'cm_dir':  # historical values from directional COX MUNK
             s_cr2 = 0.003 + 1.92e-3 * ws
             s_up2 = 3.16e-3 * ws
@@ -108,6 +213,19 @@ class Sunglint:
             Pdist_ = 1. / (np.pi * sigma2) * np.exp(- np.tan(thetaN) ** 2 / sigma2)
 
             z_up,z_cr=zx,zy
+        elif stats == 'cm_iso_t':
+            # 2-D Student t of total mean square slope sigma2 (scale s2 per axis, variance s2 nu / (nu - 2) =
+            # sigma2 / 2): same mean square slope as Cox and Munk, lower peak and power-law tail
+            s2 = sigma2 * (nu - 2) / (2 * nu)
+            Pdist_ = 1. / (2 * np.pi * s2) * (1 + np.tan(thetaN) ** 2 / (nu * s2)) ** (-(nu + 2) / 2)
+            z_up, z_cr = zx, zy
+        elif stats == 'cm_iso_mix':
+            # Cox and Munk Gaussian plus a fraction f_tail of wide slopes (steep facets of short waves, swell or
+            # breaking), fitted on the Sentinel-2 matchups (scripts/s2_toa_matchup/glint_tail_fit.py)
+            t2 = np.tan(thetaN) ** 2
+            Pdist_ = ((1 - f_tail) / (np.pi * sigma2) * np.exp(-t2 / sigma2) +
+                      f_tail / (np.pi * sigma2_tail) * np.exp(-t2 / sigma2_tail))
+            z_up, z_cr = zx, zy
         else:
             sigma2 = s_cr2 + s_up2
 

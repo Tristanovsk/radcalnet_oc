@@ -157,21 +157,46 @@ With the Python API, the errors are raised as Python exceptions to the caller (e
 variable of the input dataset is missing).
 
 A missing atmosphere LUT is not an error: the light LUT shipped with the package is used instead and
-the replacement is logged at ``INFO`` level.
+the replacement is logged at ``WARNING`` level.
 
 Log Format
 ----------
 
-The messages are emitted with the Python :py:mod:`logging` module, on the root logger, whose level is
-set to ``INFO`` when the package is imported.
+The messages are emitted with the Python :py:mod:`logging` module, on one logger per module
+(``radcalnet_oc.process``, ``radcalnet_oc.lut``, ``radcalnet_oc.run``...), children of the package logger
+``radcalnet_oc``. Importing the package does not set any level or handler.
 
-The ``radcalnet_oc`` command writes them on the standard error with the format
-``"%(asctime)s %(levelname)s | %(message)s"``, e.g.
-``2026-10-08 02:06:54,386 INFO | output written in AAOT_radcalnet_oc.nc``.
+Levels:
 
-With the Python API, the package does not configure any handler: the format and the destination of the
-messages are those configured by the calling application (e.g. with :py:func:`logging.basicConfig`). The messages trace the steps of the processing (``get LUT object``,
-``loading look-up tables``, ``LUT preparation``...).
+- ``DEBUG``: internal steps (``get LUT object``, ``loading look-up tables``, ``LUT preparation``...);
+- ``INFO``: progress of a run: input file, settings of the simulation (number of measurements and
+  geometries, TOA LUT, solar spectrum, O2 model, gas coupling, Rrs extension, Rayleigh pressure
+  scaling), computing time, output file;
+- ``WARNING``: inputs out of range of the LUTs or replaced by defaults (wind speed), light LUT used in
+  place of the TOA LUT, truncated spectral responses, Rrs fits not converged;
+- ``ERROR``: failures (with the traceback for the ``radcalnet_oc`` command).
+
+The ``radcalnet_oc`` command writes the messages of level ``INFO`` and above on the standard error
+(``--log_level`` to change the level, ``--log_file`` to also append them to a file), with the format
+``"%(asctime)s %(levelname)s %(name)s | %(message)s"``, e.g.
+``2026-11-17 18:53:44,389 INFO radcalnet_oc.run | output written in out.nc``.
+
+With the Python API, the messages follow the logging configuration of the calling application, e.g.:
+
+.. code-block:: python
+
+    import logging
+    logging.basicConfig(level=logging.INFO)                       # all the messages of INFO level
+    logging.getLogger('radcalnet_oc').setLevel(logging.WARNING)   # radcalnet_oc: warnings only
+
+Without any configuration, Python prints the warnings and errors on the standard error.
+:py:func:`radcalnet_oc.set_logging <radcalnet_oc.log.set_logging>` is a shortcut that sets the level of the package and writes its messages
+on the standard error, and optionally in a file, in the format of the command:
+
+.. code-block:: python
+
+    import radcalnet_oc
+    radcalnet_oc.set_logging('DEBUG', log_file='radcalnet_oc.log')
 
 Required Resources
 -------------------

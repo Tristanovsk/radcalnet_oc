@@ -515,9 +515,49 @@ Sunglint
 Implemented in :py:class:`~radcalnet_oc.coxmunk.Sunglint`. The sunglint reflectance is modelled with the Cox and Munk (1954) wave slope statistics.
 The look-up tables give the diffuse light, without sunglint (`Atmospheric path reflectance`_); the
 sunglint is defined as the direct sunlight reflected by the sea surface and attenuated by the Beer-Lambert
-law only (Eq. :eq:`tdir`), to be added to the diffuse light. It is not included in the TOA reflectance of
-:py:class:`~radcalnet_oc.process.Process`; its contribution to the TOA signal is evaluated in the
+law only (Eq. :eq:`tdir`), to be added to the diffuse light. It is not included in the TOA reflectance
+``Rtoa`` of :py:class:`~radcalnet_oc.process.Process`; its contribution to the TOA signal is evaluated in the
 tutorial :doc:`tutorials/research/radcalnet_oc_sunglint`.
+
+:py:meth:`~radcalnet_oc.process.Process.compute_sunglint` (or ``Process.execute(sunglint='cm_iso_mix')``) adds
+the TOA direct glint ``Rglint`` (gaseous and direct transmittances of the Sun-surface-sensor path), ``Rtoa_glint``
+:math:`=` ``Rtoa`` :math:`+` ``Rglint``, the glint angle, the glint fraction ``Rglint / Rtoa_glint`` at 865 nm and
+the bitmask ``glint_flags`` (:data:`~radcalnet_oc.coxmunk.GLINT_FLAGS`, CF ``flag_masks`` and ``flag_meanings``)
+to filter the dates by sunglint level:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Bit
+     - Name
+     - Condition (default)
+   * - 1
+     - ``glint_low``
+     - glint fraction :math:`\geq` 0.01
+   * - 2
+     - ``glint_moderate``
+     - glint fraction :math:`\geq` 0.1
+   * - 4
+     - ``glint_high``
+     - glint fraction :math:`\geq` 0.5
+   * - 8
+     - ``glint_near_specular``
+     - glint angle :math:`<` 30°
+
+The levels are cumulative (a high-glint date has the bits 1, 2 and 4), e.g. to keep the dates with at most a low
+glint: ``db.where(db.glint_flags & GLINT_FLAGS['glint_moderate'] == 0)``. The thresholds are arguments of
+:py:meth:`~radcalnet_oc.process.Process.compute_sunglint`.
+
+The uncertainty of the glint is flagged per wavelength, for the operational flagging of the simulations distributed
+for Cal/Val. ``Rglint_unc`` is the half range of the glint of the plausible slope statistics
+(:data:`~radcalnet_oc.coxmunk.GLINT_ENSEMBLE`: Cox and Munk, Student t, heavy-tailed mixture, mixture with the core
+and tail retuned on the Sentinel-2 matchups) at the wind and at the wind :math:`\pm` 1.5 m s\ :sup:`-1`
+(:data:`~radcalnet_oc.coxmunk.WIND_UNC`), attenuated as the glint, and the spectral flag ``glint_uncertain`` (1 per
+wavelength) marks the wavelengths where ``Rglint_unc / Rtoa_glint`` exceeds 5 %
+(:data:`~radcalnet_oc.coxmunk.GLINT_UNC_THRESHOLD`): these bands of the simulation are not suitable for Cal/Val,
+while the other bands of the same date may be (the low TOA signal of the water in the SWIR makes these bands the
+first flagged). On the Sentinel-2 matchups of AAOT, Galata and Section-7, the flagged bands have a median absolute
+difference two to three times larger than the kept ones (665 nm: 10.6 against 3.8 %; 865 nm: 17.3 against 9.7 %).
 
 .. note::
 
@@ -566,6 +606,31 @@ With an isotropic distribution, the slope variance depends on the wind speed :ma
 
    \sigma^2 = 0.003 + 5.12\times10^{-3}\, W, \qquad
    p(\theta_n) = \frac{1}{\pi\sigma^2}\exp\left( -\frac{\tan^2\theta_n}{\sigma^2} \right).
+
+Two heavy-tailed isotropic distributions with the same :math:`\sigma^2` are available (``stats='cm_iso_t'``
+and ``stats='cm_iso_mix'``): a 2-D Student t with :math:`\nu` degrees of freedom (same mean square slope, lower
+peak, power-law tail),
+
+.. math::
+   :label: cm_iso_t
+
+   p(\theta_n) = \frac{1}{2\pi s^2}\left(1 + \frac{\tan^2\theta_n}{\nu s^2}\right)^{-(\nu+2)/2},
+   \qquad s^2 = \sigma^2\,\frac{\nu-2}{2\nu},
+
+and the Cox and Munk Gaussian plus a fraction :math:`f` of wide slopes of mean square slope
+:math:`\sigma_t^2`,
+
+.. math::
+   :label: cm_iso_mix
+
+   p(\theta_n) = \frac{1-f}{\pi\sigma^2}\exp\left( -\frac{\tan^2\theta_n}{\sigma^2} \right)
+   + \frac{f}{\pi\sigma_t^2}\exp\left( -\frac{\tan^2\theta_n}{\sigma_t^2} \right).
+
+Both reduce to Eq. :eq:`cm_iso` for :math:`\nu\to\infty` and :math:`f = 0`. On the Sentinel-2 matchups of the
+AERONET-OC platforms (glint angles of 20--90°, station wind), the glint is reproduced from 25 to 60° with
+:math:`f = 0.05` and :math:`\sigma_t^2 = 0.12` (defaults of ``cm_iso_mix``; ``scripts/s2_toa_matchup/glint_tail_fit.py``),
+a tail that does not scale with the wind of the station; closer to the specular direction (20--25°) the glint is
+still overestimated by about 40 %, which the ``glint_near_specular`` flag below marks.
 
 With the directional statistics, the upwind and crosswind variances are
 
@@ -677,6 +742,41 @@ Finally, the Stokes vector of the sunglint reflectance is
    \mathbf{R}\begin{pmatrix} 1 \\ 0 \\ 0 \\ 0 \end{pmatrix}.
 
 .. _spectral_convolution:
+
+Uncertainty budget
+------------------
+
+Implemented in :py:func:`~radcalnet_oc.uncertainty.uncertainty_budget`, after
+:py:meth:`~radcalnet_oc.process.Process.execute` (and
+:py:meth:`~radcalnet_oc.process.Process.compute_sunglint` for the glint term). The standard uncertainty of each input
+:math:`x_i` is propagated to the TOA reflectance by central differences through the full simulation, the aerosol
+mixture of the nominal simulation being kept:
+
+.. math::
+   :label: u_input
+
+   u_i(\lambda) = \frac{|R_{toa}(x_i + u(x_i)) - R_{toa}(x_i - u(x_i))|}{2},
+
+and the uncertainty of the direct glint ``Rglint_unc`` (`Sunglint`_) is added as a model term. The terms are
+assumed independent:
+
+.. math::
+   :label: u_total
+
+   u_{total}(\lambda) = \sqrt{\sum_i u_i^2(\lambda) + u_{glint}^2(\lambda)}.
+
+The default input uncertainties (:data:`~radcalnet_oc.uncertainty.INPUT_UNC`: AOT(550) 0.01, water vapour 10 %,
+ozone 3 %, pressure 2 hPa, wind 1.5 m s\ :sup:`-1` for the sky reflection of the look-up tables, :math:`R_{rs}` 5 %)
+are provisional and are arguments of the function. Not yet included: the aerosol model (mixture), the residuals of the
+models (gas coupling, absorption tables, invRrs reconstruction and SWIR extension) and the terms identified on the
+Sentinel-2 matchups (thin cirrus, additional near-infrared term). The surface pressure enters the gaseous absorption
+and the direct transmittance; it also enters the Rayleigh scattering of the path reflectance and the diffuse
+transmittances (``Process(rayleigh_pressure=True)``, default ``settings: rayleigh_pressure: true``,
+:py:meth:`~radcalnet_oc.process.Process.rayleigh_pressure_correction`, validated with OSOAA runs at
+:math:`\pm` 20 hPa within 0.03 % of the path reflectance, the look-up tables being computed for
+1015.2 hPa, pressure of the Rayleigh optical thickness of the OSOAA runs): the Rayleigh reflectance is scaled as :math:`(P/P_0)^D`, with :math:`D = d\ln R_{ray}/d\ln\tau_r`
+from the wavelength nodes of the tables (about 0.87 in the blue, 1 beyond 1000 nm), i.e. :math:`\pm`\ 1.3 % of the
+TOA reflectance at 412--443 nm for :math:`\pm`\ 20 hPa.
 
 Spectral convolution
 --------------------

@@ -1,7 +1,8 @@
 """Reference simulations of the regression test (``test_regression.py``).
 
 Band-averaged outputs of the clear-water template with the light TOA LUT of the package, for the default
-settings and for the decoupled gaseous transmittance with the REPTRAN O2 (settings before version 1.1).
+settings and for the decoupled gaseous transmittance with the REPTRAN O2 and without the pressure scaling of the
+Rayleigh scattering (settings before version 1.1).
 The bands cover the window regions and the O2, H2O and cirrus absorption bands.
 
 Update the reference file after a deliberate change of the results::
@@ -25,7 +26,8 @@ BANDS = np.array([412., 443., 490., 560., 620., 665., 687., 709., 754., 761., 77
 FWHM = 10.
 VARIABLES = ['Rtoa', 'Ratm', 'Ed']
 #: name: keyword arguments of Process
-CASES = {'default': {}, 'decoupled_reptran': {'gas_coupling': 'decoupled', 'o2_model': 'reptran'}}
+CASES = {'default': {},
+         'decoupled_reptran': {'gas_coupling': 'decoupled', 'o2_model': 'reptran', 'rayleigh_pressure': False}}
 N_TIME = 4
 
 

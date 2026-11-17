@@ -54,6 +54,7 @@ def test_provenance(clear_water):
     assert attrs['o2_model'] == 'lbl' and attrs['gas_coupling'] == 'path_length'
     assert attrs['gas_coupling_table'] == 'gas_coupling_ppld.csv'
     assert attrs['rrs_extension'] == 'pure_water' and attrs['solar_database'] == 'tsis'
+    assert attrs['rayleigh_pressure'] == 1
     assert attrs['default_wind'] == 2.
     assert attrs['toa_lut'] == 'toa_lut_opac_ultra_light.nc'
     assert attrs['toa_lut_doi'].startswith('none')
@@ -269,3 +270,118 @@ def test_command_line_version(capsys):
     with pytest.raises(SystemExit):
         run.main(['--version'])
     assert radcalnet_oc.__version__ in capsys.readouterr().out
+
+
+@pytest.fixture(scope='module')
+def glint_run():
+    """Process with the direct sunglint on 4 measurements, from near-specular to far geometries."""
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 4))
+    process = Process(input_db=input_db, vza=angles('vza', [5., 30.]), azi=angles('azi', [0., 60., 180.]))
+    process.execute(sunglint='cm_iso_mix')
+    return process
+
+
+def test_sunglint_output(glint_run):
+    """compute_sunglint adds the glint variables without changing Rtoa; Rtoa_glint = Rtoa + Rglint."""
+    db = glint_run.radcalnet_db
+    for name in ['Rglint', 'Rg_surface', 'Rtoa_glint', 'glint_angle', 'glint_fraction', 'glint_flags']:
+        assert name in db, name
+    assert db.glint_flags.dtype == np.uint8
+    assert db.glint_flags.attrs['flag_meanings'].split() == list(radcalnet_oc.GLINT_FLAGS)
+    np.testing.assert_allclose(db.Rtoa_glint, db.Rtoa + db.Rglint)
+    assert (db.Rglint >= 0).all()
+
+
+def test_sunglint_toa_formula(glint_run):
+    """Rglint = Tg_d Tg_u exp(-(tau_r + tau_a) (1/mu0 + 1/muv)) Rg_surface, as in the matchup script."""
+    p = glint_run
+    db = p.radcalnet_db
+    t, v, a = 0, 1, 0
+    sza, vza = float(p.sza[t]), float(p.vza[v])
+    Rg = radcalnet_oc.Sunglint(sza, vza, 180. - float(p.azi[a])).sunglint(float(p.wind[t]), stats='cm_iso_mix')[0]
+    wl = 1610.
+    tau_r = float(p.lut.rot.interp(wl=wl)) * float(p.input_db.pressure[t]) / 1013.25
+    tau_a = float(p.lut.aot_lut.interp(aot_ref=float(p.aot550[t])).interp(wl=wl, method='quadratic'))
+    Tg = float((p.Tg_d * p.Tg_u).isel(time=t).sel(vza=vza).sel(wl=wl, method='nearest'))
+    expected = Tg * np.exp(-(tau_r + tau_a) * (1 / np.cos(np.radians(sza)) + 1 / np.cos(np.radians(vza)))) * Rg
+    got = float(db.Rglint.isel(time=t, vza=v, azi=a).sel(wl=wl, method='nearest'))
+    assert got == pytest.approx(expected, rel=1e-3)
+
+
+def test_sunglint_flags(glint_run):
+    """Glint flags: cumulative levels of the glint fraction at 865 nm and near-specular geometry."""
+    db = glint_run.radcalnet_db
+    F = radcalnet_oc.GLINT_FLAGS
+    flags, frac, ang = db.glint_flags.values, db.glint_fraction.values, db.glint_angle.values
+    np.testing.assert_array_equal((flags & F['glint_low']) > 0, frac >= 0.01)
+    np.testing.assert_array_equal((flags & F['glint_moderate']) > 0, frac >= 0.1)
+    np.testing.assert_array_equal((flags & F['glint_high']) > 0, frac >= 0.5)
+    np.testing.assert_array_equal((flags & F['glint_near_specular']) > 0, ang < 30.)
+    # the levels are nested, and far from the specular direction the glint is at most low (heavy tail)
+    assert np.all((flags & F['glint_high'] == 0) | (flags & F['glint_moderate'] > 0))
+    assert np.all((flags & F['glint_moderate'])[ang > 50.] == 0)
+    # near the specular direction (vza 30, azi 0, sza ~ 30-60) the glint dominates
+    assert (db.glint_flags.sel(vza=30., azi=0.) & F['glint_moderate'] > 0).any()
+
+
+def test_sunglint_uncertainty(glint_run):
+    """Glint uncertainty: spectral Rglint_unc >= 0, spectral flag glint_uncertain where Rglint_unc / Rtoa_glint
+    > 5 %, glint_unc_rel its largest value in the windows; near the specular direction the glint is uncertain."""
+    db = glint_run.radcalnet_db
+    for name in ['Rglint_unc', 'glint_uncertain', 'glint_unc_rel', 'glint_unc_wl']:
+        assert name in db, name
+    assert (db.Rglint_unc >= 0).all()
+    assert db.glint_uncertain.dtype == np.uint8 and 'wl' in db.glint_uncertain.dims
+    np.testing.assert_array_equal(db.glint_uncertain.values, (db.Rglint_unc / db.Rtoa_glint).values > 0.05)
+    assert db.glint_uncertain.attrs['flag_meanings'] == 'glint_ok glint_uncertain'
+    assert (db.glint_uncertain.sel(vza=30., azi=0.).sel(wl=865., method='nearest') == 1).all()
+    # the uncertain fraction of the bands grows from the blue to the SWIR (decreasing TOA signal)
+    frac = db.glint_uncertain.mean(['time', 'vza', 'azi'])
+    assert float(frac.sel(wl=2190., method='nearest')) >= float(frac.sel(wl=443., method='nearest'))
+    # the windows exclude the saturated absorption bands
+    assert not np.isin(np.round(db.glint_unc_wl.values), np.arange(1355, 1415)).any()
+
+
+def test_uncertainty_budget(glint_run):
+    """Uncertainty budget: one term per input (central differences through Process) and the glint term, combined
+    in quadrature; a zero input uncertainty gives a zero term; the nominal simulation and the LUT are unchanged."""
+    from radcalnet_oc.uncertainty import uncertainty_budget
+    p = glint_run
+    R0 = p.radcalnet_db.Rtoa.copy()
+    ratm_lut = p.lut.Rdiff_lut.copy()
+    db = uncertainty_budget(p, inputs={'aot550': ('abs', 0.02), 'tco3': ('rel', 0.)})
+    for name in ['u_aot550', 'u_tco3', 'u_glint', 'u_total', 'u_total_rel']:
+        assert name in db, name
+    assert float(db.u_tco3.max()) == 0.
+    assert float(db.u_aot550.sel(wl=865., method='nearest').min()) > 0.
+    np.testing.assert_allclose(db.u_total, np.sqrt(db.u_aot550 ** 2 + db.u_tco3 ** 2 + db.u_glint ** 2))
+    np.testing.assert_allclose(db.u_total_rel, db.u_total / db.Rtoa_glint)
+    xr.testing.assert_identical(db.Rtoa, R0)
+    xr.testing.assert_identical(p.lut.Rdiff_lut, ratm_lut)
+    # the AOT term grows with the path reflectance from the blue to the near infrared (relative to Rtoa)
+    rel = (db.u_aot550 / db.Rtoa).isel(time=0, vza=0, azi=1)
+    assert float(rel.sel(wl=865., method='nearest')) > float(rel.sel(wl=443., method='nearest'))
+
+
+def test_rayleigh_pressure():
+    """Pressure scaling of the Rayleigh scattering: nil at the pressure of the LUT, Ratm larger at higher pressure,
+    by less than the Rayleigh optical thickness ratio, and mostly in the blue; diffuse transmittances reduced."""
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 2))
+    geom = dict(vza=angles('vza', [10.]), azi=angles('azi', [90.]))
+    runs = {}
+    for P in [1015.2, 1035.5]:
+        db = input_db.copy()
+        db['pressure'] = db.pressure * 0 + P
+        for flag in [False, True]:
+            p = Process(input_db=db, rayleigh_pressure=flag, **geom)
+            p.execute()
+            runs[(P, flag)] = p
+    xr.testing.assert_allclose(runs[(1015.2, True)].radcalnet_db.Rtoa, runs[(1015.2, False)].radcalnet_db.Rtoa)
+    hi, ref = runs[(1035.5, True)].radcalnet_db, runs[(1035.5, False)].radcalnet_db
+    rel = ((hi.Ratm - ref.Ratm) / ref.Ratm).isel(time=0)
+    r443, r2190 = float(rel.sel(wl=443., method='nearest')), float(rel.sel(wl=2190., method='nearest'))
+    assert 0.01 < r443 < 0.02 and 0 < r2190 < r443
+    assert hi.attrs['rayleigh_pressure'] == 1 and ref.attrs['rayleigh_pressure'] == 0
+    p = runs[(1035.5, True)]
+    assert float(p.Tra_d.isel(time=0).sel(wl=443., method='nearest')) < \
+        float(runs[(1035.5, False)].Tra_d.isel(time=0).sel(wl=443., method='nearest'))
