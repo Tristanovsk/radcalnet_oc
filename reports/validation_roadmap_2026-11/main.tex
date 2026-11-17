@@ -999,6 +999,37 @@ AOT(550) & $P$ (hPa) & \multicolumn{3}{c}{GRS} & \multicolumn{3}{c}{hGRS} \\
 \end{tabular}
 \end{table}
 
+\paragraph{Implementation in GRS and hGRS.} The scaling of radcalnet-oc is now in both processors (branches
+\code{feature/rayleigh\_pressure}, GRS commit \code{7c63ffb}, hGRS commit \code{e186d8d}, with unit tests: 549 and 11
+passed). GRS: $D$ is computed at the LUT preparation from the Rayleigh table of the LUT and the Rayleigh optical
+thickness of the wavelength nodes, and the Rayleigh change at the CAMS surface pressure replaces the scaling of the whole
+path reflectance in the four steps that use it (rugosity, SWIR and visible aerosol retrieval, final processing), with
+the factor $\exp(-\Delta\tau_r/2\mu)$ on the diffuse transmittances of the final processing; the previous treatment is kept
+as \code{settings: pressure\_scaling: 'linear'}. hGRS: the Rayleigh change is added to the LUT path reflectance of all
+the AOT nodes at the preparation of the LUT (aerosol fit and atmospheric image), with the same transmittance factor;
+\code{previous\_behavior} keeps the former processing. On the real LUT, the $D$ of GRS is 0.905, 0.987 and 1.017 at 400,
+500 and 800\,nm, as in radcalnet-oc, and hGRS now applies $-1.87$, $-0.77$ and $-0.13\times10^{-3}$ at 443, 560 and
+865\,nm for a scene at 995\,hPa.
+
+\paragraph{Real-scene check (running).} The scripts are in \code{scripts/rayleigh\_pressure}. Two checks against
+AERONET-OC are under way:
+\begin{itemize}
+\item GRS: 223 Sentinel-2 L1C images of the matchups of the GRS aerosol settings study with less than 10\,\% cloud
+  cover (Venise 39, Section-7 16, Lucinda 1, Casablanca 167), processed at 60\,m with the default settings; the AOT
+  retrieval and the final processing are run with \code{'linear'} and \code{'rayleigh'} on the same image and compared
+  in the $3\times3$ box of the station (\code{grs\_pressure\_check.py}, \code{grs\_pressure\_stats.py}).
+\item hGRS: the 103 EnMAP matchups of the AERONET-OC validation of hGRS, processed with the versions before
+  (\code{bcd0948}) and after (\code{e186d8d}), compared with its \code{compare.py} ($\Rrs$ at the AERONET-OC bands, AOT,
+  water vapour).
+\end{itemize}
+First GRS case (Venise, 2017-01-01, $P = 1022.8$\,hPa, i.e.\ above both reference pressures): the AOT(550) drops from
+0.0437 to 0.0420 and $\Rrs$ increases by $0.36$, $0.21$, $0.11$, $0.05$ and $0.02\times10^{-3}$\,sr$^{-1}$ at 443, 490,
+560, 665 and 865\,nm ($+6$, $+3$, $+2$, $+4$, $+2\,\%$). The sign and the size follow from Table~\ref{tab:grs_pressure}:
+the linear scaling overestimates the path reflectance above 1013\,hPa (aerosol part scaled, reference 1013.2\,hPa
+instead of 1015.2), hence a too large AOT and too low blue $\Rrs$. The statistics against AERONET-OC (bias, RMSD,
+median absolute percentage difference of both treatments, change against the pressure) are pending, and will be
+added when the runs are complete.
+
 \paragraph{Caveats.} No pixel-level uncertainty is attached yet to either side; the AERONET-OC $\Rrs$ is
 used at nadir; the matchup files report \code{radcalnet\_oc=1.0.2} although they were produced with the
 development branch (defaults \code{lbl} + \code{path\_length}), which illustrates the traceability gap of
@@ -1188,8 +1219,11 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
   (Table~\ref{tab:pressure_osoaa}): within 0.03\,\% (Rayleigh) and 0.25\,\% (AOT 0.1) of the path reflectance.
 \item \textit{Done (November 2026):} \textbf{pressure scaling by default}, with a new regression reference and an
   entry of the CHANGELOG.
-\item \prio{P1} \textbf{Pressure scaling in GRS and hGRS} (Table~\ref{tab:grs_pressure}): reference pressure of the
-  LUT (1015.2\,hPa), scaling of the Rayleigh part only, diffuse transmittances.
+\item \textit{Done (November 2026):} \textbf{pressure scaling in GRS and hGRS} (Table~\ref{tab:grs_pressure}):
+  reference pressure of the LUT (1015.2\,hPa), scaling of the Rayleigh part only, diffuse transmittances; branches
+  \code{feature/rayleigh\_pressure} of both processors, with unit tests.
+\item \prio{P1} \textbf{Real-scene check of GRS and hGRS} with AERONET-OC (running): 223 Sentinel-2 images
+  (\code{'linear'} against \code{'rayleigh'}) and 103 EnMAP matchups (before and after); merge of the branches after it.
 \item \prio{P2} \textbf{Blue term correlated with the pressure} in the matchups (Section~\ref{sec:pressure}):
   bidirectional $\Rrs$, weather-related conditions.
 \item \prio{P2} \textbf{Operational chain}: scheduled update from \code{aeronet\_oc\_db} for all sites, ERA5 wind
