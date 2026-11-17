@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+logger = logging.getLogger(__name__)
+
 # pure water absorption and scattering coefficients (m-1), 200-2449 nm: Smith and Baker (1981) below 380 nm,
 # Pope and Fry (1997) 380-700 nm, Kou et al. (1993) above (NASA OCSSW table water_coef.txt)
 WATER_COEF_FILE = files('radcalnet_oc.data.auxdata') / 'water_coef.txt'
@@ -144,8 +146,8 @@ def extend_rrs(Rrs,
     lower = np.maximum(wl_max - fit_width, fit_min)
     narrow = (wl_max < fit_min + 10)
     if narrow.any():
-        logging.warning(f'Rrs ends below {fit_min + 10:g} nm for {int(narrow.sum())} spectrum(s): particulate '
-                        f'backscattering fitted on the last {fit_width:g} nm, with the absorption of pure water')
+        logger.warning(f'Rrs ends below {fit_min + 10:g} nm for {int(narrow.sum())} spectrum(s): particulate '
+                       f'backscattering fitted on the last {fit_width:g} nm, with the absorption of pure water')
     lower = lower.where(~narrow, wl_max - fit_width)
     window = (Rrs.wl >= lower) & (Rrs.wl <= wl_max) & valid
     u = rrs_to_u(Rrs).clip(max=0.5)

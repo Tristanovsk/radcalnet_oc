@@ -29,6 +29,7 @@ Processing chain
    :nosignatures:
 
    radcalnet_oc.run.main
+   radcalnet_oc.log.set_logging
 
 Look-up tables and auxiliary data
 ---------------------------------

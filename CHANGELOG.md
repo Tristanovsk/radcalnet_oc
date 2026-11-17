@@ -8,6 +8,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- Logging helper `radcalnet_oc.set_logging(level, log_file)` (module `radcalnet_oc.log`) and options
+  `--log_level` and `--log_file` of the `radcalnet_oc` command.
 - Tutorial *Simulate the TOA signal from user settings* (`docs/source/tutorials/radcalnet_oc_toa_simulation.ipynb`),
   first of the documentation: input built from the settings of geometry, atmosphere (AOT, aerosol models,
   gas columns), sea-surface roughness (wind) and water reflectance, options of version 1.1 (`gas_coupling`,
@@ -30,6 +32,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   through `Process` by central differences, glint term, quadrature (provisional input uncertainties).
 
 ### Changed
+- Logging: one logger per module (`radcalnet_oc.process`, `radcalnet_oc.lut`...) under the package logger
+  `radcalnet_oc`, instead of the root logger; importing the package no longer sets the level of the root logger,
+  so the logging configuration of the application applies (e.g. `logging.getLogger('radcalnet_oc').setLevel(...)`
+  now silences the package). The internal steps (`get LUT object`, `LUT preparation`...) are logged at `DEBUG`;
+  `Process.execute` logs the settings of the simulation and its computing time at `INFO`. The logger name is added
+  to the format of the command line.
 - The Rayleigh scattering is scaled with the surface pressure by default (`rayleigh_pressure: true`): the TOA
   reflectance changes by about -0.06 % per hPa below 1015.2 hPa in the blue (Ratm by -0.09 % per hPa), e.g.
   -0.18 % at 412-443 nm and -0.02 % at 2190 nm for the clear-water template (1011-1014 hPa); the regression

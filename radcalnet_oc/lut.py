@@ -22,6 +22,8 @@ from importlib.resources import files
 
 from .config import load_config, ensure_toa_lut, toa_lut_path, trans_lut_path, LUT_FILE_BACKUP
 
+logger = logging.getLogger(__name__)
+
 opj = os.path.join
 
 # ------------------------------------
@@ -97,8 +99,8 @@ def wind_weights(wind, nodes):
         raise ValueError('wind speed with missing values')
     clipped = wind.clip(nodes[0], nodes[-1])
     if (clipped != wind).any():
-        logging.warning(f'wind speed out of the range of the look-up table ({nodes[0]:g}-{nodes[-1]:g} m s-1): '
-                        f'clipped for {int((clipped != wind).sum())} value(s)')
+        logger.warning(f'wind speed out of the range of the look-up table ({nodes[0]:g}-{nodes[-1]:g} m s-1): '
+                       f'clipped for {int((clipped != wind).sum())} value(s)')
     values = clipped.values
     if len(nodes) == 1:
         weights = np.ones((1, *values.shape))
@@ -229,10 +231,10 @@ class LUT:
         transmittance.
 
         The wavelengths are converted from µm to nm. If the TOA look-up table is not found, the light
-        version of the package is used, with a lower accuracy (logged at ``INFO`` level).
+        version of the package is used, with a lower accuracy (logged at ``WARNING`` level).
         '''
 
-        logging.info('loading look-up tables')
+        logger.debug('loading look-up tables')
         self.trans_lut = open_lut(self.trans_lut_file)
 
 
@@ -242,8 +244,8 @@ class LUT:
         try:
             self.aero_lut = open_lut(self.lut_file)
         except (FileNotFoundError, OSError):
-            logging.warning(f'LUT file {self.lut_file} not found: the light LUT of the package is used, with '
-                            'a lower accuracy (download the LUT with `radcalnet_oc_config --download`)')
+            logger.warning(f'LUT file {self.lut_file} not found: the light LUT of the package is used, with '
+                           'a lower accuracy (download the LUT with `radcalnet_oc_config --download`)')
             # the light LUT is the one in use (also for the keys of TOA_LUT_CACHE)
             self.lut_file = LUT_FILE_BACKUP
             self.aero_lut = open_lut(LUT_FILE_BACKUP)
@@ -294,12 +296,12 @@ class LUT:
         - ``aot_lut``: spectral aerosol optical thickness of the mixture
         - ``rot``, ``sunglint_eps``: Rayleigh optical thickness and spectral shape of the sunglint
         '''
-        logging.info('LUT preparation')
+        logger.debug('LUT preparation')
 
         if isinstance(aerosol_combination, (list, np.ndarray)):
             aerosol_combination = xr.DataArray(aerosol_combination, coords={'model': AEROSOL_MODELS})
         elif not isinstance(aerosol_combination, xr.DataArray):
-            logging.error("error in aerosol_combination parameter, should be numpy or xr.DataArray")
+            logger.error("error in aerosol_combination parameter, should be numpy or xr.DataArray")
             return
 
         self.aerosol_combination=aerosol_combination
@@ -460,7 +462,7 @@ class LUT:
         Sets the attributes ``trans_aero_lut``, ``Rray``, ``Rdiff_lut``, ``aot_lut``, ``rot`` and
         ``sunglint_eps``.
         '''
-        logging.info('LUT preparation')
+        logger.debug('LUT preparation')
 
         aero_lut = self.aero_lut.sel(wind=wind, method='nearest')
         trans_lut = self.trans_lut.sel(wind=wind, method='nearest')
@@ -841,9 +843,9 @@ class Spectral():
         edge = max(threshold, 1e-3)
         truncated = (rsr[0] > edge) | (rsr[-1] > edge)
         if np.any(truncated):
-            logging.warning('spectral response of the band(s) at %s nm truncated by the wavelength range of '
-                            'the signal (%g-%g nm)', self.fwhm.wl.values[truncated],
-                            wl_signal.min(), wl_signal.max())
+            logger.warning('spectral response of the band(s) at %s nm truncated by the wavelength range of '
+                           'the signal (%g-%g nm)', self.fwhm.wl.values[truncated],
+                           wl_signal.min(), wl_signal.max())
 
         # trapezoidal rule coefficients
         dwl = np.abs(np.diff(wl_signal)) / 2

@@ -8,6 +8,7 @@ reflectance and top-of-atmosphere reflectance.
 
 import functools
 import os
+import time
 import subprocess
 from pathlib import Path
 
@@ -27,6 +28,8 @@ from .lut import WIND
 LUT_PRESSURE = 1015.2
 from .water import extend_rrs
 from . import coxmunk
+
+logger = logging.getLogger(__name__)
 
 template = files('radcalnet_oc.data.template').joinpath('template_clear_water.nc')
 # --------------------------------------------------
@@ -143,7 +146,7 @@ class Process():
         self.azi = azi
 
         # get LUT object
-        logging.info('get LUT object')
+        logger.debug('get LUT object')
         lut = LUT()
         self.lut = lut
 
@@ -153,14 +156,14 @@ class Process():
         self.full_wl = full_wl
         # lut.wl = full_wl
 
-        logging.info('get auxiliary data')
+        logger.debug('get auxiliary data')
         lut.load_auxiliary_data()
 
-        logging.info('get solar irradiance')
+        logger.debug('get solar irradiance')
         solar_irr = SolarIrradiance()
         self.F0 = solar_irr.__dict__[solar_database].interp(wl=full_wl)
 
-        logging.info('get gaseous transmittance object')
+        logger.debug('get gaseous transmittance object')
         self.gas_trans = GaseousTransmittance(lut.gas_lut, o2_model=o2_model)
 
         self.gas_coupling = GAS_COUPLING if gas_coupling is None else gas_coupling
@@ -170,7 +173,7 @@ class Process():
         self.coupling = GasCoupling(tables[self.gas_coupling]) if self.gas_coupling in tables else None
         self.gas_coupling_file = tables.get(self.gas_coupling)
 
-        logging.info('set input parameters')
+        logger.debug('set input parameters')
         self.set_param(Rrs_name=Rrs_name)
 
     def set_param(self,
@@ -198,8 +201,8 @@ class Process():
         if 'wind' in input_db:
             self.wind = input_db['wind']
             if self.wind.isnull().any():
-                logging.warning(f'wind speed missing for {int(self.wind.isnull().sum())} measurement(s): '
-                                f'{WIND:g} m s-1 used')
+                logger.warning(f'wind speed missing for {int(self.wind.isnull().sum())} measurement(s): '
+                               f'{WIND:g} m s-1 used')
                 self.wind = self.wind.fillna(WIND)
         else:
             self.wind = xr.full_like(self.sza, WIND, dtype=float).rename('wind')
@@ -361,6 +364,14 @@ class Process():
         :param sunglint_kw: keyword arguments of :py:meth:`compute_sunglint`
         '''
 
+        t0 = time.perf_counter()
+        attrs = self.provenance()
+        logger.info('TOA simulation of %d measurement(s), %d viewing geometry(ies); TOA LUT %s, solar spectrum %s, '
+                    'O2 %s, gas coupling %s, Rrs extension %s, Rayleigh pressure scaling %s',
+                    self.sza.size, self.vza.size * np.size(self.azi), attrs['toa_lut'], self.solar_database,
+                    attrs['o2_model'], attrs['gas_coupling'], attrs['rrs_extension'],
+                    'on' if self.rayleigh_pressure else 'off')
+
         # atmospheric + sky-reflection radiance
         self.lut.lut_preparation(wind=self.wind,
                                  sza=self.sza,
@@ -453,10 +464,11 @@ class Process():
         radcalnet_db['sza'] = self.sza
         radcalnet_db = radcalnet_db.set_coords('sza')
 
-        radcalnet_db.attrs.update(self.provenance())
+        radcalnet_db.attrs.update(attrs)
         self.radcalnet_db = radcalnet_db.squeeze()
         if sunglint is not None:
             self.compute_sunglint(stats=sunglint, **(sunglint_kw or {}))
+        logger.info('TOA simulation done in %.1f s', time.perf_counter() - t0)
 
     def compute_sunglint(self, stats='cm_iso_mix', wl_ref=865., levels=None, angle_min=None, uncertainty=True,
                          threshold=None, wind_unc=None, ensemble=None, tg_min=0.9, **kwargs):

@@ -16,6 +16,8 @@ import logging
 import numpy as np
 import xarray as xr
 
+logger = logging.getLogger(__name__)
+
 # parameters of the invRrs two_modes model, in the order of its parameter vector
 PARAMETERS = ('chl', 'a_bg_ref', 'S_bg', 'spm_norm', 'fine_prop', 'nr', 'ni_ref')
 PARAMETER_UNITS = ('mg m-3', 'm-1', 'nm-1', '-', '-', '-', '-')
@@ -145,8 +147,8 @@ class Reconstruction:
             out_nadir[i] = np.asarray(hyper.forward_model(x, output='Rrs'))
         nfail = int((~success & np.isfinite(rmsd)).sum())
         if nfail:
-            logging.warning(f'Rrs reconstruction: fit not converged for {nfail} spectrum(s) '
-                            f'(max_nfev={self.max_nfev}), last values kept')
+            logger.warning(f'Rrs reconstruction: fit not converged for {nfail} spectrum(s) '
+                           f'(max_nfev={self.max_nfev}), last values kept')
 
         time = Rrs.time.values
         ds = xr.Dataset({'Rrs': (('time', 'wl'), out), 'Rrs_nadir': (('time', 'wl'), out_nadir)},

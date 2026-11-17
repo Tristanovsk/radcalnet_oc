@@ -4,7 +4,7 @@ Usage:
   radcalnet_oc <input_file> [--output <output_file>] [--vza angles] [--azi angles]
    [--aerosol_combination props] [--solar_database name] [--rrs_name name] [--o2_model model]
    [--gas_coupling coupling] [--rrs_extension method] [--rayleigh_pressure flag] [--bands wavelengths]
-   [--fwhm fwhm] [--expon expon] [--no_clobber]
+   [--fwhm fwhm] [--expon expon] [--no_clobber] [--log_level level] [--log_file file]
   radcalnet_oc -h | --help
   radcalnet_oc -v | --version
 
@@ -44,6 +44,9 @@ Options:
                    one per band, comma-separated [default: 10]
   --expon expon    Exponent of the super-Gaussian spectral responses (2: Gaussian) [default: 3]
   --no_clobber     Do not process <input_file> if <output_file> already exists.
+  --log_level level  Minimum level of the messages: DEBUG (internal steps), INFO (progress), WARNING
+                   or ERROR [default: INFO]
+  --log_file file  Also append the messages to this file
 
   Example:
       radcalnet_oc AAOT_input.nc --vza 0,10 --azi 90 --bands 443,490,560,665,865 --fwhm 20
@@ -58,6 +61,9 @@ from pathlib import Path
 from docopt import docopt
 
 from . import __package__, __version__
+from .log import set_logging
+
+logger = logging.getLogger(__name__)
 
 BAND_VARIABLES = ['Rtoa', 'Ratm', 'Ed', 'E0', 'Rrs']
 
@@ -83,7 +89,11 @@ def main(argv=None):
     # -h / -v are handled (and exit) here
     args = docopt(__doc__, argv=argv, version=__package__ + '_' + __version__)
 
-    logging.basicConfig(format='%(asctime)s %(levelname)s | %(message)s', level=logging.INFO, force=True)
+    try:
+        set_logging(level=args['--log_level'], log_file=args['--log_file'])
+    except (ValueError, OSError) as error:
+        print(f'error: {error}', file=sys.stderr)
+        return 1
 
     import numpy as np
     import xarray as xr
@@ -97,7 +107,7 @@ def main(argv=None):
     output_file = Path(output_file)
 
     if output_file.exists() and args['--no_clobber']:
-        logging.info(f'{output_file} already exists; skip')
+        logger.info(f'{output_file} already exists; skip')
         return 0
 
     try:
@@ -113,7 +123,7 @@ def main(argv=None):
                 raise ValueError(f'--aerosol_combination needs {len(AEROSOL_MODELS)} values '
                                  f'(one per model: {", ".join(AEROSOL_MODELS)})')
 
-        logging.info(f'process {input_file}')
+        logger.info(f'process {input_file}')
         input_db = xr.open_dataset(input_file)
         process = Process(input_db=input_db, vza=vza, azi=azi,
                           solar_database=args['--solar_database'],
@@ -160,9 +170,9 @@ def main(argv=None):
 
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output.to_netcdf(output_file)
-        logging.info(f'output written in {output_file}')
+        logger.info(f'output written in {output_file}')
     except Exception:
-        logging.error('radcalnet_oc processing failed', exc_info=True)
+        logger.exception('radcalnet_oc processing failed')
         return 1
     return 0
 

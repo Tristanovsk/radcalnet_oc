@@ -22,6 +22,8 @@ import logging
 import numpy as np
 import xarray as xr
 
+logger = logging.getLogger(__name__)
+
 #: standard uncertainties of the inputs, ``name: (kind, value)`` with ``kind`` ``'abs'`` (unit of the input) or
 #: ``'rel'`` (fraction of the input). PROVISIONAL defaults, to be replaced by the values of the RadCalNet
 #: uncertainty assessment: AOT(550) 0.01 (AERONET direct sun), water vapour 10 %, ozone 3 %, pressure 2 hPa, wind
@@ -84,7 +86,7 @@ def uncertainty_budget(process, inputs=None, glint=True, Rrs_name='Rrs'):
                 input_db = input_db.assign(wind=process.wind)
             var = Rrs_name if name == 'Rrs' else name
             if var not in input_db:
-                logging.warning(f'uncertainty budget: {var} not in the input dataset, skipped')
+                logger.warning(f'uncertainty budget: {var} not in the input dataset, skipped')
                 continue
             R = []
             for sign in (1, -1):

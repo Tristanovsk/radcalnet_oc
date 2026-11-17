@@ -90,5 +90,5 @@ def main(safe, cams_file, lon, lat, odir, resolution=60):
 
 
 if __name__ == '__main__':
-    logging.getLogger().setLevel(logging.WARNING)
+    logging.getLogger('radcalnet_oc').setLevel(logging.WARNING)
     main(*sys.argv[1:6], *(int(a) for a in sys.argv[6:]))

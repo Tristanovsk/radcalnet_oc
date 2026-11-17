@@ -15,11 +15,4 @@ from .aeronet_oc import Aeronet
 from .coxmunk import Sunglint, GLINT_FLAGS, glint_flags, glint_angle
 from .uncertainty import uncertainty_budget, INPUT_UNC
 
-
-import logging
-
-#init logger
-logger = logging.getLogger()
-
-level = logging.getLevelName("INFO")
-logger.setLevel(level)
+from .log import set_logging
