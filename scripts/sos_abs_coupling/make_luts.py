@@ -26,10 +26,13 @@ Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v
     aerosol scale height 2 km, mid-latitude summer gas profile (type 2, as v2 / v3), 1013 hPa, scalar, wind
     5 m s-1, direct sun glint left out (-SOS.DirectSurf 0, as the path reflectance of radcalnet_oc). Variants:
     WMO maritime (bridge with v2 / v3), the 5 other OPAC models, scale height 1 and 4 km, gas profiles 1, 3-6,
-    1000 and 1030 hPa, polarisation, wind 2 m s-1, direct glint included. Wavelengths of v2 + v3, one out of
-    V4_WL_STRIDE; reduced grid (V4_GRID). One LUT per variant in OUTDIR/<variant>/ (abs.nc, noabs.nc and, for
-    the variants that change the gas profile or the pressure, tgdir_abs/noabs.nc), dimensions
-    (wl, h2o, sza, aot550, albedo). With -AER.Model 4, SOS-ABS needs -AER.Waref = -SOS_Main.Wa: the runs are
+    1000 and 1030 hPa, polarisation, wind 2 m s-1, direct glint included. Wavelengths of v2 + v3: one out of
+    V4_WL_STRIDE for the nominal set, one out of V4_VARIANT_SUBSAMPLE of these for the variants (a subset of the
+    nominal wavelengths); reduced grid (V4_GRID). One LUT per variant in OUTDIR/<variant>/ (abs.nc, noabs.nc and,
+    for the variants that change the gas profile or the pressure, tgdir_abs/noabs.nc), dimensions
+    (wl, h2o, sza, aot550, albedo). The runs without absorption do not depend on the gas profile (the Rayleigh
+    profile is set by -AP.HR): for the gas-profile variants, noabs.nc and tgdir_noabs.nc are taken from the
+    nominal set at the wavelengths of the variant (attribute shared_from), the nominal set being run first. With -AER.Model 4, SOS-ABS needs -AER.Waref = -SOS_Main.Wa: the runs are
     made wavelength by wavelength, with the AOT at the wavelength from the OPAC extinction (aot550 Cext/Cext550)
     and the phase matrix of the nearest mopsmap file (50 nm grid), converted to the format of SOS-ABS.
     All the runs of a chunk of V4_CHUNK wavelengths go to one pool of N_WORKERS processes (a grid per
@@ -102,6 +105,10 @@ CACHE = os.path.join(HERE, "data", "cache")
 # ---------------------------------------------------------------------------------------------------------------
 V2_WINDOWS = [(684, 698, 0.5), (712, 736, 1.0), (757, 772, 0.5), (808, 836, 1.0), (890, 990, 1.0)]
 V4_WL_STRIDE = 2
+V4_VARIANT_SUBSAMPLE = 2   # variants: one nominal wavelength out of 2 (one out of 4 of v2 + v3)
+# parameters that do not change the runs without absorption (-AP.AbsProfile.Type 7): such variants take noabs.nc
+# and tgdir_noabs.nc from the nominal set
+NOABS_INDEPENDENT = ("-AP.AbsProfile.Type",)
 V4_CHUNK = int(OPTS.get("chunk", 16))  # wavelengths per pool (16 x 2 AOT x 18 = 576 runs for abs.nc, a few minutes)
 V4_GRID = {"-AP.H2O": [0.5, 2.0, 4.0], "-ANG.Thetas": [20., 45., 70.], "aot550": [0.05, 0.2],
            "-SURF.Alb": [0.0, 0.03]}
@@ -159,24 +166,33 @@ def write_sos_extdata(path, ssa, matrix):
 
 
 def v4_jobs(wls):
-    """(variant, file, fixed parameters per wavelength, grid, aot550 axis) of the v4 set."""
+    """(variant, aerosol, file, fixed parameters, grid, aot550 axis, wavelengths, shared_from) of the v4 set.
+
+    `wls`: nominal wavelengths; the variants use one out of V4_VARIANT_SUBSAMPLE. `shared_from` is "nominal" for the
+    files of the runs without absorption of the variants that only change NOABS_INDEPENDENT parameters, else None.
+    """
     base = {**BASE_V4, "-AP.SpectralResol": 5.0, "-SOS.AbsModeCKD": 1}
     tg_keys = ("-AP.AbsProfile.Type", "-AP.Psurf")
     jobs = []
     for name, change in V4_VARIANTS.items():
         conf = {**V4_NOMINAL, **change}
+        var_wls = wls if name == "nominal" else wls[::V4_VARIANT_SUBSAMPLE]
+        noabs_shared = name != "nominal" and set(change) <= set(NOABS_INDEPENDENT)
         aerosol = conf.pop("aerosol")
         fixed = {**base, **conf}
         grid = {k: v for k, v in V4_GRID.items() if k != "aot550"}
         files = [("abs.nc", fixed, grid), ("noabs.nc", {**fixed, "-AP.AbsProfile.Type": 7},
                                           {k: v for k, v in grid.items() if k != "-AP.H2O"})]
         if name == "nominal" or any(k in change for k in tg_keys):
-            tgfixed = {**fixed, "-ANG.Rad.NbGauss": 8, "-SOS.View.Dphi": 30, "-SOS.IGmax": 1, "-SURF.Type": 0}
+            # -SURF.Alb is required by SOS-ABS even without surface (it is a grid dimension of abs/noabs only)
+            tgfixed = {**fixed, "-ANG.Rad.NbGauss": 8, "-SOS.View.Dphi": 30, "-SOS.IGmax": 1, "-SURF.Type": 0,
+                       "-SURF.Alb": 0.0}
             files += [("tgdir_abs.nc", tgfixed, {"-AP.H2O": V4_GRID["-AP.H2O"], "-ANG.Thetas": list(SZA_TG_V4)}),
                       ("tgdir_noabs.nc", {**tgfixed, "-AP.AbsProfile.Type": 7}, {"-ANG.Thetas": list(SZA_TG_V4)})]
         for fname, fx, gr in files:
             aot_axis = None if fname.startswith("tgdir") else V4_GRID["aot550"]
-            jobs.append((name, aerosol, fname, fx, gr, aot_axis))
+            shared = "nominal" if noabs_shared and fname.endswith("noabs.nc") else None
+            jobs.append((name, aerosol, fname, fx, gr, aot_axis, var_wls, shared))
     return jobs
 
 
@@ -227,13 +243,17 @@ def v4_main():
         if unknown:
             sys.exit(f"unknown variant(s) {sorted(unknown)}; variants: {', '.join(V4_VARIANTS)}")
     jobs = [j for j in v4_jobs(wls) if "variants" not in OPTS or j[0] in OPTS["variants"].split(",")]
-    print(f"v4: {len(wls)} wavelengths ({wls.min() * 1000:.0f}-{wls.max() * 1000:.0f} nm, one out of "
-          f"{V4_WL_STRIDE} of v2 + v3), {len({j[0] for j in jobs})} variants, chunks of {V4_CHUNK} wavelengths "
-          f"in one pool of {N_WORKERS} workers, output {OUTDIR}")
+    print(f"v4: {len(wls)} wavelengths for the nominal set ({wls.min() * 1000:.0f}-{wls.max() * 1000:.0f} nm, "
+          f"one out of {V4_WL_STRIDE} of v2 + v3), {len(wls[::V4_VARIANT_SUBSAMPLE])} for the variants; "
+          f"{len({j[0] for j in jobs})} variants, chunks of {V4_CHUNK} wavelengths in one pool of {N_WORKERS} "
+          f"workers, output {OUTDIR}")
     total, wsec = 0, 0.
     rows = {}
-    for name, aerosol, fname, fixed, grid, aot_axis in jobs:
-        n = len(wls) * int(np.prod([len(v) for v in grid.values()])) * (len(aot_axis) if aot_axis else 1)
+    for name, aerosol, fname, fixed, grid, aot_axis, var_wls, shared in jobs:
+        if shared:
+            rows.setdefault(name, []).append(f"{fname} from {shared}")
+            continue
+        n = len(var_wls) * int(np.prod([len(v) for v in grid.values()])) * (len(aot_axis) if aot_axis else 1)
         cost = (3. if fixed.get("-SOS.Ipolar") else 1.) * (0.2 if fname.startswith("tgdir") else 1.)
         rows.setdefault(name, []).append(f"{fname} {n}")
         total += n
@@ -253,10 +273,22 @@ def v4_main():
     from sosabs.lut import write_netcdf
     extdir = os.path.join(CACHE, "extdata_v4")
     os.makedirs(extdir, exist_ok=True)
-    for name, aerosol, fname, fixed, grid, aot_axis in jobs:
+    for name, aerosol, fname, fixed, grid, aot_axis, wls, shared in jobs:
         out = os.path.join(OUTDIR, name, fname)
         if os.path.exists(out):
             print("exists:", out)
+            continue
+        if shared:
+            src = os.path.join(OUTDIR, shared, fname)
+            if not os.path.exists(src):
+                print(f"v4 {name} {fname}: needs {src} (run the {shared} set first), skipped", flush=True)
+                continue
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            with xr.open_dataset(src) as ds:
+                sub = ds.sel(wl=wls).load()
+            sub.attrs.update({"v4_variant": name, "shared_from": shared})
+            write_netcdf(sub, out)
+            print(f"v4 {name} {fname}: taken from {shared} ({len(wls)} wavelengths)", flush=True)
             continue
         parts_dir = os.path.join(OUTDIR, name, "parts")
         os.makedirs(parts_dir, exist_ok=True)
