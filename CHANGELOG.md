@@ -32,6 +32,14 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   through `Process` by central differences, glint term, quadrature (provisional input uncertainties).
 
 ### Changed
+- The path reflectance of the TOA look-up table (`Ratm`, and the Rayleigh reflectance of the pressure scaling) is
+  interpolated between the 10 wavelength nodes quadratically in log-log space (`radcalnet_oc.lut.interp_wl_loglog`)
+  instead of linear space, as in GRS and hGRS. Validated with the OSOAA runs of the same configuration between the
+  nodes (`scripts/wl_interpolation`): median error < 0.1 % for AOT(550) <= 0.1, 0.4 % at 900 nm and 0.6 % at 2400 nm (against -1.0 % at 450 nm, -1.2 % at
+  850 nm and -4 to -9 % at 1150-1400 nm before), within 1.8 % for AOT 0.35. The TOA reflectance of the clear-water
+  template changes by +0.6 % at 412 nm, +1.3 % (+1.6e-3) at 443 nm, +0.9 % at 865 nm, +7.1 % at 1240 nm and +3.8 % at
+  1375 nm, within 0.4 % elsewhere; the regression reference is updated. The spectral AOT and the transmittances keep
+  the quadratic interpolation in linear space (more accurate for them).
 - Logging: one logger per module (`radcalnet_oc.process`, `radcalnet_oc.lut`...) under the package logger
   `radcalnet_oc`, instead of the root logger; importing the package no longer sets the level of the root logger,
   so the logging configuration of the application applies (e.g. `logging.getLogger('radcalnet_oc').setLevel(...)`

@@ -102,6 +102,12 @@ if __name__ == '__main__':
     aero = [tuple(a.split(':')) for a in sys.argv[2].split(',')]
     njobs = int(sys.argv[3]) if len(sys.argv) > 3 else 1
     out = sys.argv[4] if len(sys.argv) > 4 else OUT
+    # empty surface matrix files left by an interrupted run: OSOAA would read them instead of recomputing them
+    surf = f'{out}/db/SURF_MATR'
+    for f in (os.listdir(surf) if os.path.isdir(surf) else []):
+        if os.path.getsize(f'{surf}/{f}') == 0:
+            print(f'removed empty surface matrix {f}', flush=True)
+            os.remove(f'{surf}/{f}')
     first = [(*aero[0], wl, out) for wl in wls]  # surface matrices of each wavelength
     rest = [(*a, wl, out) for wl in wls for a in aero[1:]]
     for cases in (first, rest):

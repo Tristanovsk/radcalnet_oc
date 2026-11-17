@@ -56,7 +56,11 @@ points of 10 and 24; then 15 and 17.
     and up to 60 % at 1000 nm, against 0.1-1.5 % in log-log. Validate with the OSOAA runs between the nodes that the
     LUT leaves out (0.45, 0.55, 0.65, 0.75, 0.85, 0.9, 2.4 um, `scripts/wl_interpolation`), switch the scheme,
     update the regression reference, and recompute the matchup residuals at 443 and 865 nm (tasks 10, 24).
-    *In progress* (branch `feature/wl_interpolation`).
+    *Done for the path reflectance* (branch `feature/wl_interpolation`): median error < 0.1 % for AOT <= 0.1
+    (0.4 % at 900 nm, 0.6 % at 2400 nm) against -1 % at 450 and 850 nm and -4 to -9 % at 1150-1400 nm before; TOA
+    reflectance of the template +1.3 % (+1.6e-3) at 443 nm, +0.9 % at 865 nm, +7.1 % at 1240 nm. Remaining: recompute
+    the matchup residuals; at AOT 0.35 log-log overestimates by 1-2 % at 1150-1400 nm (interpolate the Rayleigh and
+    aerosol parts separately?).
 27. **Provenance of the Rrs reconstruction.** `reconstruction.py` uses the default sediment n_i shape of invRrs,
     which changed twice on 16 November 2026 (now `'atd_ext:0.5'`): record the invRrs version and settings in
     `provenance()`, set a minimum version, pin the shape in radcalnet_oc.
