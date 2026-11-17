@@ -3,7 +3,7 @@ SOS-ABS simulations of the TOA signal over a rough sea surface (Cox-Munk) + Lamb
 with full coupling of gaseous absorption (CKD 5 cm-1, fine mode) and scattering, to assess and
 parameterise the decoupled gaseous transmittance used by radcalnet_oc.
 
-Usage: python make_luts.py [v1|v2] [OUTDIR] [N_WORKERS]
+Usage: python make_luts.py [v1|v2|v3|v4] [OUTDIR] [N_WORKERS] [--run]
 
 Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v2):
 
@@ -21,9 +21,31 @@ Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v
     one interval out of STRIDE per spectral region (ckd_wavelengths). The centres avoid the edges of the
     250 cm-1 CKD files, where SOS-ABS stops (ERROR_3500, e.g. 1.6 um = 6250 cm-1). The CKD coefficients
     start at 364 nm.
+  v4 (robustness of the coupling, roadmap tasks 14, 17, 21): the atmosphere of the package and one condition
+    changed at a time. Nominal: OPAC COAV_rh70 aerosols of the TOA LUT (mopsmap phase matrices, -AER.Model 4),
+    aerosol scale height 2 km, mid-latitude summer gas profile (type 2, as v2 / v3), 1013 hPa, scalar, wind
+    5 m s-1, direct sun glint left out (-SOS.DirectSurf 0, as the path reflectance of radcalnet_oc). Variants:
+    WMO maritime (bridge with v2 / v3), the 5 other OPAC models, scale height 1 and 4 km, gas profiles 1, 3-6,
+    1000 and 1030 hPa, polarisation, wind 2 m s-1, direct glint included. Wavelengths of v2 + v3, one out of
+    V4_WL_STRIDE; reduced grid (V4_GRID). One LUT per variant in OUTDIR/<variant>/ (abs.nc, noabs.nc and, for
+    the variants that change the gas profile or the pressure, tgdir_abs/noabs.nc), dimensions
+    (wl, h2o, sza, aot550, albedo). With -AER.Model 4, SOS-ABS needs -AER.Waref = -SOS_Main.Wa: the runs are
+    made wavelength by wavelength, with the AOT at the wavelength from the OPAC extinction (aot550 Cext/Cext550)
+    and the phase matrix of the nearest mopsmap file (50 nm grid), converted to the format of SOS-ABS.
+    All the runs of a chunk of V4_CHUNK wavelengths go to one pool of N_WORKERS processes (a grid per
+    wavelength alone has only 6-18 runs), and each chunk is written in OUTDIR/<variant>/parts/ as soon as it is
+    done: an interrupted set restarts from the last chunk.
+    Dry run by default (prints the plan, the checks and the size); add --run to run it. Options:
+    --variants=nominal,ha1 (subset of the variants), --n-wl=N (first N wavelengths, for a test), --chunk=N
+    (wavelengths per pool, default 16).
 """
 import os, sys, time
 import numpy as np
+
+DRY_RUN = "--run" not in sys.argv
+# v4 options: --variants=nominal,ha1 (subset of V4_VARIANTS), --n-wl=N (first N wavelengths, for a test)
+OPTS = dict(a[2:].split("=", 1) for a in sys.argv if a.startswith("--") and "=" in a)
+sys.argv = [a for a in sys.argv if not a.startswith("--")]
 
 # SOS-ABS root (compiled code + Python package sosabs in python/)
 ROOT = os.environ.setdefault("SOS_ABS_ROOT", "/DATA/git/vrtc/RadiativeTransferCode-SOS")
@@ -35,7 +57,7 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SET = sys.argv[1] if len(sys.argv) > 1 else "v1"
-if SET not in ("v1", "v2", "v3"):
+if SET not in ("v1", "v2", "v3", "v4"):
     sys.exit(__doc__)
 # OUTDIR and the Mie / surface cache must be on a local disk, not in a synchronised folder (Dropbox):
 # 'data' is a link to such a directory. The cache is shared by all the workers and the sets; the surface
@@ -74,6 +96,257 @@ def ckd_wavelengths(regions=V3_REGIONS, tg_min=0.02, tg_max=0.99, air_mass=2., h
     return np.sort(np.concatenate(out))
 N_WORKERS = int(sys.argv[3]) if len(sys.argv) > 3 else 32
 CACHE = os.path.join(HERE, "data", "cache")
+
+# ---------------------------------------------------------------------------------------------------------------
+# v4: robustness of the coupling (see the docstring)
+# ---------------------------------------------------------------------------------------------------------------
+V2_WINDOWS = [(684, 698, 0.5), (712, 736, 1.0), (757, 772, 0.5), (808, 836, 1.0), (890, 990, 1.0)]
+V4_WL_STRIDE = 2
+V4_CHUNK = int(OPTS.get("chunk", 16))  # wavelengths per pool (16 x 2 AOT x 18 = 576 runs for abs.nc, a few minutes)
+V4_GRID = {"-AP.H2O": [0.5, 2.0, 4.0], "-ANG.Thetas": [20., 45., 70.], "aot550": [0.05, 0.2],
+           "-SURF.Alb": [0.0, 0.03]}
+MOPSMAP = "/DATA/git/vrtc/mopsmap_tbx/scatmat/ascii/scat_mat_opac_{model}_wl{wl:.1f}.csv"
+OPAC_MODELS = ["ARCT_rh70", "COAV_rh70", "DESE_rh70", "MACL_rh70", "URBA_rh70", "WASO_rh0"]
+V4_NOMINAL = {"aerosol": "COAV_rh70", "-AP.AerHS.HA": 2.0, "-AP.AbsProfile.Type": 2, "-AP.Psurf": 1013.,
+              "-SOS.Ipolar": 0, "-SURF.Glitter.Wind": 5.0, "-SOS.DirectSurf": 0}
+V4_VARIANTS = {"nominal": {},
+               "wmo_maritime": {"aerosol": "WMO_maritime"},
+               **{f"aer_{m}": {"aerosol": m} for m in OPAC_MODELS if m != "COAV_rh70"},
+               "ha1": {"-AP.AerHS.HA": 1.0}, "ha4": {"-AP.AerHS.HA": 4.0},
+               **{f"profile{t}": {"-AP.AbsProfile.Type": t} for t in (1, 3, 4, 5, 6)},
+               "p1000": {"-AP.Psurf": 1000.}, "p1030": {"-AP.Psurf": 1030.},
+               "polar": {"-SOS.Ipolar": 1},
+               "wind2": {"-SURF.Glitter.Wind": 2.0},
+               "direct_glint": {"-SOS.DirectSurf": 1}}
+# throughput of the v3 abs.nc set (4272 runs in 1094 s with 32 workers), worker-seconds per run
+V3_WORKER_S_PER_RUN = 1094 * 32 / 4272
+
+
+def v4_wavelengths():
+    """Wavelengths (um) of v2 + v3, one out of V4_WL_STRIDE."""
+    v2 = np.unique(np.concatenate([np.arange(a, b + 1e-6, s) for a, b, s in V2_WINDOWS])) * 1e-3
+    return np.sort(np.concatenate([v2, ckd_wavelengths()]))[::V4_WL_STRIDE]
+
+
+def mopsmap_read(model, wl_nm):
+    """Cext, Csca and the scattering matrix (angle, F11, -F12/F11, F22/F11, F33/F11) of a mopsmap file."""
+    with open(MOPSMAP.format(model=model, wl=wl_nm)) as f:
+        head = [next(f) for _ in range(4)]
+    cext, csca = (float(h.split(":")[1]) for h in head[:2])
+    return cext, csca, np.loadtxt(MOPSMAP.format(model=model, wl=wl_nm), skiprows=4)
+
+
+def opac_optics(model, wl_um):
+    """AOT ratio Cext(wl)/Cext(550), single scattering albedo and nearest mopsmap matrix at wl (um).
+
+    Cext is interpolated in log-log space and the single scattering albedo linearly between the 50 nm files."""
+    wl = wl_um * 1000
+    lo, hi = 50 * np.floor(wl / 50), 50 * np.ceil(wl / 50)
+    (c_lo, s_lo, m_lo), (c_hi, s_hi, m_hi) = mopsmap_read(model, lo), mopsmap_read(model, hi)
+    x = 0. if hi == lo else (np.log(wl) - np.log(lo)) / (np.log(hi) - np.log(lo))
+    cext = np.exp((1 - x) * np.log(c_lo) + x * np.log(c_hi))
+    ssa = (1 - x) * s_lo / c_lo + x * s_hi / c_hi
+    return cext / mopsmap_read(model, 550.)[0], ssa, (m_lo if wl - lo <= hi - wl else m_hi)
+
+
+def write_sos_extdata(path, ssa, matrix):
+    """External aerosol file of SOS-ABS (-AER.Model 4); angles from 180 to 0 deg as in its documentation."""
+    m = matrix[np.argsort(-matrix[:, 0])]
+    with open(path, "w") as f:
+        f.write(f"EXTINCTION_COEF : {1.:.5E}\nSCATTERING_COEF : {ssa:.5E}\nNB_LINES : {len(m)}\n")
+        f.write("Angle    F11        -F12/F11    F22/F11    F33/F11\n")
+        np.savetxt(f, m, fmt=["%8.4f", "%.6E", "%.6E", "%.6E", "%.6E"])
+
+
+def v4_jobs(wls):
+    """(variant, file, fixed parameters per wavelength, grid, aot550 axis) of the v4 set."""
+    base = {**BASE_V4, "-AP.SpectralResol": 5.0, "-SOS.AbsModeCKD": 1}
+    tg_keys = ("-AP.AbsProfile.Type", "-AP.Psurf")
+    jobs = []
+    for name, change in V4_VARIANTS.items():
+        conf = {**V4_NOMINAL, **change}
+        aerosol = conf.pop("aerosol")
+        fixed = {**base, **conf}
+        grid = {k: v for k, v in V4_GRID.items() if k != "aot550"}
+        files = [("abs.nc", fixed, grid), ("noabs.nc", {**fixed, "-AP.AbsProfile.Type": 7},
+                                          {k: v for k, v in grid.items() if k != "-AP.H2O"})]
+        if name == "nominal" or any(k in change for k in tg_keys):
+            tgfixed = {**fixed, "-ANG.Rad.NbGauss": 8, "-SOS.View.Dphi": 30, "-SOS.IGmax": 1, "-SURF.Type": 0}
+            files += [("tgdir_abs.nc", tgfixed, {"-AP.H2O": V4_GRID["-AP.H2O"], "-ANG.Thetas": list(SZA_TG_V4)}),
+                      ("tgdir_noabs.nc", {**tgfixed, "-AP.AbsProfile.Type": 7}, {"-ANG.Thetas": list(SZA_TG_V4)})]
+        for fname, fx, gr in files:
+            aot_axis = None if fname.startswith("tgdir") else V4_GRID["aot550"]
+            jobs.append((name, aerosol, fname, fx, gr, aot_axis))
+    return jobs
+
+
+def aerosol_params(aerosol, wl, aot550, extdir):
+    """Aerosol keywords of a run at wl (um): WMO maritime, or an OPAC model through an external file."""
+    if aerosol == "WMO_maritime":
+        return {"-AER.Model": 1, "-AER.WMO.Model": 2, "-AER.Waref": 0.55, "-AER.AOTref": aot550}
+    ratio, ssa, matrix = opac_optics(aerosol, wl)
+    path = os.path.join(extdir, f"{aerosol}_wl{wl * 1000:.3f}.txt")
+    if not DRY_RUN and not os.path.exists(path):
+        write_sos_extdata(path, ssa, matrix)
+    return {"-AER.Model": 4, "-AER.ExtData": path, "-AER.Waref": float(wl), "-AER.AOTref": float(aot550 * ratio)}
+
+
+def v4_checks(wls, jobs):
+    """Checks before the runs; returns the list of problems."""
+    import subprocess
+    problems = []
+    status = subprocess.run(["git", "-C", ROOT, "status", "--porcelain", "--untracked-files=no"],
+                            capture_output=True, text=True).stdout.strip()
+    if status:
+        problems.append(f"SOS-ABS has {len(status.splitlines())} uncommitted file(s): commit them so that the "
+                        "runs can be traced to a code version (lut attributes)")
+    from sosabs import params
+    for kw in ("-SOS.DirectSurf", "-AER.ExtData", "-AP.AerHS.HA"):
+        if kw not in params.NAME:
+            problems.append(f"{kw} unknown to this sosabs version")
+    header = open(os.path.join(ROOT, "inc", "SOS.h")).read()
+    nmax = int(header.split("#define CTE_MAXNB_ANG_EXT")[1].split()[0])
+    nang = max(len(mopsmap_read(m, 550.)[2]) for m in OPAC_MODELS)
+    if nang > nmax:
+        problems.append(f"mopsmap matrices have {nang} angles > CTE_MAXNB_ANG_EXT = {nmax} (inc/SOS.h)")
+    missing = sorted({MOPSMAP.format(model=m, wl=w) for m in OPAC_MODELS
+                      for w in np.unique(np.r_[50 * np.floor(wls * 20), 50 * np.ceil(wls * 20), 550.])
+                      if not os.path.exists(MOPSMAP.format(model=m, wl=w))})
+    if missing:
+        problems.append(f"{len(missing)} mopsmap file(s) missing, e.g. {missing[0]}")
+    problems.append("not verified yet: the SOS-ABS reading of a converted mopsmap file (one test run against "
+                    "an OSOAA run of the LUT, e.g. COAV_rh70 at 0.8 um, before --run)")
+    return problems
+
+
+def v4_main():
+    wls = v4_wavelengths()
+    if "n-wl" in OPTS:
+        wls = wls[:int(OPTS["n-wl"])]
+    if "variants" in OPTS:
+        unknown = set(OPTS["variants"].split(",")) - set(V4_VARIANTS)
+        if unknown:
+            sys.exit(f"unknown variant(s) {sorted(unknown)}; variants: {', '.join(V4_VARIANTS)}")
+    jobs = [j for j in v4_jobs(wls) if "variants" not in OPTS or j[0] in OPTS["variants"].split(",")]
+    print(f"v4: {len(wls)} wavelengths ({wls.min() * 1000:.0f}-{wls.max() * 1000:.0f} nm, one out of "
+          f"{V4_WL_STRIDE} of v2 + v3), {len({j[0] for j in jobs})} variants, chunks of {V4_CHUNK} wavelengths "
+          f"in one pool of {N_WORKERS} workers, output {OUTDIR}")
+    total, wsec = 0, 0.
+    rows = {}
+    for name, aerosol, fname, fixed, grid, aot_axis in jobs:
+        n = len(wls) * int(np.prod([len(v) for v in grid.values()])) * (len(aot_axis) if aot_axis else 1)
+        cost = (3. if fixed.get("-SOS.Ipolar") else 1.) * (0.2 if fname.startswith("tgdir") else 1.)
+        rows.setdefault(name, []).append(f"{fname} {n}")
+        total += n
+        wsec += n * V3_WORKER_S_PER_RUN * cost
+    for name, files in rows.items():
+        print(f"  {name:16s} " + ", ".join(files))
+    print(f"total {total} runs; about {wsec / N_WORKERS / 3600:.1f} h with {N_WORKERS} workers (v3 throughput; "
+          "polarised runs x3 and direct-transmittance runs x0.2 assumed)")
+    print("checks:")
+    for p in v4_checks(wls, jobs):
+        print("  -", p)
+    if DRY_RUN:
+        print("dry run: nothing written (add --run to run, with a memory cap, e.g. "
+              "systemd-run --user --scope -p MemoryMax=...)")
+        return
+    import xarray as xr
+    from sosabs.lut import write_netcdf
+    extdir = os.path.join(CACHE, "extdata_v4")
+    os.makedirs(extdir, exist_ok=True)
+    for name, aerosol, fname, fixed, grid, aot_axis in jobs:
+        out = os.path.join(OUTDIR, name, fname)
+        if os.path.exists(out):
+            print("exists:", out)
+            continue
+        parts_dir = os.path.join(OUTDIR, name, "parts")
+        os.makedirs(parts_dir, exist_ok=True)
+        t0, chunk_files = time.time(), []
+        for c in range(0, len(wls), V4_CHUNK):
+            chunk = wls[c:c + V4_CHUNK]
+            cfile = os.path.join(parts_dir, f"{fname[:-3]}_chunk{c // V4_CHUNK:03d}.nc")
+            chunk_files.append(cfile)
+            if os.path.exists(cfile):
+                continue
+            parts = []
+            for wl in chunk:
+                for aot in (aot_axis or [V4_GRID["aot550"][0]]):
+                    wl, aot = float(wl), float(aot)       # plain floats for the command line (not np.float64)
+                    fx = {**fixed, "-SOS_Main.Wa": wl, **aerosol_params(aerosol, wl, aot, extdir)}
+                    coords = {"wl": [wl], **({"aot550": [aot]} if aot_axis else {})}
+                    parts.append((coords, grid, fx))
+            ds = run_parts(parts, attrs={"v4_variant": name, "aerosol": aerosol})
+            write_netcdf(ds, cfile)
+            print(f"v4 {name} {fname}: chunk {c // V4_CHUNK + 1}/{-(-len(wls) // V4_CHUNK)} "
+                  f"({time.time() - t0:.0f} s)", flush=True)
+        lut = xr.combine_by_coords([xr.open_dataset(f).load() for f in chunk_files],
+                                   combine_attrs="drop_conflicts")
+        lut.attrs.update({"v4_variant": name, "aerosol": aerosol})
+        write_netcdf(lut, out)
+        print(f"v4 {name} {fname}: done in {time.time() - t0:.0f} s", flush=True)
+
+
+def run_parts(parts, attrs=None):
+    """Run several grids of SOS-ABS in one pool and gather them in one Dataset.
+
+    `parts`: list of (coords, grid, fixed); each grid is a LUT of :func:`sosabs.build_lut` with its own fixed
+    parameters (here the wavelength, its aerosol file and AOT), and `coords` the dimensions added to it (wl,
+    aot550). The runs of all the parts share one pool of N_WORKERS processes and the cache of Mie and surface
+    files (safe: the code moves each file into the cache by an atomic rename). Uses the internal functions of
+    sosabs.lut (_run_job, _collect, _assemble), as build_lut does for one grid.
+    """
+    import itertools
+    import multiprocessing as mp
+    from concurrent.futures import ThreadPoolExecutor
+    import xarray as xr
+    from sosabs import params as P, runner
+    from sosabs.lut import _run_job, _collect, _assemble
+    t0 = time.time()
+    root = runner.sos_root(None)
+    os.environ["SOS_ABS_ROOT"] = root
+    backend = runner.available_backend(root)
+    os.makedirs(CACHE, exist_ok=True)
+    jobs, meta = [], []
+    for k, (coords, grid, fixed) in enumerate(parts):
+        grid = P.normalize(grid)
+        fixed = {n: v for n, v in P.normalize(fixed).items() if n not in grid}
+        names = list(grid)
+        values = [np.atleast_1d(np.asarray(grid[n])) for n in names]
+        shape = tuple(len(v) for v in values)
+        meta.append((coords, names, values, shape, fixed))
+        for idx in itertools.product(*[range(n) for n in shape]):
+            par = dict(fixed)
+            for n, v, i in zip(names, values, idx):
+                par[n] = v[i].item()
+            jobs.append(((k, idx), par, backend, root, CACHE))
+    results = {}
+    n_workers = max(1, min(N_WORKERS, len(jobs)))
+    if backend == "f2py":   # one process per run (fresh Fortran state), as build_lut
+        with mp.get_context("fork").Pool(n_workers, maxtasksperchild=1) as pool:
+            _collect(pool.imap_unordered(_run_job, jobs), results, len(jobs), False, t0)
+    else:
+        with ThreadPoolExecutor(n_workers) as ex:
+            _collect(ex.map(_run_job, jobs), results, len(jobs), False, t0)
+    out = []
+    for k, (coords, names, values, shape, fixed) in enumerate(meta):
+        res = {idx: r for (kk, idx), r in results.items() if kk == k}
+        ds = _assemble(names, values, shape, res, True, fixed, backend, root, time.time() - t0, attrs)
+        if "aot_ref" in fixed:      # AOT at the wavelength of the run (-AER.AOTref, -AER.Waref = wl)
+            ds["aot_wl"] = float(fixed["aot_ref"])
+            ds["aot_wl"].attrs = {"long_name": "aerosol optical thickness at the wavelength of the run"}
+        for dim, val in coords.items():
+            ds = ds.drop_vars(dim, errors="ignore").expand_dims({dim: val})
+        out.append(ds)
+    return xr.combine_by_coords(out, combine_attrs="drop_conflicts")
+
+BASE_V4 = {"-ANG.Rad.NbGauss": 24, "-ANG.Aer.NbGauss": 40, "-SOS.View.Dphi": 5, "-SOS.OutputAlt": -1.0,
+           "-AP.HR": 8.0, "-AP.AerProfile.Type": 1, "-SURF.Type": 1, "-SURF.Ind": 1.33}
+SZA_TG_V4 = np.degrees(np.arccos(1 / np.array([1., 1.5, 2., 3., 4., 6., 8.5])))
+if SET == "v4":
+    OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "data", "v4")
+    v4_main()
+    sys.exit(0)
+
 os.makedirs(OUTDIR, exist_ok=True)
 os.makedirs(CACHE, exist_ok=True)
 
