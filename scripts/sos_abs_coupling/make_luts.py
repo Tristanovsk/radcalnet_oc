@@ -214,8 +214,7 @@ def v4_checks(wls, jobs):
                       if not os.path.exists(MOPSMAP.format(model=m, wl=w))})
     if missing:
         problems.append(f"{len(missing)} mopsmap file(s) missing, e.g. {missing[0]}")
-    problems.append("not verified yet: the SOS-ABS reading of a converted mopsmap file (one test run against "
-                    "an OSOAA run of the LUT, e.g. COAV_rh70 at 0.8 um, before --run)")
+    # reading of the converted mopsmap files checked with test_extdata.py (COAV_rh70, 0.8 um, against OSOAA)
     return problems
 
 
