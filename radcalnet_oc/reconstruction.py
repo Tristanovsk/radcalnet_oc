@@ -48,7 +48,7 @@ class Reconstruction:
     :param vza: viewing zenith angle (deg) of the measurements (40 deg for AERONET-OC)
     :param azi: relative azimuth angle (deg) of the measurements (90 deg for AERONET-OC)
     :param phyto_model: Chl-specific inherent optical properties of phytoplankton
-        (:py:meth:`invRrs.utils.data.load_iop_phyto`)
+        (``invRrs.utils.data.load_iop_phyto``)
     :param sigma: uncertainty of the measured reflectance weighting the fit, function of the
         reflectance of the bands (e.g. ``lambda rrs: 0.05 * rrs + 2e-5``), or None for an unweighted fit
         (default, as the AERONET-OC chain of invRrs)
@@ -171,7 +171,7 @@ class Reconstruction:
 
 def reconstruct_rrs(Rrs, sza, chl=None, band_dim='wl', **kwargs):
     '''
-    Hyperspectral reconstruction of multispectral remote-sensing reflectances (see :py:class:`Reconstruction`,
+    Hyperspectral reconstruction of multispectral remote-sensing reflectances (see :py:class:`~radcalnet_oc.reconstruction.Reconstruction`,
     which takes ``kwargs``).
 
     :return: :py:class:`xarray.Dataset` of :py:meth:`Reconstruction.reconstruct`

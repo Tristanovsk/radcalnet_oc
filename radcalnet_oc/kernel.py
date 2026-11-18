@@ -361,7 +361,7 @@ class GasCoupling:
 
     @property
     def windows(self):
-        '''Absorption windows: dict ``{name: (wl_min, wl_max)}`` (nm).'''
+        '''Absorption windows, dict ``{name: (wl_min, wl_max)}`` (nm).'''
         t = self.table.drop_duplicates('window')
         return {r.window: (float(r.wl_min), float(r.wl_max)) for r in t.itertuples()}
 

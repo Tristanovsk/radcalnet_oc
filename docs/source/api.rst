@@ -30,6 +30,7 @@ Processing chain
 
    radcalnet_oc.run.main
    radcalnet_oc.log.set_logging
+   radcalnet_oc.process.package_version
 
 Look-up tables and auxiliary data
 ---------------------------------
@@ -48,6 +49,7 @@ Look-up tables and auxiliary data
    :nosignatures:
 
    radcalnet_oc.lut.open_lut
+   radcalnet_oc.lut.interp_wl_loglog
 
 Remote-sensing reflectance
 --------------------------
@@ -93,11 +95,18 @@ Atmosphere
    :nosignatures:
 
    radcalnet_oc.kernel.GaseousTransmittance
+   radcalnet_oc.kernel.GasCoupling
    radcalnet_oc.kernel.O2LineByLine
    radcalnet_oc.kernel.Gases
    radcalnet_oc.kernel.Aerosol
    radcalnet_oc.kernel.Misc
    radcalnet_oc.kernel.Radiometry
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.kernel.path_length_transmittance
 
 Sunglint
 --------
@@ -109,6 +118,25 @@ Sunglint
 
    radcalnet_oc.coxmunk.Sunglint
 
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.coxmunk.glint_angle
+   radcalnet_oc.coxmunk.glint_flags
+   radcalnet_oc.coxmunk.glint_uncertainty
+   radcalnet_oc.coxmunk.flag_attrs
+   radcalnet_oc.coxmunk.uncertain_attrs
+
+Sunglint flags and uncertainty settings (module ``radcalnet_oc.coxmunk``):
+
+.. autodata:: radcalnet_oc.coxmunk.GLINT_FLAGS
+.. autodata:: radcalnet_oc.coxmunk.GLINT_LEVELS
+.. autodata:: radcalnet_oc.coxmunk.GLINT_ANGLE_MIN
+.. autodata:: radcalnet_oc.coxmunk.GLINT_ENSEMBLE
+.. autodata:: radcalnet_oc.coxmunk.WIND_UNC
+.. autodata:: radcalnet_oc.coxmunk.GLINT_UNC_THRESHOLD
+
 Uncertainty budget
 ------------------
 
@@ -117,6 +145,8 @@ Uncertainty budget
    :nosignatures:
 
    radcalnet_oc.uncertainty.uncertainty_budget
+
+.. autodata:: radcalnet_oc.uncertainty.INPUT_UNC
 
 Spectral response of the sensors
 --------------------------------

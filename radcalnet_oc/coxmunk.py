@@ -17,13 +17,13 @@ GLINT_FLAGS = {'glint_low': 1, 'glint_moderate': 2, 'glint_high': 4, 'glint_near
 GLINT_LEVELS = (0.01, 0.1, 0.5)
 #: glint angle (deg) below which ``glint_near_specular`` is set
 GLINT_ANGLE_MIN = 30.
-#: plausible wave slope statistics of the glint uncertainty: Cox and Munk, Student t, heavy-tailed mixture, and the
+#: plausible wave slope statistics of the glint uncertainty -- Cox and Munk, Student t, heavy-tailed mixture, and the
 #: mixture with the core and tail retuned on the Sentinel-2 matchups of the AERONET-OC platforms (station wind)
 GLINT_ENSEMBLE = (('cm_iso', {}),
                   ('cm_iso_t', {'nu': 7.}),
                   ('cm_iso_mix', {'f_tail': 0.05, 'sigma2_tail': 0.12}),
                   ('cm_iso_mix', {'f_tail': 0.10, 'sigma2_tail': 0.08, 'sigma2_coef': (3e-3, 35e-4)}))
-#: uncertainty of the wind speed of the glint (m s-1): platform wind against the roughness of the scene
+#: uncertainty of the wind speed of the glint in m s-1, platform wind against the roughness of the scene
 WIND_UNC = 1.5
 #: relative uncertainty of the TOA reflectance due to the glint above which a wavelength is flagged
 #: ``glint_uncertain`` (operational flag of the simulations distributed for Cal/Val, all wavelengths)
@@ -63,7 +63,7 @@ def glint_angle(sza, vza, azi):
 
 def glint_flags(fraction, angle, levels=GLINT_LEVELS, angle_min=GLINT_ANGLE_MIN):
     '''
-    Sunglint bitmask (:data:`GLINT_FLAGS`).
+    Sunglint bitmask (:data:`~radcalnet_oc.coxmunk.GLINT_FLAGS`).
 
     :param fraction: direct glint divided by the total TOA reflectance (with glint) at the reference wavelength
     :param angle: glint angle (deg)
