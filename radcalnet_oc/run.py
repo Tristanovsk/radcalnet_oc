@@ -3,7 +3,8 @@
 Usage:
   radcalnet_oc <input_file> [--output <output_file>] [--vza angles] [--azi angles]
    [--aerosol_combination props] [--solar_database name] [--rrs_name name] [--o2_model model]
-   [--gas_coupling coupling] [--rrs_extension method] [--bands wavelengths] [--fwhm fwhm] [--expon expon] [--no_clobber]
+   [--gas_coupling coupling] [--rrs_extension method] [--rayleigh_pressure flag] [--bands wavelengths]
+   [--fwhm fwhm] [--expon expon] [--no_clobber] [--log_level level] [--log_file file]
   radcalnet_oc -h | --help
   radcalnet_oc -v | --version
 
@@ -33,6 +34,9 @@ Options:
   --rrs_extension method  Rrs beyond the spectral range of the input: pure_water (model with the
                    absorption of pure water fitted on the near-infrared end of the input) or zero;
                    default: settings: rrs_extension of the configuration
+  --rayleigh_pressure flag  Scale the Rayleigh scattering of the look-up tables with the surface pressure
+                   of each measurement: true or false; default: settings: rayleigh_pressure of the
+                   configuration (true)
   --bands wavelengths  Central wavelengths (nm) of sensor bands, comma-separated: the band-averaged
                    Rtoa, Ratm, Ed, E0 and Rrs are added to the output (variables <name>_bands,
                    dimension wl_band)
@@ -40,6 +44,9 @@ Options:
                    one per band, comma-separated [default: 10]
   --expon expon    Exponent of the super-Gaussian spectral responses (2: Gaussian) [default: 3]
   --no_clobber     Do not process <input_file> if <output_file> already exists.
+  --log_level level  Minimum level of the messages: DEBUG (internal steps), INFO (progress), WARNING
+                   or ERROR [default: INFO]
+  --log_file file  Also append the messages to this file
 
   Example:
       radcalnet_oc AAOT_input.nc --vza 0,10 --azi 90 --bands 443,490,560,665,865 --fwhm 20
@@ -54,6 +61,9 @@ from pathlib import Path
 from docopt import docopt
 
 from . import __package__, __version__
+from .log import set_logging
+
+logger = logging.getLogger(__name__)
 
 BAND_VARIABLES = ['Rtoa', 'Ratm', 'Ed', 'E0', 'Rrs']
 
@@ -63,12 +73,27 @@ def floats(text):
     return [float(v) for v in text.split(',') if v.strip()]
 
 
+def _flag(value, name):
+    """Boolean option of the command line (None: default of the configuration)."""
+    if value is None:
+        return None
+    if value.lower() in ('true', '1', 'yes'):
+        return True
+    if value.lower() in ('false', '0', 'no'):
+        return False
+    raise ValueError(f'{name} must be true or false, not {value!r}')
+
+
 def main(argv=None):
     '''Entry point of the ``radcalnet_oc`` command; returns the exit status.'''
     # -h / -v are handled (and exit) here
     args = docopt(__doc__, argv=argv, version=__package__ + '_' + __version__)
 
-    logging.basicConfig(format='%(asctime)s %(levelname)s | %(message)s', level=logging.INFO, force=True)
+    try:
+        set_logging(level=args['--log_level'], log_file=args['--log_file'])
+    except (ValueError, OSError) as error:
+        print(f'error: {error}', file=sys.stderr)
+        return 1
 
     import numpy as np
     import xarray as xr
@@ -82,7 +107,7 @@ def main(argv=None):
     output_file = Path(output_file)
 
     if output_file.exists() and args['--no_clobber']:
-        logging.info(f'{output_file} already exists; skip')
+        logger.info(f'{output_file} already exists; skip')
         return 0
 
     try:
@@ -98,14 +123,15 @@ def main(argv=None):
                 raise ValueError(f'--aerosol_combination needs {len(AEROSOL_MODELS)} values '
                                  f'(one per model: {", ".join(AEROSOL_MODELS)})')
 
-        logging.info(f'process {input_file}')
+        logger.info(f'process {input_file}')
         input_db = xr.open_dataset(input_file)
         process = Process(input_db=input_db, vza=vza, azi=azi,
                           solar_database=args['--solar_database'],
                           Rrs_name=args['--rrs_name'],
                           o2_model=args['--o2_model'],
                           gas_coupling=args['--gas_coupling'],
-                          rrs_extension=args['--rrs_extension'])
+                          rrs_extension=args['--rrs_extension'],
+                          rayleigh_pressure=_flag(args['--rayleigh_pressure'], '--rayleigh_pressure'))
         if aerosol_combination is None:
             process.execute()
         else:
@@ -144,9 +170,9 @@ def main(argv=None):
 
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output.to_netcdf(output_file)
-        logging.info(f'output written in {output_file}')
+        logger.info(f'output written in {output_file}')
     except Exception:
-        logging.error('radcalnet_oc processing failed', exc_info=True)
+        logger.exception('radcalnet_oc processing failed')
         return 1
     return 0
 

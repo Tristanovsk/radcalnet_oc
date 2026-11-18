@@ -17,6 +17,8 @@ import logging
 
 from .config import load_config
 
+logger = logging.getLogger(__name__)
+
 opj = os.path.join
 
 

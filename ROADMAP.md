@@ -1,16 +1,40 @@
 # Roadmap of radcalnet_oc
 
-Status: November 2026. The tasks are ordered from the easiest to the hardest, in four tiers; within a tier,
-in the suggested order. The validation that motivates them is in the report
+Status: 18 November 2026. The tasks are ordered from the easiest to the hardest, in four tiers; within a tier,
+in the suggested order (task numbers are kept stable; new tasks take the next free number). The validation that motivates them is in the report
 [`reports/validation_roadmap_2026-11`](reports/validation_roadmap_2026-11) (Sentinel-2 L1C matchups at four
 AERONET-OC sites, coupling study against SOS-ABS, computing performance).
 
 **Main finding driving the priorities.** In the visible, the simulated TOA reflectance agrees with MSI within
 -3 to 0 % (443-560 nm). Beyond 665 nm it is systematically too low by 2-3e-3, nearly flat with wavelength
 (-8 % at 705 nm to -60 % at 2190 nm): the deficit decreases with the glint angle and increases with the
-aerosol optical thickness. Explaining it (task 10) has the largest expected impact.
+aerosol optical thickness.
 
-**Suggested order:** 1 → 2 → 3, then 10 with 8 and 9 alongside; the rest of tier 1 when convenient.
+**Update (17 November 2026), after task 10.** Most of the deficit is explained. It is direct sunglint from a
+slope distribution with a heavier tail than Cox-Munk: with the heavy-tailed statistics (`cm_iso_mix`) and the
+screening by the sunglint flags, the bias at 2190 nm falls from -59 to -24 % (AAOT L2.0). The AOT dependence is
+mostly a seasonal confound with the glint angle (high AOT in summer, small glint angles), and thin cirrus
+(observed B10) accounts for about 1e-3. The aerosol mixture is not the cause: the mixtures with enough coarse mode
+contradict the measured AOT spectrum. Open: a near-infrared term of about -1e-3 at 865 nm; the blue bias
+(-3 to -4 % at 443 nm), which does not follow the pressure dependence that the Rayleigh scaling predicts (task 24).
+
+**Cross-package review (17 November 2026)** of the recent work in GRS, hGRS, invRrs and shallowat: tasks 25-29 (the pressure statistics of GRS and hGRS are in task 24).
+GRS and hGRS moved their LUT wavelength interpolation to log-log space; the same change in radcalnet_oc moves
+the path reflectance by 1.2-1.6 % at 443 nm and 0.3-0.5e-3 at 865 nm, in the direction of the two open residuals
+of the matchups (task 25).
+
+**Update (18 November 2026), matchups rerun with the log-log interpolation and the Rayleigh pressure scaling**
+(`/data/radcalnet/matchup/sentinel2_dev` against `sentinel2`, `scripts/s2_toa_matchup/residual_change.py`, same
+scenes, AOT(550) < 0.3, glint angle > 30°). At 443 nm the simulation rises by 0.96-1.42 % (1.2-1.5e-3), of which
+the pressure scaling is -0.09 to +0.33 %: AAOT L2.0 -4.21 -> -2.56e-3 (-3.0 -> -1.8 %, N = 314), Galata
+-3.81 -> -2.75e-3, Section-7 L1.5 -4.88 -> -3.69e-3. The remaining blue bias now depends on the AOT: -2.5 to
+-3.1 % for AOT < 0.08, about 0 % (-0.1 to +0.1 %) for 0.15-0.3 at AAOT and Galata, so it is a clean-atmosphere
+term (Rayleigh, Rrs, surface), not aerosol (task 24). At 865 nm the change is only +0.13 to +0.20e-3: the
+near-infrared deficit stays at -2.5e-3 (AAOT L2.0) to -7.9e-3 (Section-7) (task 10). Other visible bands move by
+about 0.3 point.
+
+**Suggested order:** 25 (wavelength interpolation), 23 (release 1.2), 27; then 9 with 8 alongside, 26, the open
+points of 10 and 24; then 15 and 17.
 
 ## Tier 1: quick wins (hours to a day each)
 
@@ -36,6 +60,25 @@ aerosol optical thickness. Explaining it (task 10) has the largest expected impa
 6. ~~**Reproducibility of the scripts.**~~ *Done:* README of `scripts/sos_abs_coupling` (`sosabs` dependency, data
    `SOS_ABS_V3` ~0.7 GB, steps simulations → fit → notebook; whether the candidate CSV is tracked) and of
    `scripts/s2_toa_matchup` (L1C subsets, `aeronet_oc_db`, invRrs, outputs, `matchup_analysis.py`).
+25. **Wavelength interpolation of the TOA LUT in log-log space** (as GRS 916399f and hGRS 6e290e6). The path
+    reflectance, the diffuse transmittances and the spectral AOT are interpolated quadratically in linear space
+    between the 10 nodes (`LUT.lut_preparation`, `Process`). Leave-one-out on the LUT: 1-10 % error at 400-800 nm
+    and up to 60 % at 1000 nm, against 0.1-1.5 % in log-log. Validate with the OSOAA runs between the nodes that the
+    LUT leaves out (0.45, 0.55, 0.65, 0.75, 0.85, 0.9, 2.4 um, `scripts/wl_interpolation`), switch the scheme,
+    update the regression reference, and recompute the matchup residuals at 443 and 865 nm (tasks 10, 24).
+    *Done for the path reflectance* (branch `feature/wl_interpolation`): median error < 0.1 % for AOT <= 0.1
+    (0.4 % at 900 nm, 0.6 % at 2400 nm) against -1 % at 450 and 850 nm and -4 to -9 % at 1150-1400 nm before; TOA
+    reflectance of the template +1.3 % (+1.6e-3) at 443 nm, +0.9 % at 865 nm, +7.1 % at 1240 nm (merged in
+    `develop`). *Matchups recomputed* (18 November 2026, header): +1.0 to +1.4 % at 443 nm, +0.13 to +0.20e-3 at
+    865 nm. Remaining: at AOT 0.35 log-log overestimates by 1-2 % at 1150-1400 nm (interpolate the Rayleigh and
+    aerosol parts separately?).
+27. **Provenance of the Rrs reconstruction.** `reconstruction.py` uses the default sediment n_i shape of invRrs,
+    which changed twice on 16 November 2026 (now `'atd_ext:0.5'`): record the invRrs version and settings in
+    `provenance()`, set a minimum version, pin the shape in radcalnet_oc.
+23. **Release 1.2.** The `[Unreleased]` section has changed the default results (Rayleigh pressure scaling on by
+    default: about -0.06 % of the TOA reflectance per hPa below 1015.2 hPa in the blue) and added the direct
+    sunglint and its flags, the first uncertainty budget and the logging scheme: release them with a tag, so
+    that the matchup and GRS/hGRS studies refer to a version, not to a branch.
 
 ## Tier 2: moderate (days to a week), mostly diagnostics on existing data
 
@@ -47,20 +90,54 @@ aerosol optical thickness. Explaining it (task 10) has the largest expected impa
    node; robust parallel runs (worker timeouts, retries).
 9. **Matchups at all AERONET-OC sites** with Sentinel-2 subsets (catalog of `aeronet_oc_db`), L1.5 and
    L2.0; per-unit gains (S2A, S2B, S2C) with bootstrap confidence intervals in `matchup_analysis.py`.
-10. **Diagnose the NIR-SWIR deficit** on the existing matchups:
-    - aerosols: default COAV/MACL 50/50 vs retrieval with DESE/MACL/WASO vs the 6 models of the LUT;
-      residuals of the spectral AOT fit; coarse mode in the SWIR;
-    - sunglint: Cox-Munk tail vs glint angle and wind, anisotropic statistics with the ERA5 wind
-      direction, sky glint of the LUT at the measured wind;
-    - screening: box size (600 m half-size vs 150-300 m), SWIR (0.03) and cirrus (0.01) thresholds,
-      spatial homogeneity;
-    - adjacency: distance to the coast (Section-7, Galata).
+10. **Diagnose the NIR-SWIR deficit** on the existing matchups. *Mostly done (November 2026, validation
+    report):*
+    - ~~aerosols~~: the retrieved mixture is not the cause; the OPAC models consistent with the AERONET-OC AOT
+      spectrum give too little SWIR path reflectance per unit AOT, also with a hygroscopic fine mode up to 95 %
+      RH (`aerosol_diagnosis.py`); the AOT term is not significant once the glint angle and the cirrus band are
+      in the regression (`aot_term_search.py`, `sixs_terms.py`);
+    - ~~sunglint tail~~: heavy-tailed isotropic statistics fitted on the SWIR excess (`glint_tail_fit.py`,
+      `glint_slope_inversion.py`); the wind term is in the core slope variance (retuned core
+      0.003 + 0.0035 W with a tail fraction 0.10);
+    - open: the remaining near-infrared term (about -1e-3 at 865 nm; the log-log interpolation adds only
+      +0.13 to +0.20e-3, residual -2.5e-3 at AAOT L2.0, -1.8e-3 for AOT < 0.08, task 25); anisotropic statistics with the ERA5
+      wind direction; refit of the glint statistics with the ERA5 wind instead of the platform wind (task 7)
+      before changing the defaults of `Sunglint`; thin cirrus in the simulation or as a screening term;
+    - open: screening (box size 600 m half-size vs 150-300 m, SWIR and cirrus thresholds, homogeneity) and
+      adjacency (distance to the coast, Section-7, Galata).
 11. **Aerosol retrieval by default** when the spectral AOT is available (`kernel.Aerosol` is used only when
-    called explicitly), if task 10 confirms the gain.
+    called explicitly). *Deprioritised:* task 10 found no gain from the mixture in the NIR-SWIR; keep it for the
+    consistency with the AOT spectrum, and revisit with the aerosol term of the uncertainty budget (task 17).
 12. **Refactor `Process.execute`**: separate the physics from the assembly of the output dataset, so that
     the coupled terms can be tested on their own.
 13. **Limits of the TOA LUT**: viewing zenith angles stop at 48.9° (below the swath edges of OLCI and VIIRS):
     quantify the extrapolation; check whether the LUT is scalar or vector.
+26. **EnMAP and PRISMA radiometric closure** with the current radcalnet_oc: rerun the closure of hGRS
+    (`hgrs/validation/aeronet_oc/closure.py`, EnMAP L1C against radcalnet_oc at the AERONET-OC stations, written
+    with linear Rrs interpolation, before the pressure scaling and the glint) with version 1.2, the invRrs
+    reconstruction and the direct glint; per-band gains with uncertainties; extend to PRISMA. It tells whether the
+    VNIR/SWIR offset that hGRS corrects empirically (29c54ea), still seen in the red by the shallowat ACTIUM study,
+    is a sensor effect.
+24. **Blue bias and pressure.** With the Rayleigh pressure scaling (done, validated with OSOAA), the residual at
+    443 nm should decrease by about 0.64 % per % of pressure, but the matchups give -0.11 (t = -0.6), about three
+    standard errors away: another blue term correlated with the pressure is likely present (Rrs used at nadir,
+    task 15; clear and calm days at high pressure). Investigate before using the blue bias of the matchups.
+    Close the real-scene check of the scaling in GRS (223 Sentinel-2 images) and hGRS (103 EnMAP matchups)
+    against AERONET-OC (`scripts/rayleigh_pressure`; runs in progress).
+    *Rerun with the pressure scaling and the log-log interpolation* (18 November 2026, header): the median residual at
+    443 nm goes from -3.0 to -1.8 % (AAOT L2.0); the pressure part is small (-0.09 to +0.33 % of the TOA
+    reflectance). The bias is now concentrated at low AOT: -2.8 % (AAOT L2.0) and -2.6 % (Galata) for AOT < 0.08,
+    -0.1 and +0.1 % for 0.15-0.3. Next: regress the new residual on the pressure, AOT and Rrs(443) to separate a
+    Rayleigh / surface term from an aerosol compensation (the aerosol retrieval or the fine-mode share may hide
+    the deficit at higher AOT).
+
+28. **Shared physics across radcalnet_oc, GRS and hGRS.** The path-length coupling, the Rayleigh pressure
+    scaling and the log-log interpolation are implemented three times: a set of reference values (inputs and
+    expected outputs) tested in the CI of each package, so that they do not drift apart (e.g. the reference
+    pressure 1013.2 hPa of the linear scaling of GRS against 1015.2 hPa of the LUT runs).
+29. **One wind source for the glint.** Refit the heavy-tailed glint statistics with the ERA5 or CAMS wind (GRS
+    uses CAMS) before changing the defaults of `Sunglint` (with task 7); then test the glint-fraction flags of
+    radcalnet_oc as the glint screening of GRS (hook: its new `p_slope` switch).
 
 ## Tier 3: substantial (weeks)
 
@@ -76,12 +153,19 @@ aerosol optical thickness. Explaining it (task 10) has the largest expected impa
 15. **Bidirectional Rrs.** Adapt the normalised AERONET-OC Rrs to the viewing and solar geometry of the
     satellite (f/Q tables, or the invRrs reconstruction at the satellite geometry instead of nadir); possibly
     part of the -3 to -4 % at 443 nm. Use the per-band viewing angles of MSI.
-16. **Direct sunglint in the package** (today in the matchup script): coupled attenuation, gaseous
-    transmittance consistent with the coupling, uncertainty from the wind; glint-based screening threshold
-    instead of the fixed 30° glint angle.
-17. **Uncertainty budget per band.** Propagate the uncertainties of Rrs, AOT / aerosol model, water vapour,
-    O3, pressure and wind, plus the model residuals (coupling per window, REPTRAN vs CKD, invRrs
-    reconstruction and SWIR extension of Rrs); Monte Carlo or linearised through `Process`.
+16. ~~**Direct sunglint in the package**~~ *Done* (`Process.compute_sunglint`, `Process.execute(sunglint=...)`):
+    TOA direct glint with the gaseous and direct transmittances of the Sun-surface-sensor path, glint angle,
+    bitmask of glint levels and near-specular geometry (`GLINT_FLAGS`) replacing the fixed 30° glint angle
+    (Youden index 53 vs 51 on the 715 matchups), uncertainty from an ensemble of slope statistics and wind
+    +/- 1.5 m s-1, spectral flag `glint_uncertain`. Remaining: gaseous transmittance of the glint path consistent
+    with the coupling; anisotropic statistics (task 10).
+17. **Uncertainty budget per band.** *First version done* (`radcalnet_oc.uncertainty.uncertainty_budget`: AOT,
+    water vapour, O3, pressure, wind and Rrs propagated through `Process` by central differences, glint term,
+    quadrature; provisional input uncertainties). Remaining: the input uncertainties of the RadCalNet assessment;
+    the aerosol model term (spread of the mixtures compatible with the AOT spectrum); the model residuals (coupling
+    per window, REPTRAN vs CKD, invRrs reconstruction and SWIR extension of Rrs); the terms found on the matchups
+    (thin cirrus, near-infrared term); per-band output and correlations between the terms; cost (two simulations
+    per input).
 18. **HYPERNETS** ([waterhypernet.org/data](https://waterhypernet.org/data/)): reader of the L2 water products
     (hyperspectral Rrs, uncertainties, flags) into the input format; validation of the invRrs reconstruction
     and of the SWIR extension at the sites co-located with AERONET-OC; direct hyperspectral input with its
@@ -103,6 +187,19 @@ aerosol optical thickness. Explaining it (task 10) has the largest expected impa
     PACE/OCI and hyperspectral missions (EnMAP, PRISMA, FLEX).
 
 ## Done
+
+Unreleased (to go into 1.2, task 23):
+
+- Pressure scaling of the Rayleigh scattering, on by default (`rayleigh_pressure`), validated with OSOAA at
+  +/- 20 hPa (within 0.03 % of the path reflectance for a Rayleigh atmosphere, 0.25 % with AOT 0.1); also
+  implemented in GRS and hGRS.
+- Direct sunglint, heavy-tailed slope statistics (`cm_iso_t`, `cm_iso_mix`, core coefficient `sigma2_coef`),
+  sunglint flags and glint uncertainty (task 16).
+- First uncertainty budget (task 17).
+- Logging scheme: one logger per module under `radcalnet_oc`, `set_logging`, `--log_level` and `--log_file`.
+- Tutorials rerun for version 1.1; first tutorial *Simulate the TOA signal from user settings*.
+
+Version 1.1.0:
 
 - Wind speed as an input variable, interpolated between the LUT wind nodes (1.1.0).
 - Spectral extension of Rrs beyond the input (pure water) and hyperspectral reconstruction with invRrs

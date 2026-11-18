@@ -43,6 +43,8 @@ from pathlib import Path
 import platformdirs
 import yaml
 
+logger = logging.getLogger(__name__)
+
 PACKAGE = 'radcalnet_oc'
 
 # light TOA LUT shipped with the package, used when the TOA LUT of the configuration is missing
@@ -164,12 +166,12 @@ def ensure_toa_lut():
     if path.is_file():
         return path
     if auto_download_enabled():
-        logging.info('TOA LUT missing: downloading it from Zenodo into %s (once, about 900 MB)',
-                     load_config()['path']['lutdata'])
+        logger.info('TOA LUT missing: downloading it from Zenodo into %s (once, about 900 MB)',
+                    load_config()['path']['lutdata'])
         try:
             download_toa_lut()
         except (ValueError, OSError) as error:
-            logging.error('automatic download of the TOA LUT failed: %s', error)
+            logger.error('automatic download of the TOA LUT failed: %s', error)
     return path if path.is_file() else None
 
 

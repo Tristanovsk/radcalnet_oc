@@ -29,6 +29,7 @@ Processing chain
    :nosignatures:
 
    radcalnet_oc.run.main
+   radcalnet_oc.log.set_logging
 
 Look-up tables and auxiliary data
 ---------------------------------
@@ -107,6 +108,15 @@ Sunglint
    :nosignatures:
 
    radcalnet_oc.coxmunk.Sunglint
+
+Uncertainty budget
+------------------
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.uncertainty.uncertainty_budget
 
 Spectral response of the sensors
 --------------------------------

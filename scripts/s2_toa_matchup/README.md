@@ -28,6 +28,23 @@ measurements of a site. Not part of the package.
    scenes are skipped (`--overwrite` to redo); failed scenes are retried at the next run. About 15 s per
    scene, 2.3 GB peak memory.
 
+   The glint statistics are set with `--glint-stats` (`cm_iso`, or the heavy-tailed `cm_iso_t` and `cm_iso_mix`
+   of `radcalnet_oc.Sunglint`, parameters `--glint-nu`, `--glint-f-tail`, `--glint-sigma2-tail`, and the core slope
+   variance `--glint-s0 + --glint-s1 W`, Cox-Munk 0.003 + 0.00512 W by default); the output then gets the suffix
+   `_<glint-stats>` (`_core` added for a non Cox-Munk core). Retuned set on the platform winds: `--glint-s1 0.0035
+   --glint-f-tail 0.10 --glint-sigma2-tail 0.08`. With `--reglint`, the glint of the cached scenes is recomputed with the
+   atmospheric factor of the cached simulation (exact, a few minutes for all the sites) without new simulation:
+
+   ```bash
+   python s2_toa_matchup.py --site AAOT --level lev20 --reglint --glint-stats cm_iso_mix
+   ```
+
+   The gathered files carry the sunglint flags of each scene (`glint_fraction`, glint / simulated TOA reflectance
+   with glint at 865 nm, and the bitmask `glint_flags` of `radcalnet_oc.GLINT_FLAGS`: low, moderate, high glint,
+   near-specular geometry), the glint uncertainty `glint_unc` (spread of `radcalnet_oc.coxmunk.GLINT_ENSEMBLE` at
+   the wind +/- 1.5 m/s, per band) and the spectral flag `glint_uncertain` (per band, `glint_unc / simg_median` >
+   5 %).
+
 2. **Analysis** (`matchup_analysis.py`):
 
    ```bash
@@ -40,7 +57,69 @@ measurements of a site. Not part of the package.
    AOT(550) < 0.3, glint angle > 30 deg (options `--frac-min`, `--npix-min`, `--dt-max`, `--aot-max`,
    `--glint-min`).
 
+   With the heavy-tailed glint and the sunglint flags (`--glint-stats cm_iso_mix` reads the `_cm_iso_mix` files;
+   `--glint-pixels` uses the statistics without the SWIR threshold and keeps the homogeneous glint scenes;
+   `--flags-exclude` replaces the glint-angle screening):
+
+   ```bash
+   # matchups per sunglint level and efficiency of the screenings (glint angle, flags), figure s2_glint_levels.pdf
+   python matchup_analysis.py glint --sites AAOT_lev20 Galata_Platform_lev20 AAOT_lev15 Section-7_Platform_lev15 \
+       --glint-stats cm_iso_mix --glint-pixels --fig-dir figures
+   python matchup_analysis.py stats --glint-stats cm_iso_mix --glint-pixels --flags-exclude glint_high glint_near_specular
+   ```
+
+   `aot_term_search.py` takes the same `--glint-stats` and `--flags-exclude` options, and `--with-glint` for the
+   deficit including the simulated glint.
+
 3. **Notebook**: `sentinel2_radcalnet_oc_toa_matchup.ipynb`, spectra and time series of the matchups of a site.
+
+4. **6S analysis of the NIR-SWIR deficit** (`sixs_terms.py`): the coupling and environment terms of 6S (trapping
+   of the water signal, adjacency of the coast with the 6S environment functions and the Natural Earth land
+   polygons of cartopy, whitecaps) compared with the deficit, and decomposition of the deficit into an offset and
+   a term proportional to AOT (dependence on wind, Angstrom exponent, glint angle and L1C processing baseline):
+
+   ```bash
+   python sixs_terms.py --odir /data/radcalnet/matchup/sentinel2
+   ```
+
+5. **Aerosol model diagnosis of the AOT dependence** (`aerosol_diagnosis.py`): path reflectance of the six OPAC
+   models of the LUT at 865, 1610 and 2190 nm for each matchup (geometry of the scene, AOT and wind of the nearest
+   AERONET-OC measurement), deficit refitted with alternative mixtures, and consistency of each mixture with the
+   measured AOT spectrum. The scenes are cached per site in `--cache` (about 12 min for the 511 matchups with
+   4 processes, then seconds):
+
+   ```bash
+   python aerosol_diagnosis.py --n-jobs 4
+   ```
+
+6. **Search for the term correlated with the AOT** (`aot_term_search.py`): signatures of the candidate non-aerosol
+   terms (cirrus with the B10 reflectance, representativeness of the AERONET-OC AOT, glint angle and season, wind)
+   and comparison of the deficit with the simulated direct glint per glint-angle bin. Reads the cache of
+   `aerosol_diagnosis.py` for the retrieved mixture (about 35 s):
+
+   ```bash
+   python aot_term_search.py
+   ```
+
+7. **Slope variance inverted from the SWIR excess** (`glint_slope_inversion.py`): per scene, the isotropic Cox-Munk
+   slope variance whose TOA glint matches the excess sat - sim (raw and cirrus-corrected), compared with the
+   AERONET-OC wind; empirical slope pdf per facet tilt, directional statistics (Cox-Munk, Breon-Henriot) averaged
+   over the wind directions, and two-component slope distribution fit (about 35 s):
+
+   ```bash
+   python glint_slope_inversion.py
+   ```
+
+8. **Heavy-tailed slope statistics** (`glint_tail_fit.py`): the `cm_iso_t` (Student t) and `cm_iso_mix`
+   (Gaussian + wide slopes) statistics of `radcalnet_oc.Sunglint`, with a scaled core, fitted on the
+   cirrus-corrected excess at the station wind over all the glint angles (statistics without the SWIR threshold,
+   which removes the most glinted scenes, cloudy scenes rejected by their heterogeneity in the box;
+   `--glint-min 30` for the far tail only), and wind inverted per scene with the fitted statistics (about 70 s):
+
+   ```bash
+   python glint_tail_fit.py
+   python glint_tail_fit.py --core-wind   # wind dependence of the core slope variance s0 + s1 W (about 60 s)
+   ```
 
 The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
 `reports/validation_roadmap_2026-11`. The output files record the radcalnet_oc version and settings

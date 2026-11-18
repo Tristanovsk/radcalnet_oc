@@ -22,6 +22,8 @@ from importlib.resources import files
 
 from .config import load_config, ensure_toa_lut, toa_lut_path, trans_lut_path, LUT_FILE_BACKUP
 
+logger = logging.getLogger(__name__)
+
 opj = os.path.join
 
 # ------------------------------------
@@ -79,6 +81,31 @@ def open_lut(path):
     return OPEN_LUTS[key].copy()
 
 
+def interp_wl_loglog(da, wl, method='quadratic'):
+    '''
+    Interpolate `da` in wavelength in log-log space: :math:`\ln y` against :math:`\ln \lambda`.
+
+    The path reflectance of the TOA LUT varies roughly as a power of the wavelength between its 10 nodes; its
+    interpolation in log-log space follows the OSOAA runs between the nodes within 0.1 % at 450 and 850 nm,
+    against an underestimate of about 1 % in linear space (``scripts/wl_interpolation``). Where `da` is not
+    positive at all the nodes, the interpolation is done in linear space.
+
+    :param da: :py:class:`xarray.DataArray` with the dimension ``wl``
+    :param wl: wavelengths of the result (same unit as ``da.wl``)
+    :param method: interpolation method of :py:meth:`xarray.DataArray.interp`
+    :return: `da` at the wavelengths `wl`
+    '''
+    wl_out = np.asarray(wl)
+    positive = (da > 0).all('wl')
+    log_da = np.log(da.where(positive, 1.)).assign_coords(wl=np.log(da.wl.values.astype(float)))
+    out = np.exp(log_da.interp(wl=np.log(wl_out.astype(float)), method=method))
+    out = out.assign_coords(wl=wl if isinstance(wl, xr.DataArray) and wl.dims == ('wl',) else wl_out)
+    if not bool(positive.all()):
+        out = out.where(positive, da.interp(wl=wl_out, method=method))
+    out.attrs = da.attrs
+    return out
+
+
 def wind_weights(wind, nodes):
     '''
     Weights of the wind speed nodes of a look-up table for a linear interpolation in wind speed.
@@ -97,8 +124,8 @@ def wind_weights(wind, nodes):
         raise ValueError('wind speed with missing values')
     clipped = wind.clip(nodes[0], nodes[-1])
     if (clipped != wind).any():
-        logging.warning(f'wind speed out of the range of the look-up table ({nodes[0]:g}-{nodes[-1]:g} m s-1): '
-                        f'clipped for {int((clipped != wind).sum())} value(s)')
+        logger.warning(f'wind speed out of the range of the look-up table ({nodes[0]:g}-{nodes[-1]:g} m s-1): '
+                       f'clipped for {int((clipped != wind).sum())} value(s)')
     values = clipped.values
     if len(nodes) == 1:
         weights = np.ones((1, *values.shape))
@@ -229,10 +256,10 @@ class LUT:
         transmittance.
 
         The wavelengths are converted from µm to nm. If the TOA look-up table is not found, the light
-        version of the package is used, with a lower accuracy (logged at ``INFO`` level).
+        version of the package is used, with a lower accuracy (logged at ``WARNING`` level).
         '''
 
-        logging.info('loading look-up tables')
+        logger.debug('loading look-up tables')
         self.trans_lut = open_lut(self.trans_lut_file)
 
 
@@ -242,8 +269,8 @@ class LUT:
         try:
             self.aero_lut = open_lut(self.lut_file)
         except (FileNotFoundError, OSError):
-            logging.warning(f'LUT file {self.lut_file} not found: the light LUT of the package is used, with '
-                            'a lower accuracy (download the LUT with `radcalnet_oc_config --download`)')
+            logger.warning(f'LUT file {self.lut_file} not found: the light LUT of the package is used, with '
+                           'a lower accuracy (download the LUT with `radcalnet_oc_config --download`)')
             # the light LUT is the one in use (also for the keys of TOA_LUT_CACHE)
             self.lut_file = LUT_FILE_BACKUP
             self.aero_lut = open_lut(LUT_FILE_BACKUP)
@@ -294,12 +321,12 @@ class LUT:
         - ``aot_lut``: spectral aerosol optical thickness of the mixture
         - ``rot``, ``sunglint_eps``: Rayleigh optical thickness and spectral shape of the sunglint
         '''
-        logging.info('LUT preparation')
+        logger.debug('LUT preparation')
 
         if isinstance(aerosol_combination, (list, np.ndarray)):
             aerosol_combination = xr.DataArray(aerosol_combination, coords={'model': AEROSOL_MODELS})
         elif not isinstance(aerosol_combination, xr.DataArray):
-            logging.error("error in aerosol_combination parameter, should be numpy or xr.DataArray")
+            logger.error("error in aerosol_combination parameter, should be numpy or xr.DataArray")
             return
 
         self.aerosol_combination=aerosol_combination
@@ -460,7 +487,7 @@ class LUT:
         Sets the attributes ``trans_aero_lut``, ``Rray``, ``Rdiff_lut``, ``aot_lut``, ``rot`` and
         ``sunglint_eps``.
         '''
-        logging.info('LUT preparation')
+        logger.debug('LUT preparation')
 
         aero_lut = self.aero_lut.sel(wind=wind, method='nearest')
         trans_lut = self.trans_lut.sel(wind=wind, method='nearest')
@@ -480,7 +507,7 @@ class LUT:
         toa_lut = self.toa_lut(aero_lut.wind.values, aero_lut.model.values, azi)
         self.Rray = self._interp_geometry(toa_lut.sel(aot_ref=0), sza, vza, azi)
         self.Rray = self.Rray / np.cos(np.radians(self.Rray.sza))
-        self.Rray = self.Rray.interp(wl=self.wl, method='quadratic')
+        self.Rray = interp_wl_loglog(self.Rray, self.wl)
 
         # -----------------------------
         # interpolation atmo diffuse light
@@ -488,7 +515,7 @@ class LUT:
         self.Rdiff_lut = self._interp_geometry(toa_lut, sza, vza, azi)
         self.Rdiff_lut = self.Rdiff_lut.interp(aot_ref=aot_refs, method='quadratic')
         self.Rdiff_lut = self.Rdiff_lut / np.cos(np.radians(self.Rdiff_lut.sza))
-        self.Rdiff_lut = self.Rdiff_lut.interp(wl=self.wl, method='quadratic')
+        self.Rdiff_lut = interp_wl_loglog(self.Rdiff_lut, self.wl)
 
         self.aot_lut = aero_lut.aot.interp(aot_ref=aot_refs, method='quadratic').interp(wl=self.wl, method='quadratic')
 
@@ -841,9 +868,9 @@ class Spectral():
         edge = max(threshold, 1e-3)
         truncated = (rsr[0] > edge) | (rsr[-1] > edge)
         if np.any(truncated):
-            logging.warning('spectral response of the band(s) at %s nm truncated by the wavelength range of '
-                            'the signal (%g-%g nm)', self.fwhm.wl.values[truncated],
-                            wl_signal.min(), wl_signal.max())
+            logger.warning('spectral response of the band(s) at %s nm truncated by the wavelength range of '
+                           'the signal (%g-%g nm)', self.fwhm.wl.values[truncated],
+                           wl_signal.min(), wl_signal.max())
 
         # trapezoidal rule coefficients
         dwl = np.abs(np.diff(wl_signal)) / 2

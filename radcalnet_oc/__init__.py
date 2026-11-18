@@ -6,19 +6,13 @@ The version history is given in CHANGELOG.md (History page of the documentation)
 '''
 
 __package__ = 'radcalnet_oc'
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 
 from .lut import LUT, AuxData, SolarIrradiance, Spectral
 from .kernel import Aerosol, Misc, GaseousTransmittance, GasCoupling, Radiometry
 from .process import Process
 from .aeronet_oc import Aeronet
-from .coxmunk import Sunglint
+from .coxmunk import Sunglint, GLINT_FLAGS, glint_flags, glint_angle
+from .uncertainty import uncertainty_budget, INPUT_UNC
 
-
-import logging
-
-#init logger
-logger = logging.getLogger()
-
-level = logging.getLevelName("INFO")
-logger.setLevel(level)
+from .log import set_logging

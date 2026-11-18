@@ -7,15 +7,52 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-18
+
 ### Added
+- Logging helper `radcalnet_oc.set_logging(level, log_file)` (module `radcalnet_oc.log`) and options
+  `--log_level` and `--log_file` of the `radcalnet_oc` command.
 - Tutorial *Simulate the TOA signal from user settings* (`docs/source/tutorials/radcalnet_oc_toa_simulation.ipynb`),
   first of the documentation: input built from the settings of geometry, atmosphere (AOT, aerosol models,
   gas columns), sea-surface roughness (wind) and water reflectance, options of version 1.1 (`gas_coupling`,
   `o2_model`, `rrs_extension`), direct sunglint added to `Rtoa`, provenance attributes, sensitivity
   studies and convolution with sensor bands. It replaces *TOA atmosphere radiation*.
 - Direct sunglint term $T_{dir} R_{sg}$ in the TOA equation of the README and of the documentation.
+- Pressure scaling of the Rayleigh scattering (`Process(rayleigh_pressure=...)`, `settings: rayleigh_pressure` of
+  the configuration, `--rayleigh_pressure` of the command line, `Process.rayleigh_pressure_correction`): the
+  Rayleigh reflectance of the look-up tables, computed with the Rayleigh optical thickness of 1015.2 hPa, is scaled
+  as `R_ray [(P/P0)^D - 1]` with `D = dln R_ray / dln tau_r` from the wavelength nodes, and the diffuse
+  transmittances by `exp(-dtau_r / 2 mu)`; validated with OSOAA runs at +/- 20 hPa (within 0.03 % of the path
+  reflectance for a Rayleigh atmosphere, 0.25 % with AOT 0.1; `scripts/rayleigh_pressure`). The output attribute
+  `rayleigh_pressure` records the setting.
+- Direct sunglint and sunglint flags in the package (`Process.compute_sunglint`, `Process.execute(sunglint=...)`):
+  TOA direct glint, glint angle, bitmask of glint levels and near-specular geometry (`GLINT_FLAGS`), uncertainty of
+  the glint (ensemble of plausible slope statistics, wind +/- 1.5 m s-1) and spectral flag `glint_uncertain`
+  (> 5 % of the TOA reflectance). Heavy-tailed isotropic slope statistics in `Sunglint` (`cm_iso_t`, `cm_iso_mix`)
+  and core slope variance `sigma2_coef`.
+- First uncertainty budget of the TOA simulation (`radcalnet_oc.uncertainty.uncertainty_budget`): inputs propagated
+  through `Process` by central differences, glint term, quadrature (provisional input uncertainties).
 
 ### Changed
+- The path reflectance of the TOA look-up table (`Ratm`, and the Rayleigh reflectance of the pressure scaling) is
+  interpolated between the 10 wavelength nodes quadratically in log-log space (`radcalnet_oc.lut.interp_wl_loglog`)
+  instead of linear space, as in GRS and hGRS. Validated with the OSOAA runs of the same configuration between the
+  nodes (`scripts/wl_interpolation`): median error < 0.1 % for AOT(550) <= 0.1, 0.4 % at 900 nm and 0.6 % at 2400 nm (against -1.0 % at 450 nm, -1.2 % at
+  850 nm and -4 to -9 % at 1150-1400 nm before), within 1.8 % for AOT 0.35. The TOA reflectance of the clear-water
+  template changes by +0.6 % at 412 nm, +1.3 % (+1.6e-3) at 443 nm, +0.9 % at 865 nm, +7.1 % at 1240 nm and +3.8 % at
+  1375 nm, within 0.4 % elsewhere; the regression reference is updated. The spectral AOT and the transmittances keep
+  the quadratic interpolation in linear space (more accurate for them).
+- Logging: one logger per module (`radcalnet_oc.process`, `radcalnet_oc.lut`...) under the package logger
+  `radcalnet_oc`, instead of the root logger; importing the package no longer sets the level of the root logger,
+  so the logging configuration of the application applies (e.g. `logging.getLogger('radcalnet_oc').setLevel(...)`
+  now silences the package). The internal steps (`get LUT object`, `LUT preparation`...) are logged at `DEBUG`;
+  `Process.execute` logs the settings of the simulation and its computing time at `INFO`. The logger name is added
+  to the format of the command line.
+- The Rayleigh scattering is scaled with the surface pressure by default (`rayleigh_pressure: true`): the TOA
+  reflectance changes by about -0.06 % per hPa below 1015.2 hPa in the blue (Ratm by -0.09 % per hPa), e.g.
+  -0.18 % at 412-443 nm and -0.02 % at 2190 nm for the clear-water template (1011-1014 hPa); the regression
+  reference is updated (default case; the case of the settings before version 1.1 sets `rayleigh_pressure=False`
+  and is unchanged). Set `rayleigh_pressure: false` to recover the previous results.
 - One folder for the rendered tutorials: `docs/source/notebook` is moved to `docs/source/tutorials` (the
   pages move from `notebook/<name>.html` to `tutorials/<name>.html`); the working notebooks of
   `docs/source/tutorials/examples` are moved out of the documentation, to `examples/`, without their
@@ -34,6 +71,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 - `Process.execute` failed for a single measurement (time dimension of length 1) when squeezing the
   prepared look-up table.
+- `Process.compute_sunglint` (and `execute(sunglint=...)`) failed for a single azimuth or viewing angle (e.g.
+  nadir view): the single angles squeezed out of `Rtoa` are now squeezed from the glint variables too.
 
 ## [1.1.0] - 2026-11-15
 
@@ -244,7 +283,8 @@ First release published on PyPI (`pip install radcalnet_oc`).
 
 - Initial version.
 
-[Unreleased]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Tristanovsk/radcalnet_oc/compare/v1.0.0...v1.0.1

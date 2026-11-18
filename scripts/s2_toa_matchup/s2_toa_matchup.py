@@ -21,9 +21,18 @@ the matchups are gathered into ``<odir>/<site>_<level>_s2_toa_matchup.nc``:
 - ``sat_*`` satellite statistics, ``sim_*`` statistics of the simulations of the measurements of the
   window, ``rec_*`` (dimension ``rec``) the simulation of each measurement.
 
+The slope statistics of the direct sunglint are set with ``--glint-stats`` (``cm_iso`` by default, or the
+heavy-tailed ``cm_iso_t`` and ``cm_iso_mix`` of ``radcalnet_oc.Sunglint`` with ``--glint-nu``, ``--glint-f-tail``,
+``--glint-sigma2-tail``). When they differ from those of a cached scene, the glint of the scene is recomputed at the
+gathering, with the atmospheric factor (gaseous and direct transmittances) of the cached simulation, which does not
+depend on the slope statistics; the output file then gets the suffix ``_<glint-stats>`` (and ``_core`` when the
+core slope variance ``--glint-s0 + --glint-s1 W`` differs from Cox-Munk). ``--reglint`` only gathers
+the cached scenes (no new scene), e.g. to switch the glint statistics without rerunning the simulations.
+
 Example::
 
     python s2_toa_matchup.py --site AAOT --level lev20 --n-jobs 4
+    python s2_toa_matchup.py --site AAOT --level lev20 --reglint --glint-stats cm_iso_mix
 '''
 import argparse
 import glob
@@ -167,9 +176,34 @@ def band_integration(Rtoa, E0, srf):
 _RECONSTRUCTION = None
 #: wave slope statistics of the sunglint (the wind direction is not measured: isotropic Cox and Munk)
 GLINT_STATS = 'cm_iso'
+#: parameters of the heavy-tailed statistics (fit on the SWIR excess of the matchups, glint_tail_fit.py)
+CM_COEF = (3e-3, 512e-5)  # Cox-Munk mean square slope 0.003 + 0.00512 W
+GLINT_KW = {'cm_iso': {}, 'cm_iso_t': {'nu': 7.}, 'cm_iso_mix': {'f_tail': 0.05, 'sigma2_tail': 0.12}}
 
 
-def sunglint_toa(process, ds, sza, vza, azi, stats=GLINT_STATS):
+def glint_kw(args):
+    '''Slope statistics and parameters of the command line.'''
+    kw = {'cm_iso_t': {'nu': args.glint_nu},
+          'cm_iso_mix': {'f_tail': args.glint_f_tail, 'sigma2_tail': args.glint_sigma2_tail}}.get(args.glint_stats, {})
+    coef = (args.glint_s0, args.glint_s1)
+    if coef != CM_COEF:  # core slope variance s0 + s1 W of the isotropic statistics (Cox-Munk by default)
+        kw = {**kw, 'sigma2_coef': coef}
+    return args.glint_stats, kw
+
+
+def output_suffix(stats, kw):
+    '''Suffix of the gathered file: '' for cm_iso, _<stats> otherwise, + _core for a non Cox-Munk core.'''
+    sfx = '' if stats == 'cm_iso' else f'_{stats}'
+    return sfx + ('_core' if 'sigma2_coef' in kw else '')
+
+
+def surface_glint(sza, vza, azi, wind, stats=GLINT_STATS, kw=None):
+    '''Surface sunglint reflectance (Cox and Munk family) for each wind speed.'''
+    g = radoc.Sunglint(sza, vza, 180. - azi)
+    return np.array([max(g.sunglint(float(w), stats=stats, **(kw or {}))[0], 0.) for w in np.atleast_1d(wind)])
+
+
+def sunglint_toa(process, ds, sza, vza, azi, stats=GLINT_STATS, kw=None):
     '''
     Direct sunglint at the TOA, not included in the look-up tables of radcalnet-oc (see the tutorial
     *Sunglint contribution to the TOA signal*): Cox and Munk reflectance of the wind speed of each
@@ -185,14 +219,13 @@ def sunglint_toa(process, ds, sza, vza, azi, stats=GLINT_STATS):
     Tdir = np.exp(-(tau_r + tau_a) * (1 / mu0 + 1 / muv))
     Tg = (process.Tg_d.sel(wl=full_wl) * process.Tg_u.sel(wl=full_wl)).squeeze(drop=True)
     wind = process.wind.values
-    Rg = np.array([max(radoc.Sunglint(sza, vza, 180. - azi).sunglint(float(w), stats=stats)[0], 0.)
-                   for w in wind])
+    Rg = surface_glint(sza, vza, azi, wind, stats, kw)
     Rg = xr.DataArray(Rg, coords={'time': ds.time}, dims='time')
     Rg_toa = (Tg * Tdir * Rg).reset_coords(drop=True).transpose('time', 'wl')
     return Rg_toa, Rg
 
 
-def simulate(records, sat, srf):
+def simulate(records, sat, srf, glint=(GLINT_STATS, {})):
     '''radcalnet-oc simulation of the measurements ``records`` for the geometry of the scene ``sat``.'''
     global _RECONSTRUCTION
     if _RECONSTRUCTION is None:
@@ -226,7 +259,7 @@ def simulate(records, sat, srf):
     db = process.radcalnet_db
     Rtoa = db.Rtoa.transpose('time', 'wl')
     E0 = db.E0.transpose('time', 'wl')
-    Rglint, Rg = sunglint_toa(process, ds, float(sat.sza), float(sat.vza), float(sat.azi))
+    Rglint, Rg = sunglint_toa(process, ds, float(sat.sza), float(sat.vza), float(sat.azi), *glint)
     if single:
         ds, Rtoa, E0 = ds.isel(time=[0]), Rtoa.isel(time=[0]), E0.isel(time=[0])
         Rglint, Rg = Rglint.isel(time=[0]), Rg.isel(time=[0])
@@ -258,7 +291,7 @@ def process_scene(product, path, site, lon, lat, records, args):
             status = 'no valid pixel'
             rec = None
         else:
-            rec = simulate(records, sat, srf)
+            rec = simulate(records, sat, srf, glint_kw(args))
             status = 'no valid in situ' if rec is None else f'{rec.sizes["time"]} measurements'
     except Exception as e:  # not cached: retried at the next run
         logging.exception(f'{product}: failed')
@@ -271,7 +304,9 @@ def process_scene(product, path, site, lon, lat, records, args):
         rec['rec_dt'] = ('rec_time', ((rec.rec_time.values - t.to_datetime64()) / np.timedelta64(1, 'm')))
         rec['rec_dt'].attrs['unit'] = 'min'
         scene = xr.merge([scene, rec], compat='override', join='outer')
-    scene.attrs.update(site=site, level=args.level, status=status)
+    stats, kw = glint_kw(args)
+    scene.attrs.update(site=site, level=args.level, status=status, glint_stats=stats,
+                       glint_kw=repr(sorted(kw.items())))
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     scene.to_netcdf(filename + '.tmp')
     os.replace(filename + '.tmp', filename)
@@ -282,13 +317,58 @@ def process_scene(product, path, site, lon, lat, records, args):
 # ---------------------------------------------------------------------------------------------------
 # gathering
 # ---------------------------------------------------------------------------------------------------
-def gather(files, site, level):
+def reglint(s, stats, kw):
+    '''
+    Direct sunglint of a cached scene recomputed with other slope statistics: the TOA glint is the surface glint
+    times an atmospheric factor (gaseous and direct transmittances) that does not depend on the statistics, taken
+    from the cached simulation (median of the other measurements of the scene when the cached surface glint
+    underflows).
+    '''
+    old = s.rec_Rg_surface
+    ok = old > 1e-30
+    factor = (s.rec_Rglint / old).where(ok)
+    factor = factor.fillna(factor.median('rec_time'))
+    factor_spec = (s.rec_Rglint_spectrum / old).where(ok)
+    factor_spec = factor_spec.fillna(factor_spec.median('rec_time'))
+    new = xr.DataArray(surface_glint(float(s.sza), float(s.vza), float(s.azi), s.rec_wind.values, stats, kw),
+                       coords=old.coords, dims=old.dims)
+    s['rec_Rg_surface'] = new
+    s['rec_Rglint'] = (factor * new).transpose(*s.rec_Rglint.dims)
+    s['rec_Rglint_spectrum'] = (factor_spec * new).astype('float32').transpose(*s.rec_Rglint_spectrum.dims)
+    return s
+
+
+#: MSI bands of the absorption (945 nm water vapour, 1375 nm cirrus), excluded from the glint uncertainty test
+ABSORPTION_BANDS = [945, 1375]
+
+
+def glint_unc_scene(s):
+    """
+    Uncertainty of the TOA glint of a scene (radcalnet_oc.coxmunk.glint_uncertainty: half range of the plausible
+    slope statistics at the wind +/- its uncertainty), per measurement with the atmospheric factor of the cached
+    simulation, median over the measurements (wl).
+    """
+    old = s.rec_Rg_surface
+    ok = old > 1e-30
+    factor = (s.rec_Rglint / old).where(ok)
+    factor = factor.fillna(factor.median('rec_time'))
+    u = np.array([radoc.coxmunk.glint_uncertainty(float(s.sza), float(s.vza), 180. - float(s.azi), float(w))[0]
+                  for w in s.rec_wind.values])
+    return (factor * xr.DataArray(u, coords=old.coords, dims=old.dims)).median('rec_time')
+
+
+def gather(files, site, level, glint=(GLINT_STATS, {})):
+    stats, kw = glint
     scenes, recs = [], []
+    n_reglint = 0
     for f in files:
         with xr.open_dataset(f) as s:
             s = s.load()
         if 'rec_Rtoa' not in s:
             continue
+        if (s.attrs.get('glint_stats', 'cm_iso'), s.attrs.get('glint_kw', '[]')) != (stats, repr(sorted(kw.items()))):
+            s = reglint(s, stats, kw)
+            n_reglint += 1
         t = s.time.values
         r = s[[v for v in s.data_vars if v.startswith('rec_')]].rename(rec_time='rec')
         r = r.assign_coords(rec_time=('rec', r.rec.values)).drop_vars('rec')
@@ -317,18 +397,39 @@ def gather(files, site, level):
         sc['glint_median'] = s.rec_Rglint.median('rec_time')
         sc['Rg_surface'] = s.rec_Rg_surface.median('rec_time')
         sc['glint_spectrum_median'] = s.rec_Rglint_spectrum.median('rec_time')
+        sc['glint_unc'] = glint_unc_scene(s)
         for v in AERONET_VARS + RECONSTRUCTION_VARS:
             sc[v] = s['rec_' + v].median('rec_time')
         sc = sc.drop_vars('time', errors='ignore')
         scenes.append(sc.expand_dims(time=[t]))
     out = xr.concat(scenes, 'time', data_vars='all', coords='minimal', compat='override', join='outer')
     rec = xr.concat(recs, 'rec', data_vars='all', coords='minimal', compat='override', join='outer')
+    if n_reglint:
+        logging.info(f'glint of {n_reglint} cached scenes recomputed with {stats} {kw}')
+    # sunglint flags of each scene (radcalnet_oc.GLINT_FLAGS): fraction of the direct glint in the simulated TOA
+    # reflectance with glint at 865 nm (median of the measurements) and glint angle
+    out['glint_fraction'] = (out.glint_median / out.simg_median).sel(wl=865, drop=True)
+    out['glint_fraction'].attrs = {'description': 'glint_median / simg_median at 865 nm'}
+    # glint uncertainty relative to the simulated TOA reflectance with glint, and spectral flag glint_uncertain
+    # (per band) above radcalnet_oc.coxmunk.GLINT_UNC_THRESHOLD
+    out['glint_unc'].attrs = {'description': 'uncertainty of the TOA glint: half range of radcalnet_oc.coxmunk.'
+                                             'GLINT_ENSEMBLE at the wind +/- WIND_UNC (median of the measurements)'}
+    ratio = out.glint_unc / out.simg_median
+    out['glint_uncertain'] = (ratio > radoc.coxmunk.GLINT_UNC_THRESHOLD).astype(np.uint8)
+    out['glint_uncertain'].attrs = radoc.coxmunk.uncertain_attrs()
+    rel = ratio.drop_sel(wl=ABSORPTION_BANDS)
+    out['glint_unc_rel'] = rel.max('wl')
+    out['glint_unc_rel'].attrs = {'description': 'largest glint_unc / simg_median over the bands (without '
+                                                 f'{ABSORPTION_BANDS} nm)'}
+    out['glint_unc_wl'] = rel.fillna(-1).idxmax('wl')
+    out['glint_flags'] = (('time',), radoc.glint_flags(out.glint_fraction.values, out.glint_angle.values))
+    out['glint_flags'].attrs = radoc.coxmunk.flag_attrs()
     out = xr.merge([out, rec], compat='override', join='outer')
     out.attrs = dict(title=f'Sentinel-2 / RadCalNet-OC TOA matchups, {site} {level}',
                      site=site, level=level,
                      created=pd.Timestamp.now('UTC').isoformat(),
                      radcalnet_oc=radoc.process.package_version(), aeronet_oc_db=aeronet_oc_db.__version__,
-                     glint_stats=GLINT_STATS,
+                     glint_stats=stats, glint_kw=repr(sorted(kw.items())),
                      comment='sat_*: satellite statistics in the box around the site (clear pixels, SWIR '
                              'threshold); satg_*: same without the SWIR threshold (sunglint kept); sim_*: '
                              'statistics of the radcalnet-oc simulations of the AERONET-OC measurements '
@@ -354,10 +455,38 @@ def main():
     p.add_argument('--n-jobs', type=int, default=1)
     p.add_argument('--overwrite', action='store_true')
     p.add_argument('--limit', type=int, default=None, help='process the first N scenes only (tests)')
+    p.add_argument('--glint-stats', default=GLINT_STATS, choices=list(GLINT_KW),
+                   help='wave slope statistics of the direct sunglint')
+    p.add_argument('--glint-nu', type=float, default=GLINT_KW['cm_iso_t']['nu'], help='nu of cm_iso_t')
+    p.add_argument('--glint-f-tail', type=float, default=GLINT_KW['cm_iso_mix']['f_tail'], help='f_tail of cm_iso_mix')
+    p.add_argument('--glint-sigma2-tail', type=float, default=GLINT_KW['cm_iso_mix']['sigma2_tail'],
+                   help='sigma2_tail of cm_iso_mix')
+    p.add_argument('--glint-s0', type=float, default=CM_COEF[0],
+                   help='core mean square slope s0 + s1 W of the isotropic statistics: s0')
+    p.add_argument('--glint-s1', type=float, default=CM_COEF[1], help='s1 (Cox-Munk 0.00512; 0.0035 fitted)')
+    p.add_argument('--reglint', action='store_true',
+                   help='only gather the cached scenes (glint recomputed with --glint-stats), no new scene')
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
     logging.getLogger('radcalnet_oc').setLevel(logging.WARNING)
     warnings.filterwarnings('ignore', category=RuntimeWarning)
+
+    stats, kw = glint_kw(args)
+    suffix = output_suffix(stats, kw)
+    ofile = opj(args.odir, f'{args.site}_{args.level}_s2_toa_matchup{suffix}.nc')
+    if args.reglint:
+        files = sorted(glob.glob(opj(args.odir, 'scenes', f'{args.site}_{args.level}', '*.nc')))
+        with xr.open_dataset(opj(args.odir, f'{args.site}_{args.level}_s2_toa_matchup.nc')) as ref:
+            # settings and provenance of the simulations of the reference file (only the glint is recomputed)
+            attrs = {k: ref.attrs[k] for k in ['window_h', 'half_size_m', 'swir_max', 'cirrus_max', 'tile',
+                                               'radcalnet_oc', 'aeronet_oc_db', 'created'] if k in ref.attrs}
+        out = gather(files, args.site, args.level, (stats, kw))
+        attrs['glint_recomputed'] = (f'{pd.Timestamp.now("UTC").isoformat()}, radcalnet_oc '
+                                     f'{radoc.process.package_version()}')
+        out.attrs.update(attrs)
+        out.to_netcdf(ofile)
+        logging.info(f'{out.sizes["time"]} matchups, {out.sizes["rec"]} simulations -> {ofile}')
+        return
 
     info = aeronet_oc_db.site_info(level=args.level).loc[args.site]
     tile = args.tile or info.s2_tile
@@ -388,10 +517,9 @@ def main():
     errors = [st for f, st in results if f is None]
     if errors:
         logging.warning(f'{len(errors)} scene(s) failed (see the log), they will be retried at the next run')
-    out = gather([f for f, _ in results if f is not None], args.site, args.level)
+    out = gather([f for f, _ in results if f is not None], args.site, args.level, (stats, kw))
     out.attrs.update(window_h=args.window, half_size_m=args.half_size, swir_max=args.swir_max,
                      cirrus_max=args.cirrus_max, tile=tile)
-    ofile = opj(args.odir, f'{args.site}_{args.level}_s2_toa_matchup.nc')
     out.to_netcdf(ofile)
     logging.info(f'{out.sizes["time"]} matchups, {out.sizes["rec"]} simulations -> {ofile}')
 
