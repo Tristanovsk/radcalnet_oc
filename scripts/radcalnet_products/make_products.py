@@ -98,13 +98,15 @@ def to_10nm(db):
     spectral = radoc.Spectral(CENTRAL_WL, FWHM)
     out = []
     for name, values in db.data_vars.items():
-        if 'wl' not in values.dims or name == 'glint_uncertain':
+        if name == 'glint_uncertain':   # recomputed on the 10 nm bands below
+            continue
+        if 'wl' not in values.dims:
             out.append(values)
         elif name.startswith('Rrs'):
             out.append(values.interp(wl=CENTRAL_WL))
         else:
             out.append(spectral.convolve2(values.rename(name), expon=EXPON)[name])
-    out = xr.merge(out, combine_attrs='override', compat='override', join='outer')
+    out = xr.merge(out, combine_attrs='override', compat='override', join='exact')
     # spectral flag of the glint uncertainty on the 10 nm bands
     unc = (out.Rglint_unc / out.Rtoa_glint > float(db.glint_uncertain.attrs.get('threshold', 0.05)))
     out['glint_uncertain'] = unc.astype(np.uint8)
@@ -113,6 +115,7 @@ def to_10nm(db):
         if name in db:
             out[name].attrs = db[name].attrs
     out.attrs = db.attrs
+    assert out.sizes['wl'] == CENTRAL_WL.size, out.sizes
     return out
 
 
@@ -138,6 +141,8 @@ def main():
                    choices=list(GLINT_FLAGS))
     p.add_argument('--filter-uncertain', action='store_true',
                    help='also remove the times with glint_uncertain in 400-900 nm from the filtered copy')
+    p.add_argument('--max-times', type=int, default=400,
+                   help='largest number of measurements simulated at once (memory, about 2 GB per 400)')
     p.add_argument('--overwrite', action='store_true')
     args = p.parse_args()
     radoc.set_logging('WARNING')
@@ -159,7 +164,13 @@ def main():
         else:
             t0 = _time.time()
             try:
-                db = simulate_month(records, reconstruction, args.glint_stats)
+                # chunks of at most --max-times measurements (memory: full spectral grid per time)
+                n = records.sizes['time']
+                parts = [simulate_month(records.isel(time=slice(i, i + args.max_times)), reconstruction,
+                                        args.glint_stats) for i in range(0, n, args.max_times)]
+                parts = [x for x in parts if x is not None]
+                db = xr.concat(parts, 'time', data_vars='minimal', coords='minimal', compat='override',
+                               combine_attrs='override') if parts else None
             except Exception:
                 logger.exception(f'{year}-{month:02}: failed')
                 continue
