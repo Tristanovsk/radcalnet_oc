@@ -54,7 +54,8 @@ from radcalnet_oc.reconstruction import Reconstruction
 opj = os.path.join
 
 S2_ROOT = '/data/satellite/Sentinel-2/subset/aeronet/L1C'
-ODIR = '/data/radcalnet/matchup/sentinel2'
+from radcalnet_oc import __version__ as RADCALNET_OC_VERSION  # noqa: E402
+ODIR = f'/data/radcalnet/matchups/sentinel2/v{RADCALNET_OC_VERSION}'   # one folder per radcalnet_oc version
 
 # radcalnet-oc input variables taken from the AERONET-OC measurements
 AERONET_VARS = ['tcwv', 'tco3', 'tcno2', 'pressure', 'wind', 'aot550', 'aot865', 'ang_exp', 'chl', 'sza_aeronet']

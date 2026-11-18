@@ -85,8 +85,9 @@ comparison. Same order as VEIT once the glint is included (VEIT L2.0, 325 scenes
 
 ## Files
 
-`/data/radcalnet/data_v1.2.0/radcalnet/<site>/<yyyy>/<mm>/<dd>/<site>_radcalnet-oc_<level>_<yyyymmdd>_inc10nm_res10nm.nc`
-and `/data/radcalnet/data_v1.2.0/radcalnet_glint_filtered/...` (sites `VEIT`, `Section-7_Platform`), made with
+`/data/radcalnet/products/v1.2.0/daily/<site>/<yyyy>/<mm>/<dd>/<site>_radcalnet-oc_<level>_<yyyymmdd>_inc10nm_res10nm.nc`
+and `/data/radcalnet/products/v1.2.0/daily_glint_filtered/...` (sites `VEIT`, `Section-7_Platform`; checksums in
+`MANIFEST.csv`), made with
 `scripts/radcalnet_products/make_products.py` (radcalnet_oc `1.2.0+g867ddea`, same code as the tag `v1.2.0`).
 
 | site | level | period | days | times | times kept by the glint filter (days) |

@@ -40,7 +40,8 @@ import xarray as xr
 
 opj = os.path.join
 
-ODIR = '/data/radcalnet/matchup/sentinel2'
+from radcalnet_oc import __version__ as RADCALNET_OC_VERSION  # noqa: E402
+ODIR = f'/data/radcalnet/matchups/sentinel2/v{RADCALNET_OC_VERSION}'   # one folder per radcalnet_oc version
 #: large variables of the matchup files, not needed here
 DROP = ['rec_Rtoa_spectrum', 'rec_Rglint_spectrum', 'sim_spectrum_median', 'glint_spectrum_median']
 #: sites of the figures, with their labels and colours

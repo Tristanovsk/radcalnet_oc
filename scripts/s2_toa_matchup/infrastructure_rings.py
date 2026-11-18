@@ -86,7 +86,7 @@ def scene_stats(path, lon, lat):
     return rings, rois
 
 
-def main(site_level, odir='/data/radcalnet/matchup/sentinel2_dev', ofile=None):
+def main(site_level, odir='/data/radcalnet/matchups/sentinel2/v1.2.0', ofile=None):
     site = re.sub(r'_lev(15|20)$', '', site_level)
     lon, lat, tile = site_location(site)
     ds = load(odir, site_level, ARGS)

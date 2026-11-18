@@ -14,7 +14,7 @@ measurements of a site. Not part of the package.
 ## Steps
 
 1. **Matchups** (`s2_toa_matchup.py`, one netCDF file per scene cached in `<odir>/scenes`, gathered into
-   `<odir>/<site>_<level>_s2_toa_matchup.nc`, default `--odir /data/radcalnet/matchup/sentinel2`):
+   `<odir>/<site>_<level>_s2_toa_matchup.nc`, default `--odir /data/radcalnet/matchups/sentinel2/v<radcalnet_oc version>`):
 
    ```bash
    python s2_toa_matchup.py --site AAOT --level lev20 --n-jobs 4
@@ -79,7 +79,7 @@ measurements of a site. Not part of the package.
    a term proportional to AOT (dependence on wind, Angstrom exponent, glint angle and L1C processing baseline):
 
    ```bash
-   python sixs_terms.py --odir /data/radcalnet/matchup/sentinel2
+   python sixs_terms.py --odir /data/radcalnet/matchups/sentinel2/v1.2.0
    ```
 
 5. **Aerosol model diagnosis of the AOT dependence** (`aerosol_diagnosis.py`): path reflectance of the six OPAC

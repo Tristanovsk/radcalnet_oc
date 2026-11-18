@@ -20,7 +20,7 @@ This script quantifies, for the matchups of ``s2_toa_matchup.py`` (selection of 
 
 Example::
 
-    python sixs_terms.py --odir /data/radcalnet/matchup/sentinel2
+    python sixs_terms.py --odir /data/radcalnet/matchups/sentinel2/v1.2.0
 '''
 import argparse
 
@@ -31,7 +31,8 @@ import xarray as xr
 from pyproj import Transformer
 from shapely.ops import transform as shp_transform
 
-ODIR = '/data/radcalnet/matchup/sentinel2'
+from radcalnet_oc import __version__ as RADCALNET_OC_VERSION  # noqa: E402
+ODIR = f'/data/radcalnet/matchups/sentinel2/v{RADCALNET_OC_VERSION}'   # one folder per radcalnet_oc version
 SITES = {'AAOT_lev20': (45.3139, 12.5083), 'Galata_Platform_lev20': (43.044624, 28.19319),
          'AAOT_lev15': (45.3139, 12.5083), 'Section-7_Platform_lev15': (44.5458, 29.4466)}
 POOLED = ['AAOT_lev20', 'Galata_Platform_lev20', 'AAOT_lev15']

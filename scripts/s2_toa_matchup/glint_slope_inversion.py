@@ -41,7 +41,8 @@ import xarray as xr
 
 import radcalnet_oc as radoc
 
-ODIR = '/data/radcalnet/matchup/sentinel2'
+from radcalnet_oc import __version__ as RADCALNET_OC_VERSION  # noqa: E402
+ODIR = f'/data/radcalnet/matchups/sentinel2/v{RADCALNET_OC_VERSION}'   # one folder per radcalnet_oc version
 SITES = ['AAOT_lev20', 'Galata_Platform_lev20', 'AAOT_lev15']
 BANDS = [865, 1610, 2190]
 IQR_GLINT = 0.15  # relative IQR at 2190 nm below which a scene rejected by the SWIR threshold is glint, not cloud

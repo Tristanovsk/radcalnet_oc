@@ -31,8 +31,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-ODIR = '/data/radcalnet/matchup/sentinel2'
-CACHE = '/data/radcalnet/matchup/sentinel2/aerosol_diagnosis'
+from radcalnet_oc import __version__ as RADCALNET_OC_VERSION  # noqa: E402
+ODIR = f'/data/radcalnet/matchups/sentinel2/v{RADCALNET_OC_VERSION}'   # one folder per radcalnet_oc version
+CACHE = ODIR + '/aerosol_diagnosis'
 SITES = ['AAOT_lev20', 'Galata_Platform_lev20', 'AAOT_lev15']
 BANDS = [865, 1610, 2190]
 FLAGS = {'glint_low': 1, 'glint_moderate': 2, 'glint_high': 4, 'glint_near_specular': 8}

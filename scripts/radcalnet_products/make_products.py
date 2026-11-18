@@ -7,21 +7,23 @@ retrieved from the spectral AOT (``radcalnet_oc.Aerosol``), simulation at nadir 
 of the installed version), direct sunglint at the wind of the station (``Process.compute_sunglint``, slope statistics
 ``--glint-stats``). The simulation is run per month (restart: months already written are skipped), then written as
 one file per day, convolved with super-Gaussian responses of 10 nm FWHM every 10 nm (350-2490 nm, exponent 3), as the
-RadCalNet-OC products before version 1.2:
+RadCalNet-OC products before version 1.2, in the release folder ``--odir`` (default
+/data/radcalnet/products/v<radcalnet_oc version>; the monthly full-spectral simulations are cached in ``--cache``,
+default /data/radcalnet/simulations/v<version>/monthly):
 
-    <odir>/<site>/<yyyy>/<mm>/<dd>/<site>_radcalnet-oc_<level>_<yyyymmdd>_inc10nm_res10nm.nc
+    <odir>/daily/<site>/<yyyy>/<mm>/<dd>/<site>_radcalnet-oc_<level>_<yyyymmdd>_inc10nm_res10nm.nc
 
 Variables: as before (Rtoa, Ed, E0, Rrs, sza, aerosol and gas inputs, aerosol_combination) and, new in version 1.2,
 ``wind``, ``Rglint`` (TOA direct glint at nadir, not included in ``Rtoa``), ``Rtoa_glint`` (``Rtoa + Rglint``),
 ``Rglint_unc`` (spread of the plausible slope statistics, wind +/- 1.5 m s-1), ``glint_uncertain`` (per band,
 ``Rglint_unc / Rtoa_glint`` > 5 %), ``glint_fraction`` (865 nm), ``glint_angle`` and ``glint_flags`` (bitmask
 ``radcalnet_oc.GLINT_FLAGS``: low >= 1 %, moderate >= 10 %, high >= 50 % of the TOA reflectance at 865 nm, glint angle
-< 30 deg). The copy ``<odir>/<site>_glint_filtered/...`` keeps only the times without the bits of
+< 30 deg). The copy ``<odir>/daily_glint_filtered/<site>/...`` keeps only the times without the bits of
 ``--filter-flags`` (moderate and near-specular by default); with ``--filter-uncertain``, also without
 ``glint_uncertain`` in 400-900 nm (strict: at nadir, this removes most of the summer times of the platforms).
 
 Usage:
-    python make_products.py --site AAOT --level lev20 --odir /data/radcalnet/data_v1.2.0/radcalnet --name VEIT
+    python make_products.py --site AAOT --level lev20 --name VEIT
     python make_products.py --site Section-7_Platform --level lev15 --start 2024-08-19
 '''
 import argparse
@@ -45,7 +47,9 @@ from s2_toa_matchup import aeronet_inputs  # noqa: E402
 opj = os.path.join
 logger = logging.getLogger('make_products')
 
-ODIR = '/data/radcalnet/data_v1.2.0/radcalnet'
+ROOT = '/data/radcalnet'   # layout: README.md of the folder
+ODIR = f'{ROOT}/products/v{radoc.__version__}'
+CACHE = f'{ROOT}/simulations/v{radoc.__version__}/monthly'
 CENTRAL_WL = np.arange(350, 2500, 10)
 FWHM, EXPON = 10., 3
 INPUT_VARS = ['tcwv', 'tco3', 'tcno2', 'pressure', 'wind', 'aot550', 'aot865', 'ang_exp']
@@ -53,8 +57,8 @@ GLINT_SCALARS = ['glint_angle', 'glint_fraction', 'glint_flags', 'glint_unc_rel'
 UNC_RANGE = (400, 900)   # glint_uncertain checked in this range for the filtered copy (nm)
 
 
-def monthly_file(odir, site, level, year, month):
-    return opj(odir, 'monthly', site, f'{site}_radcalnet-oc_{level}_{year}_{month:02}_full_spectral.nc')
+def monthly_file(cache, site, level, year, month):
+    return opj(cache, site, f'{site}_radcalnet-oc_{level}_{year}_{month:02}_full_spectral.nc')
 
 
 def daily_file(odir, site, level, day):
@@ -135,7 +139,8 @@ def main():
     p.add_argument('--level', default='lev20', choices=['lev15', 'lev20'])
     p.add_argument('--start', default='2017-01-01')
     p.add_argument('--end', default=None)
-    p.add_argument('--odir', default=ODIR)
+    p.add_argument('--odir', default=ODIR, help='release folder of the products (daily, daily_glint_filtered)')
+    p.add_argument('--cache', default=CACHE, help='folder of the monthly full-spectral simulations')
     p.add_argument('--glint-stats', default='cm_iso_mix')
     p.add_argument('--filter-flags', nargs='*', default=['glint_moderate', 'glint_near_specular'],
                    choices=list(GLINT_FLAGS))
@@ -158,7 +163,7 @@ def main():
     n_days = n_kept = n_times = 0
     for key, records in inputs.groupby(inputs.time.dt.strftime('%Y-%m')):
         year, month = (int(x) for x in key.split('-'))
-        mfile = monthly_file(args.odir, name, args.level, year, month)
+        mfile = monthly_file(args.cache, name, args.level, year, month)
         if os.path.exists(mfile) and not args.overwrite:
             db = xr.open_dataset(mfile).load()
         else:
@@ -187,7 +192,7 @@ def main():
             day = pd.Timestamp(day)
             n_days += 1
             n_times += ds_day.sizes['time']
-            for odir, sub in [(args.odir, ds_day), (args.odir + '_glint_filtered', None)]:
+            for odir, sub in [(opj(args.odir, 'daily'), ds_day), (opj(args.odir, 'daily_glint_filtered'), None)]:
                 if sub is None:
                     sub = ds_day.isel(time=np.flatnonzero(glint_ok(ds_day, args.filter_flags, args.filter_uncertain).values))
                     sub.attrs['glint_filter'] = f'times with glint_flags {"/".join(args.filter_flags)} removed' + (
