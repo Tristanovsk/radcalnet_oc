@@ -1,6 +1,6 @@
 # Roadmap of radcalnet_oc
 
-Status: 17 November 2026. The tasks are ordered from the easiest to the hardest, in four tiers; within a tier,
+Status: 18 November 2026. The tasks are ordered from the easiest to the hardest, in four tiers; within a tier,
 in the suggested order (task numbers are kept stable; new tasks take the next free number). The validation that motivates them is in the report
 [`reports/validation_roadmap_2026-11`](reports/validation_roadmap_2026-11) (Sentinel-2 L1C matchups at four
 AERONET-OC sites, coupling study against SOS-ABS, computing performance).
@@ -22,6 +22,16 @@ contradict the measured AOT spectrum. Open: a near-infrared term of about -1e-3 
 GRS and hGRS moved their LUT wavelength interpolation to log-log space; the same change in radcalnet_oc moves
 the path reflectance by 1.2-1.6 % at 443 nm and 0.3-0.5e-3 at 865 nm, in the direction of the two open residuals
 of the matchups (task 25).
+
+**Update (18 November 2026), matchups rerun with the log-log interpolation and the Rayleigh pressure scaling**
+(`/data/radcalnet/matchup/sentinel2_dev` against `sentinel2`, `scripts/s2_toa_matchup/residual_change.py`, same
+scenes, AOT(550) < 0.3, glint angle > 30°). At 443 nm the simulation rises by 0.96-1.42 % (1.2-1.5e-3), of which
+the pressure scaling is -0.09 to +0.33 %: AAOT L2.0 -4.21 -> -2.56e-3 (-3.0 -> -1.8 %, N = 314), Galata
+-3.81 -> -2.75e-3, Section-7 L1.5 -4.88 -> -3.69e-3. The remaining blue bias now depends on the AOT: -2.5 to
+-3.1 % for AOT < 0.08, about 0 % (-0.1 to +0.1 %) for 0.15-0.3 at AAOT and Galata, so it is a clean-atmosphere
+term (Rayleigh, Rrs, surface), not aerosol (task 24). At 865 nm the change is only +0.13 to +0.20e-3: the
+near-infrared deficit stays at -2.5e-3 (AAOT L2.0) to -7.9e-3 (Section-7) (task 10). Other visible bands move by
+about 0.3 point.
 
 **Suggested order:** 25 (wavelength interpolation), 23 (release 1.2), 27; then 9 with 8 alongside, 26, the open
 points of 10 and 24; then 15 and 17.
@@ -58,8 +68,9 @@ points of 10 and 24; then 15 and 17.
     update the regression reference, and recompute the matchup residuals at 443 and 865 nm (tasks 10, 24).
     *Done for the path reflectance* (branch `feature/wl_interpolation`): median error < 0.1 % for AOT <= 0.1
     (0.4 % at 900 nm, 0.6 % at 2400 nm) against -1 % at 450 and 850 nm and -4 to -9 % at 1150-1400 nm before; TOA
-    reflectance of the template +1.3 % (+1.6e-3) at 443 nm, +0.9 % at 865 nm, +7.1 % at 1240 nm. Remaining: recompute
-    the matchup residuals; at AOT 0.35 log-log overestimates by 1-2 % at 1150-1400 nm (interpolate the Rayleigh and
+    reflectance of the template +1.3 % (+1.6e-3) at 443 nm, +0.9 % at 865 nm, +7.1 % at 1240 nm (merged in
+    `develop`). *Matchups recomputed* (18 November 2026, header): +1.0 to +1.4 % at 443 nm, +0.13 to +0.20e-3 at
+    865 nm. Remaining: at AOT 0.35 log-log overestimates by 1-2 % at 1150-1400 nm (interpolate the Rayleigh and
     aerosol parts separately?).
 27. **Provenance of the Rrs reconstruction.** `reconstruction.py` uses the default sediment n_i shape of invRrs,
     which changed twice on 16 November 2026 (now `'atd_ext:0.5'`): record the invRrs version and settings in
@@ -88,7 +99,8 @@ points of 10 and 24; then 15 and 17.
     - ~~sunglint tail~~: heavy-tailed isotropic statistics fitted on the SWIR excess (`glint_tail_fit.py`,
       `glint_slope_inversion.py`); the wind term is in the core slope variance (retuned core
       0.003 + 0.0035 W with a tail fraction 0.10);
-    - open: the remaining near-infrared term (about -1e-3 at 865 nm); anisotropic statistics with the ERA5
+    - open: the remaining near-infrared term (about -1e-3 at 865 nm; the log-log interpolation adds only
+      +0.13 to +0.20e-3, residual -2.5e-3 at AAOT L2.0, -1.8e-3 for AOT < 0.08, task 25); anisotropic statistics with the ERA5
       wind direction; refit of the glint statistics with the ERA5 wind instead of the platform wind (task 7)
       before changing the defaults of `Sunglint`; thin cirrus in the simulation or as a screening term;
     - open: screening (box size 600 m half-size vs 150-300 m, SWIR and cirrus thresholds, homogeneity) and
@@ -112,6 +124,12 @@ points of 10 and 24; then 15 and 17.
     task 15; clear and calm days at high pressure). Investigate before using the blue bias of the matchups.
     Close the real-scene check of the scaling in GRS (223 Sentinel-2 images) and hGRS (103 EnMAP matchups)
     against AERONET-OC (`scripts/rayleigh_pressure`; runs in progress).
+    *Rerun with the pressure scaling and the log-log interpolation* (18 November 2026, header): the median residual at
+    443 nm goes from -3.0 to -1.8 % (AAOT L2.0); the pressure part is small (-0.09 to +0.33 % of the TOA
+    reflectance). The bias is now concentrated at low AOT: -2.8 % (AAOT L2.0) and -2.6 % (Galata) for AOT < 0.08,
+    -0.1 and +0.1 % for 0.15-0.3. Next: regress the new residual on the pressure, AOT and Rrs(443) to separate a
+    Rayleigh / surface term from an aerosol compensation (the aerosol retrieval or the fine-mode share may hide
+    the deficit at higher AOT).
 
 28. **Shared physics across radcalnet_oc, GRS and hGRS.** The path-length coupling, the Rayleigh pressure
     scaling and the log-log interpolation are implemented three times: a set of reference values (inputs and
