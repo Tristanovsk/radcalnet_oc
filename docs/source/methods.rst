@@ -190,7 +190,7 @@ Remote-sensing reflectance
 --------------------------
 
 The input :math:`R_{rs}` is hyperspectral, typically 350--1150 nm. It can be reconstructed from the
-multispectral AERONET-OC bands with :py:mod:`radcalnet_oc.reconstruction`: the semi-analytical model
+multispectral AERONET-OC bands with :py:class:`~radcalnet_oc.reconstruction.Reconstruction`: the semi-analytical model
 ``two_modes`` of `invRrs` (phytoplankton, coloured dissolved and detrital matter, mineral particles of
 two size modes, Rrs-IOP relationship fitted on vector radiative transfer simulations for the geometry of
 the measurement) is fitted on the bands of each spectrum and gives the reflectance at any wavelength of

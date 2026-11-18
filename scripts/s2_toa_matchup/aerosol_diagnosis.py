@@ -36,8 +36,9 @@ from scipy.optimize import nnls
 import radcalnet_oc as radoc
 from s2_toa_matchup import aeronet_inputs
 
-ODIR = '/data/radcalnet/matchup/sentinel2'
-CACHE = '/data/radcalnet/matchup/sentinel2/aerosol_diagnosis'
+from radcalnet_oc import __version__ as RADCALNET_OC_VERSION  # noqa: E402
+ODIR = f'/data/radcalnet/matchups/sentinel2/v{RADCALNET_OC_VERSION}'   # one folder per radcalnet_oc version
+CACHE = ODIR + '/aerosol_diagnosis'
 SITES = {'AAOT_lev20': ('AAOT', 'lev20'), 'Galata_Platform_lev20': ('Galata_Platform', 'lev20'),
          'AAOT_lev15': ('AAOT', 'lev15')}
 BANDS = [865, 1610, 2190]

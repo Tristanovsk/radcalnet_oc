@@ -10,7 +10,7 @@ reflectance per hPa above 1015.2 hPa in the blue, CHANGELOG) is given at 443 nm 
 separate it from the other changes.
 
 Usage: python residual_change.py <old odir> <new odir> [bands]
-    python residual_change.py /data/radcalnet/matchup/sentinel2 /data/radcalnet/matchup/sentinel2_dev 443,865
+    python residual_change.py /data/radcalnet/matchups/sentinel2/v1.1.0 /data/radcalnet/matchups/sentinel2/v1.2.0 443,865
 """
 import os
 import sys

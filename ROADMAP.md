@@ -24,7 +24,7 @@ the path reflectance by 1.2-1.6 % at 443 nm and 0.3-0.5e-3 at 865 nm, in the dir
 of the matchups (task 25).
 
 **Update (18 November 2026), matchups rerun with the log-log interpolation and the Rayleigh pressure scaling**
-(`/data/radcalnet/matchup/sentinel2_dev` against `sentinel2`, `scripts/s2_toa_matchup/residual_change.py`, same
+(`/data/radcalnet/matchups/sentinel2/v1.2.0` against `v1.1.0`, `scripts/s2_toa_matchup/residual_change.py`, same
 scenes, AOT(550) < 0.3, glint angle > 30°). At 443 nm the simulation rises by 0.96-1.42 % (1.2-1.5e-3), of which
 the pressure scaling is -0.09 to +0.33 %: AAOT L2.0 -4.21 -> -2.56e-3 (-3.0 -> -1.8 %, N = 314), Galata
 -3.81 -> -2.75e-3, Section-7 L1.5 -4.88 -> -3.69e-3. The remaining blue bias now depends on the AOT: -2.5 to
