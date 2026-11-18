@@ -69,6 +69,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 - `Process.execute` failed for a single measurement (time dimension of length 1) when squeezing the
   prepared look-up table.
+- `Process.compute_sunglint` (and `execute(sunglint=...)`) failed for a single azimuth or viewing angle (e.g.
+  nadir view): the single angles squeezed out of `Rtoa` are now squeezed from the glint variables too.
 
 ## [1.1.0] - 2026-11-15
 

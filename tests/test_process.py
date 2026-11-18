@@ -385,3 +385,15 @@ def test_rayleigh_pressure():
     p = runs[(1035.5, True)]
     assert float(p.Tra_d.isel(time=0).sel(wl=443., method='nearest')) < \
         float(runs[(1035.5, False)].Tra_d.isel(time=0).sel(wl=443., method='nearest'))
+
+
+def test_sunglint_single_geometry():
+    """Nadir view with one azimuth (the azimuth is squeezed out of Rtoa): the glint has the dimensions of Rtoa."""
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 3))
+    process = Process(input_db=input_db, vza=angles('vza', [0.]), azi=angles('azi', [0.]))
+    process.execute(sunglint='cm_iso_mix')
+    db = process.radcalnet_db
+    assert db.Rglint.dims == db.Rtoa.dims
+    assert db.glint_flags.dims == ('time',)
+    np.testing.assert_allclose(db.Rtoa_glint, db.Rtoa + db.Rglint)
+    np.testing.assert_allclose(db.glint_angle, input_db.sza, atol=1e-6)

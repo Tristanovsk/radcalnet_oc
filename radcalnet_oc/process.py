@@ -541,6 +541,10 @@ class Process():
         tau_a = self.lut.aot_lut.interp(aot_ref=self.aot550).interp(wl=full_wl, method='quadratic')
         Tdir = np.exp(-(tau_r + tau_a) * (1 / self.mu0 + 1 / muv))
         Tg = (self.Tg_d * self.Tg_u).sel(wl=full_wl)
+        # single viewing angles squeezed out of Rtoa (e.g. one azimuth): squeezed from the glint too
+        single = [d for d in ('vza', 'azi') if d not in self.Rtoa.dims and Rg.sizes[d] == 1]
+        Rg, Rg_unc, angle = (x.squeeze(single, drop=True) for x in (Rg, Rg_unc, angle))
+        Tdir = Tdir.squeeze([d for d in single if d in Tdir.dims], drop=True)
         Rglint = (Tg * Tdir * Rg).reset_coords(drop=True)
         Rglint = Rglint.transpose(*[d for d in self.Rtoa.dims if d in Rglint.dims])
         total = self.Rtoa.reset_coords(drop=True) + Rglint
