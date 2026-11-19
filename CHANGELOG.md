@@ -7,6 +7,19 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- Thuillier et al. (2003) composite solar spectrum (`SolarIrradiance.thuillier2003`, file
+  `data/auxdata/thuillier_2003_0.3nm.dat`, 0.3 nm sampling, 200-2397.5 nm) and option
+  `solar_database='thuillier2003'` (`Process`, `--solar_database` of the command line). It is the spectrum of
+  the solar irradiances of the Sentinel-2 L1C metadata: integrated over the MSI spectral responses, it
+  reproduces them within 0.02 % for S2A, S2B and S2C, for the comparisons in radiance with the same $E_0$ on
+  both sides.
+
+### Changed
+- Documentation of `solar_database='thuillier'`: the packaged file is the ATLAS3 spectrum (SOLID
+  distribution), 1.4 % above the Thuillier (2003) composite from 500 to 2400 nm; it does not reproduce the
+  Sentinel-2 L1C solar irradiances.
+
 ## [1.2.0] - 2026-11-18
 
 ### Added

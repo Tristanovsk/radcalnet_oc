@@ -69,6 +69,25 @@ def test_provenance_decoupled():
     assert attrs['o2_model'] == 'reptran'
 
 
+def test_solar_database_thuillier2003():
+    '''Thuillier (2003) composite as F0: same TOA reflectance as TSIS-1, irradiances of the composite
+    (up to 2397.5 nm, NaN beyond as for the ATLAS3 spectrum).'''
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 2))
+    out = {}
+    for name in ['tsis', 'thuillier2003']:
+        process = Process(input_db=input_db, solar_database=name)
+        process.execute()
+        out[name] = process.radcalnet_db
+    db = out['thuillier2003']
+    assert db.attrs['solar_database'] == 'thuillier2003'
+    swir = db.wl < 2397
+    assert np.isfinite(db.E0.where(swir, drop=True)).all()
+    xr.testing.assert_allclose(db.Rtoa.where(swir, drop=True), out['tsis'].Rtoa.where(swir, drop=True), rtol=1e-10)
+    # band-averaged irradiance 1000-1300 nm: Thuillier 2003 about 2 % above TSIS-1
+    ratio = (db.E0 / out['tsis'].E0).sel(wl=slice(1000, 1300)).mean()
+    assert float(ratio) == pytest.approx(1.02, abs=0.02)
+
+
 def test_wind_default(clear_water):
     """Without wind speed in the input, the default of the configuration (2 m s-1) is used."""
     np.testing.assert_array_equal(clear_water.radcalnet_db.wind, 2.)

@@ -73,8 +73,9 @@ Inputs
        package is used, with a lower accuracy.
    * - Packaged auxiliary data
      - 1..1 (mandatory)
-     - Irradiance transmittance LUT, gaseous absorption LUTs, solar spectra (TSIS-1, Thuillier,
-       Gueymard, Kurucz) and Rayleigh optical thickness, installed with the package.
+     - Irradiance transmittance LUT, gaseous absorption LUTs, solar spectra (TSIS-1, Thuillier ATLAS3,
+       Thuillier 2003 composite, Gueymard, Kurucz) and Rayleigh optical thickness, installed with the
+       package.
    * - Viewing geometry (``vza``, ``azi``)
      - 0..1 (optional)
      - Viewing zenith and relative azimuth angles (degrees) of the satellite; nadir by default.

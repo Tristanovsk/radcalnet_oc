@@ -109,8 +109,9 @@ class Process():
             0 deg when the viewing direction points towards the Sun (sunglint geometry), 180 deg for the
             backscattering geometry (radiative transfer convention of the look-up tables)
         :param central_wl: not used (the wavelengths are those of the gaseous absorption LUT)
-        :param solar_database: solar spectrum used for :math:`F_0`: ``'tsis'`` (default), ``'thuillier'``,
-            ``'gueymard'`` or ``'kurucz'``
+        :param solar_database: solar spectrum used for :math:`F_0`: ``'tsis'`` (default), ``'thuillier'``
+            (ATLAS3), ``'thuillier2003'`` (composite of the Sentinel-2 L1C solar irradiances), ``'gueymard'`` or
+            ``'kurucz'``
         :param Rrs_name: name of the remote-sensing reflectance variable in ``input_db``
         :param o2_model: absorption of O2, ``'reptran'`` or ``'lbl'`` (line by line in the O2-B and O2-A
             bands, see :py:class:`~radcalnet_oc.kernel.GaseousTransmittance`); by default

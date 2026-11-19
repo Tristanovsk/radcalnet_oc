@@ -22,8 +22,8 @@ Options:
   --aerosol_combination props  Proportion of each aerosol model of config.yml, comma-separated
                    (models: ARCT_rh70, COAV_rh70, DESE_rh70, MACL_rh70, URBA_rh70, WASO_rh0;
                    by default: proportions of config.yml)
-  --solar_database name  Extraterrestrial solar spectrum: tsis, thuillier, gueymard or kurucz
-                   [default: tsis]
+  --solar_database name  Extraterrestrial solar spectrum: tsis, thuillier (ATLAS3), thuillier2003
+                   (composite of the Sentinel-2 L1C), gueymard or kurucz [default: tsis]
   --rrs_name name  Name of the remote-sensing reflectance variable in <input_file> [default: Rrs]
   --o2_model model  Absorption of O2: reptran, or lbl (line by line in the O2-B and O2-A bands, for
                    sub-nanometre resolution); default: settings: o2_model of the configuration

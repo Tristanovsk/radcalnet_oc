@@ -229,7 +229,8 @@ The plane solar irradiance at TOA is
    E_0(\lambda) = \mu_0\, d^{2}(J)\, F_0(\lambda),
 
 where :math:`F_0` is taken from one of the available solar spectra (TSIS-1 hybrid
-reference spectrum by default, Thuillier, Gueymard or Kurucz), and
+reference spectrum by default, Thuillier ATLAS3, Thuillier et al. (2003) composite, Gueymard or
+Kurucz), and
 :math:`d^2(J) = (\bar{d}/d)^2` corrects for the Earth-Sun distance on day of year :math:`J`:
 
 .. math::
