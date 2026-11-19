@@ -124,3 +124,19 @@ measurements of a site. Not part of the package.
 The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
 `reports/validation_roadmap_2026-11`. The output files record the radcalnet_oc version and settings
 (`radcalnet_oc` attribute) since the traceability change of ROADMAP task 2.
+
+9. **Region of interest at the RadCalNet sites** (`roi_selection.py`, notebook `roi_selection.ipynb`): Sentinel-2 L1C
+   window of +/- 1500 m around VEIT (AAOT) and CORO (Section-7 Platform) from all the clear scenes of the tile,
+   detection of the fixed structures (frequency of the pixels brighter than the far field at 1610 nm), footprint
+   of the structures by distance to them, and ROI candidates (square or disc, half-size 100-1200 m, exclusion
+   of a disc or of the structure + buffer) scored by contamination, heterogeneity and dispersion of the matchup
+   residual (paired bootstrap). The windows (`<code>_s2_l1c_window.nc`) and the scores are written to
+   `/data/radcalnet/studies/roi_selection`:
+
+   ```bash
+   python roi_selection.py extract VEIT     # about 6 min, then the same for CORO
+   jupyter nbconvert --to notebook --execute --inplace roi_selection.ipynb   # about 3 min (scores cached)
+   ```
+
+   Result: the platform footprint vanishes 60-100 m from the structure; the matchups cannot separate the
+   candidates; recommended ROI: square of half-size 200 m at VEIT and 300 m at CORO, minus the structure + 100 m.
