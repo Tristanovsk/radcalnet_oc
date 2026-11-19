@@ -24,7 +24,7 @@ Variables: as before (Rtoa, Ed, E0, Rrs, sza, aerosol and gas inputs, aerosol_co
 
 Usage:
     python make_products.py --site AAOT --level lev20 --name VEIT
-    python make_products.py --site Section-7_Platform --level lev15 --start 2024-08-19
+    python make_products.py --site Section-7_Platform --level lev15 --start 2024-08-19 --name CORO
 '''
 import argparse
 import logging
