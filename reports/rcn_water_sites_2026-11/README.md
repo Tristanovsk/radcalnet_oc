@@ -1,7 +1,8 @@
 # RadCalNet water sites: update for the RCN meeting (November 2026)
 
 Answers to the three points raised after the October meeting: infrastructure filtering at VEIT, the
-sun-glint filtered VEIT dataset, and the new Romanian site (RadCalNet code CORO, AERONET-OC Section-7 Platform, Black Sea). All the datasets are
+sun-glint filtered VEIT dataset, and the new Romanian site (RadCalNet code CORO, AERONET-OC Section-7 Platform, Black Sea),
+followed by a note on the comparisons in reflectance and in radiance (solar spectrum). All the datasets are
 made with radcalnet_oc **1.2.0** (`radcalnet_oc_version` attribute of each file; CHANGELOG).
 
 ## 1. VEIT: infrastructure filtering (ROI and pixel screening)
@@ -75,7 +76,7 @@ specular). Stricter filters can be applied with the flags (e.g. bit 1, or `glint
 Important: at nadir, the glint is strong in summer around noon. In July 2020 at VEIT (solar zenith 22-40°, wind
 1.6 m/s) the median glint fraction at 865 nm is 19 % and 260 of 399 times are near specular: only 58 times pass the
 filter. The glint seen by a sensor depends on its viewing geometry, which the nadir file does not have. For
-Sentinel-2 the near-specular overpasses are in May-August (86 of 489 VEIT scenes, 52 of 95 at CORO), and the
+Sentinel-2 the near-specular overpasses are in April-August (86 of 489 VEIT scenes, 92 of 196 at CORO), and the
 simulated glint removes most of the near-infrared deficit at these geometries. For each overpass, the glint
 should be recomputed at the sensor geometry (we can provide it per overpass, from the list of acquisitions), or
 the overpasses with a glint angle < 30° should be removed.
@@ -87,18 +88,67 @@ nearby, stopped in August 2019). Data: L2.0 from 27 August 2019 to 18 August 202
 13 November 2026. Daily RCN files with the same content as VEIT (nadir, 10 nm, glint variables and filtered copy):
 L2.0 for 2019-2024 and L1.5 for 2024-2026 (the level is in the file name).
 
-TOA check with Sentinel-2 MSI L1C (24 clear scenes at L1.5, glint angle > 30°, square of 600 m half-size
-without exclusion, the box of the current matchups): simulation minus MSI, median
+TOA check with Sentinel-2 MSI L1C: all the overpasses of tile 35TPK with AERONET-OC data within 2 h (196 scenes,
+2019-2026), 52 clear matchups at L1.5 (valid fraction > 0.5, measurement within 60 min, AOT(550) < 0.3, glint
+angle > 30°; square of 600 m half-size without exclusion, the box of the current matchups). Simulation minus MSI,
+median:
 
 | | 443 | 490 | 560 | 665 | 705 | 865 | 1610 | 2190 nm |
 |---|---|---|---|---|---|---|---|---|
-| without the direct glint | -3.0 % | -3.3 % | -5.5 % | -13 % | -17 % | -28 % | -62 % | -75 % |
-| with the simulated glint (Cox-Munk at the station wind) | -1.6 % | -1.1 % | +0.5 % | -2.2 % | -5.9 % | -10 % | -14 % | -20 % |
+| without the direct glint | -3.6 % | -4.4 % | -6.7 % | -14 % | -19 % | -35 % | -70 % | -82 % |
+| with the simulated glint (heavy-tailed slopes `cm_iso_mix`, station wind) | -1.6 % | -1.3 % | -0.7 % | -2.9 % | -6.4 % | -8.6 % | -8.7 % | -6.1 % |
 
-The CORO overpasses are glint-dominated in the near infrared and the SWIR even at glint angles > 30°:
-use the glint-filtered times, or the visible bands only, until the glint at the sensor geometry is in the
-comparison. Same order as VEIT once the glint is included (VEIT L2.0, 325 scenes: -1.6 % at 443 nm, -0.1 % at
-490 nm, +0.8 % at 560 nm, -2.9 % at 665 nm).
+The 23 L2.0 matchups (2019-2024) agree within 1.2 points in the visible. The CORO overpasses are glint-dominated in
+the near infrared and the SWIR even at glint angles > 30° (median glint angle 33°, median absolute difference
+35-44 % at 1610-2190 nm): use the glint-filtered times, or the visible bands only, until the glint at the sensor
+geometry is in the comparison. Same order as VEIT with the same glint statistics (VEIT L2.0, 325 scenes: -1.4 % at 443 nm,
++0.4 % at 490 nm, +1.3 % at 560 nm, -1.5 % at 665 nm, -9.6 % at 865 nm).
+
+## 4. Reflectance or radiance: the solar spectrum
+
+The RCN files give the TOA **reflectance**. radcalnet_oc simulates with the TSIS-1 HSRS solar spectrum (Coddington
+et al. 2021, `solar_database='tsis'`, the default), recommended by CEOS since March 2022 (uncertainty 0.3 % from 460
+to 2365 nm). Sentinel-2 MSI is calibrated in reflectance on its sun diffuser; the ESA processing converts to
+radiance with the Thuillier et al. (2003) spectrum (uncertainty 2-3 %): the band solar irradiances of the L1C
+metadata are the Thuillier (2003) composite integrated over the current MSI spectral responses (within 0.02 % for
+S2A, S2B and S2C).
+
+- **Reflectance does not depend on the solar spectrum.** The simulated TOA reflectance is identical with TSIS-1 and
+  with Thuillier (2003) (to machine precision); the spectrum only weights the band integration, a change of at most
+  0.12 % in the median (0.19 % at 1375 nm) over the VEIT matchups. The reflectance comparisons of sections 1-3 are
+  therefore free of the solar-spectrum choice.
+- **Radiance does.** With L = rho E0 cos(theta_s) U / pi (U of the L1C metadata, the same on both sides), the band
+  irradiance ratio TSIS-1 / Thuillier (2003) over the MSI bands is the same for the three units:
+
+  | | 443 | 490 | 560 | 665 | 705 | 865 | 1610 | 2190 nm |
+  |---|---|---|---|---|---|---|---|---|
+  | TSIS-1 / Thuillier (2003) - 1 | +1.0 % | +1.0 % | +2.5 % | +1.2 % | -1.0 % | -0.6 % | -3.6 % | -4.8 % |
+
+- On one solar scale (MSI radiance corrected to TSIS-1, as recommended by CEOS), the radiance differences equal the
+  reflectance differences. With the MSI radiance of the ESA convention (Thuillier 2003), they shift by this ratio,
+  simulation minus MSI, median, with the glint:
+
+  | | 443 | 490 | 560 | 665 | 865 | 1610 | 2190 nm |
+  |---|---|---|---|---|---|---|---|
+  | VEIT reflectance (= radiance, TSIS-1 scale) | -1.4 % | +0.4 % | +1.3 % | -1.5 % | -9.6 % | -16.7 % | -24.0 % |
+  | VEIT radiance, ESA scale | -0.4 % | +1.4 % | +3.8 % | -0.3 % | -10.0 % | -19.8 % | -27.7 % |
+  | CORO reflectance (= radiance, TSIS-1 scale) | -1.6 % | -1.3 % | -0.7 % | -2.9 % | -8.6 % | -8.7 % | -6.1 % |
+  | CORO radiance, ESA scale | -0.7 % | -0.3 % | +1.8 % | -1.7 % | -9.1 % | -12.1 % | -10.7 % |
+
+  The shift stays within the Thuillier (2003) uncertainty in the visible (560 nm: +2.5 points) and exceeds it in the
+  SWIR (-3.6 / -4.8 points at 1610 / 2190 nm): it comes from the reference spectra, not from the simulator or the
+  MSI calibration.
+- `solar_database='thuillier'` of radcalnet_oc is the ATLAS3 spectrum (SOLID distribution), 1.4 % above the
+  Thuillier (2003) composite from 500 to 2400 nm: it does not reproduce the L1C irradiances. The composite is now
+  available as `solar_database='thuillier2003'` (development version, after 1.2.0). The Earth-Sun factor of
+  radcalnet_oc agrees with the U of the L1C metadata within 0.4 % (median -0.08 %).
+
+**Recommended for the RCN users:** compare in TOA reflectance, as distributed. For radiance comparisons, use one
+solar spectrum on both sides: convert the RCN reflectance and the sensor reflectance with the same E0 (TSIS-1, or
+the sensor's own E0, e.g. `thuillier2003` for Sentinel-2), or, with the sensor's radiance product, add the
+uncertainty of its solar spectrum (2-3 % for Thuillier 2003) to the budget, and state which spectrum was used.
+References: De Vis et al., *Using the CEOS-WGCV recommended solar irradiance model*, VH-RODA 2023 (ESA);
+De los Reyes et al. 2022, Remote Sens. 14, 4237.
 
 ## Files
 
