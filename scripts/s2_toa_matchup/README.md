@@ -140,3 +140,17 @@ The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
 
    Result: the platform footprint vanishes 60-100 m from the structure; the matchups cannot separate the
    candidates; recommended ROI: square of half-size 200 m at VEIT and 300 m at CORO, minus the structure + 100 m.
+
+10. **Physical residual budget** (`residual_budget.py`): the residual sat - sim (simulation with the heavy-tailed glint,
+    `_cm_iso_mix` files, standard selection) compared, per matchup and band (443-2190 nm), with the terms missing
+    from the simulation, each predicted by a physical model with no coefficient fitted on the matchups: Rayleigh
+    scattering above the water vapour in B10 (single scattering, 55 +/- 8 % of the molecules above the opaque
+    layer), thin cirrus from the B10 excess (Gordon 1999), whitecaps (Gordon and Wang 1994, spectral factors of
+    Frouin et al. 1996) and land environment (6S functions); and with the uncertainties of the glint, the AOT and the
+    aerosol model, the MSI calibration, the water-leaving term and the time window. Prints the medians of the terms,
+    the remaining residual and its uncertainty, the closure fractions (|r| < u, < 2u), the residual per glint-angle
+    bin and S2 unit, and checks the cirrus model against the slope of the residual with the B10 excess (about 30 s):
+
+    ```bash
+    python residual_budget.py --csv-dir /data/radcalnet/studies/residual_budget
+    ```
