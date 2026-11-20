@@ -90,14 +90,14 @@ U_CAL = 0.02
 U_WATER_REL = {443: .010, 560: .003, 665: 0., 865: 0., 1610: 0., 2190: 0.}
 U_WATER_ABS = {443: 0., 560: 0., 665: 0., 865: .15e-3, 1610: 0., 2190: 0.}
 U_AOT = 0.01
-GLINT_BINS = [30, 40, 50, 60, 90]
+GLINT_BINS = [0, 20, 30, 40, 50, 60, 90]
 
 
-def load(odir, site):
+def load(odir, site, glint_min=SEL['glint_min']):
     ds = xr.open_dataset(opj(odir, f'{site}_s2_toa_matchup{SUFFIX}.nc'), drop_variables=DROP).load()
     keep = ((ds.frac_valid > SEL['frac_min']) & (ds.n_pix >= SEL['npix_min'])
             & (np.abs(ds.dt_nearest) <= SEL['dt_max']) & (ds.aot550 < SEL['aot_max'])
-            & (ds.glint_angle > SEL['glint_min']))
+            & (ds.glint_angle > glint_min))
     return ds, ds.isel(time=keep.values)
 
 
@@ -174,6 +174,8 @@ def budget(full, ds, weights):
                     + u_water ** 2 + u_time ** 2)
         rows.append(pd.DataFrame({
             'time': ds.time.values, 'band': band, 'unit': unit, 'glint_angle': ds.glint_angle.values,
+            'sza': ds.sza.values, 'vza': ds.vza.values, 'azi': ds.azi.values,
+            'glint_flags': ds.glint_flags.values, 'glint_fraction': ds.glint_fraction.values,
             'wind': U, 'aot550': ds.aot550.values, 'sat': sat, 'sim': sim, 'E': E, 'B10': b10, 'R_above': r_above,
             'cirrus': C, 'whitecaps': WC, 'environment': ENV, 'pred': pred, 'r': r,
             'u_cirrus': u_C, 'u_whitecaps': u_WC, 'u_environment': u_ENV, 'u_glint': u_glint, 'u_aot': u_aot,
@@ -184,7 +186,7 @@ def budget(full, ds, weights):
 def report(name, df):
     med = df.groupby('band').median(numeric_only=True)
     k = 1e3
-    print(f'\n===== {name}: {df.time.nunique()} matchups (glint angle > 30 deg), x1e-3 (medians)')
+    print(f'\n===== {name}: {df.time.nunique()} matchups (glint angle > {df.glint_angle.min():.0f} deg), x1e-3 (medians)')
     cols = ['sat', 'E', 'cirrus', 'whitecaps', 'environment', 'pred', 'r']
     t = (med[cols] * k).round(2)
     t['r %'] = (100 * med['r'] / med['sat']).round(1)
@@ -220,23 +222,91 @@ def report(name, df):
     print('   excess  ', np.round(k * np.percentile(b.B10 - b.R_above, [10, 50, 90]), 2))
 
 
+#: sun zenith classes (deg) and minimum number of matchups of a class of the model-gap table
+SZA_CLASSES = [(0., 40.), (40., 55.), (55., 90.)]
+N_MIN = 20
+
+
+def glint_level(flags):
+    '''Glint level of the bitmask of radcalnet_oc.coxmunk.glint_flags (near specular first).'''
+    f = np.asarray(flags).astype(int)
+    return np.select([f & 8 > 0, f & 4 > 0, f & 2 > 0, f & 1 > 0],
+                     ['near_specular', 'high', 'moderate', 'low'], 'none')
+
+
+def gap(g):
+    '''Model gap of a class: the part of the remaining residual r not covered by the known terms u,
+    sqrt(median(r)^2 + max(0, s_r^2 - median(u)^2)), s_r = 1.4826 MAD(r) (robust spread).'''
+    r = g.r.values
+    s = 1.4826 * np.median(np.abs(r - np.median(r)))
+    return np.sqrt(np.median(r) ** 2 + max(0., s ** 2 - np.median(g.u.values) ** 2))
+
+
+def model_gap_table(df):
+    '''
+    Table of the model gap per glint level, sun zenith class and band (reflectance), from the budget of all the
+    matchups (all glint angles, both sites pooled). A class with fewer than N_MIN matchups takes the value of its
+    glint level over all the sun zenith angles (``provisional`` = 1, also when the level itself has fewer).
+    '''
+    df = df.assign(level=glint_level(df.glint_flags))
+    rows = []
+    for level, gl in df.groupby('level'):
+        for lo, hi in SZA_CLASSES:
+            gs = gl[(gl.sza >= lo) & (gl.sza < hi)]
+            for band in BANDS:
+                n = int((gs.band == band).sum())
+                if n >= N_MIN:
+                    u, prov = gap(gs[gs.band == band]), 0
+                else:
+                    ga = gl[gl.band == band]
+                    u, prov = gap(ga), int(len(ga) < N_MIN)
+                    n = len(ga)
+                rows.append(dict(level=level, sza_min=lo, sza_max=hi, wl=band, u_model=round(float(u), 6), n=n,
+                                 provisional=prov))
+    return pd.DataFrame(rows)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split('\n')[1])
     p.add_argument('--odir', default=ODIR)
     p.add_argument('--csv-dir', default=None)
+    p.add_argument('--glint-min', type=float, default=SEL['glint_min'],
+                   help='minimum glint angle (deg); 0 keeps the near-specular scenes (CSV suffixed _all)')
+    p.add_argument('--model-table', default=None,
+                   help='write the model-gap table (glint level x sun zenith x band) of the matchups to this CSV '
+                        '(with --glint-min 0)')
     args = p.parse_args()
     land = shapely.unary_union(list(shpreader.Reader(
         shpreader.natural_earth('10m', 'physical', 'land')).geometries()))
+    frames = []
     for site, (code, (lat, lon)) in SITES.items():
-        full, ds = load(args.odir, site)
+        full, ds = load(args.odir, site, args.glint_min)
         weights = environment_weights(lat, lon, land)
         df = budget(full, ds, weights)
+        frames.append(df)
         report(f'{code} ({site}, coast at {weights["coast_km"]:.0f} km)', df)
         sens = {b: round(1e3 * aot_sensitivity(full, b), 1) for b in BANDS}
         print('   dRtoa/dAOT of the simulation (x1e-3 per unit AOT):', sens)
         if args.csv_dir:
             os.makedirs(args.csv_dir, exist_ok=True)
-            df.to_csv(opj(args.csv_dir, f'{code}_residual_budget.csv'), index=False)
+            sfx = '' if args.glint_min == SEL['glint_min'] else '_all'
+            df.to_csv(opj(args.csv_dir, f'{code}_residual_budget{sfx}.csv'), index=False)
+    if args.model_table:
+        table = model_gap_table(pd.concat(frames, ignore_index=True))
+        with open(args.model_table, 'w') as f:
+            f.write('# Model gap of the radcalnet-oc TOA simulation (standard uncertainty, reflectance) per sunglint level\n'
+                    '# (radcalnet_oc.coxmunk.glint_flags at 865 nm, near specular first), sun zenith class and band:\n'
+                    '# part of the residual MSI - simulation (with the heavy-tailed glint) of the Sentinel-2 matchups\n'
+                    '# of VEIT (AAOT L2.0) and CORO (Section-7 L1.5) that the physical budget does not explain,\n'
+                    '# sqrt(median(r)^2 + max(0, s_r^2 - median(u)^2)), r the residual after the predicted terms\n'
+                    '# (cirrus, whitecaps, environment), u the known uncertainties (glint, AOT, aerosol model, MSI\n'
+                    '# calibration 2 %, water, time), s_r = 1.4826 MAD(r); n matchups; provisional = 1: fewer than\n'
+                    f'# {N_MIN} matchups in the level. Made by scripts/s2_toa_matchup/residual_budget.py --glint-min 0\n'
+                    f'# --model-table, radcalnet_oc matchups v1.2.0, {pd.Timestamp.now():%Y-%m-%d}.\n')
+            table.to_csv(f, index=False)
+        print(f'model-gap table -> {args.model_table}')
+        print((table.pivot_table(index=['level', 'sza_min'], columns='wl', values='u_model') * 1e3).round(2)
+              .to_string())
 
 
 if __name__ == '__main__':

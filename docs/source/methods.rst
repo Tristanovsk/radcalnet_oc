@@ -791,19 +791,34 @@ mixture of the nominal simulation being kept:
 
    u_i(\lambda) = \frac{|R_{toa}(x_i + u(x_i)) - R_{toa}(x_i - u(x_i))|}{2},
 
-and the uncertainty of the direct glint ``Rglint_unc`` (`Sunglint`_) is added as a model term. The terms are
-assumed independent:
+and the uncertainty of the direct glint ``Rglint_unc`` (`Sunglint`_) and the model gap :math:`u_{model}` are
+added as model terms. The terms are assumed independent:
 
 .. math::
    :label: u_total
 
-   u_{total}(\lambda) = \sqrt{\sum_i u_i^2(\lambda) + u_{glint}^2(\lambda)}.
+   u_{total}(\lambda) = \sqrt{\sum_i u_i^2(\lambda) + u_{glint}^2(\lambda) + u_{model}^2(\lambda)}.
+
+**Model gap per sunglint level and sun zenith angle.** :math:`u_{model}`
+(:py:func:`~radcalnet_oc.uncertainty.model_uncertainty`, table ``data/auxdata/model_uncertainty_s2.csv``) is the part
+of the residual MSI :math:`-` simulation of the Sentinel-2 matchups at VEIT and CORO (all glint angles, simulation with
+the heavy-tailed glint) that the physical budget of ``scripts/s2_toa_matchup/residual_budget.py`` does not explain:
+after the terms the simulation lacks are added (thin cirrus from the B10 excess over the Rayleigh scattering above the
+water vapour, whitecaps, land environment), the remaining residual :math:`r` of each class of sunglint level
+(``glint_flags``: none, low, moderate, high, near specular) and sun zenith angle (< 40, 40--55, > 55 deg) gives
+:math:`u_{model} = \sqrt{\tilde r^2 + \max(0, s_r^2 - \tilde u^2)}`, :math:`\tilde r` its median, :math:`s_r` its
+robust spread (1.4826 MAD) and :math:`\tilde u` the median of the known uncertainties (glint, AOT, aerosol model, MSI
+calibration 2 %, water-leaving term, time window). At 865 nm it is about 1.0--2.2 :math:`\times10^{-3}` without or
+with low glint, 1.7--2.8 for a moderate glint and 5--7 for a high or near-specular glint; in the blue and green it grows
+with the sun zenith angle (443 nm, low glint: 0.2, 1.2 and 2.6 :math:`\times10^{-3}`). The term is empirical (two
+sites, viewing zenith angles below 12 deg), interpolated in :math:`\ln\lambda` between 443 and 2190 nm and
+constant beyond; classes with fewer than 20 matchups take the value of their glint level (``provisional``).
 
 The default input uncertainties (:data:`~radcalnet_oc.uncertainty.INPUT_UNC`: AOT(550) 0.01, water vapour 10 %,
 ozone 3 %, pressure 2 hPa, wind 1.5 m s\ :sup:`-1` for the sky reflection of the look-up tables, :math:`R_{rs}` 5 %)
-are provisional and are arguments of the function. Not yet included: the aerosol model (mixture), the residuals of the
-models (gas coupling, absorption tables, invRrs reconstruction and SWIR extension) and the terms identified on the
-Sentinel-2 matchups (thin cirrus, additional near-infrared term). The surface pressure enters the gaseous absorption
+are provisional and are arguments of the function. The aerosol model (mixture) and the residuals of the models (gas
+coupling, absorption tables, invRrs reconstruction and SWIR extension) enter only through :math:`u_{model}`, for the
+Sentinel-2 geometries of the matchups. The surface pressure enters the gaseous absorption
 and the direct transmittance; it also enters the Rayleigh scattering of the path reflectance and the diffuse
 transmittances (``Process(rayleigh_pressure=True)``, default ``settings: rayleigh_pressure: true``,
 :py:meth:`~radcalnet_oc.process.Process.rayleigh_pressure_correction`, validated with OSOAA runs at

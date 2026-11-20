@@ -369,11 +369,12 @@ def test_uncertainty_budget(glint_run):
     R0 = p.radcalnet_db.Rtoa.copy()
     ratm_lut = p.lut.Rdiff_lut.copy()
     db = uncertainty_budget(p, inputs={'aot550': ('abs', 0.02), 'tco3': ('rel', 0.)})
-    for name in ['u_aot550', 'u_tco3', 'u_glint', 'u_total', 'u_total_rel']:
+    for name in ['u_aot550', 'u_tco3', 'u_glint', 'u_model', 'u_total', 'u_total_rel']:
         assert name in db, name
     assert float(db.u_tco3.max()) == 0.
     assert float(db.u_aot550.sel(wl=865., method='nearest').min()) > 0.
-    np.testing.assert_allclose(db.u_total, np.sqrt(db.u_aot550 ** 2 + db.u_tco3 ** 2 + db.u_glint ** 2))
+    np.testing.assert_allclose(db.u_total, np.sqrt(db.u_aot550 ** 2 + db.u_tco3 ** 2 + db.u_glint ** 2
+                                                   + db.u_model.transpose(*db.u_total.dims) ** 2))
     np.testing.assert_allclose(db.u_total_rel, db.u_total / db.Rtoa_glint)
     xr.testing.assert_identical(db.Rtoa, R0)
     xr.testing.assert_identical(p.lut.Rdiff_lut, ratm_lut)
@@ -467,3 +468,26 @@ def test_boa_irradiance_needs_execute():
     input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 2))
     with pytest.raises(RuntimeError, match='execute'):
         Process(input_db=input_db, vza=angles('vza', [0.]), azi=angles('azi', [90.])).boa_irradiance()
+
+
+def test_model_uncertainty(glint_run):
+    """Model gap per sunglint level and sun zenith angle: defined everywhere, larger for the near-specular and high
+    glint than without glint at 865 nm, interpolated between the bands of the table and constant beyond."""
+    from radcalnet_oc.uncertainty import model_uncertainty, glint_level, MODEL_UNC_FILE
+    import pandas as pd
+    np.testing.assert_array_equal(glint_level([0, 1, 3, 7, 9, 15]),
+                                  ['none', 'low', 'moderate', 'high', 'near_specular', 'near_specular'])
+    db = glint_run.radcalnet_db
+    u = model_uncertainty(db)
+    assert set(u.dims) == set(db.glint_flags.dims) | {'wl'}
+    assert np.isfinite(u).all() and float(u.min()) > 0
+    t = pd.read_csv(MODEL_UNC_FILE, comment='#')
+    at865 = t[t.wl == 865].groupby('level').u_model.median()
+    assert at865['near_specular'] > at865['none'] and at865['high'] > at865['low']
+    # constant beyond the bands of the table, between them in the range of the neighbours
+    flags = db.glint_flags.isel(time=0, vza=0, azi=0)
+    spec = u.isel(time=0, vza=0, azi=0)
+    assert float(spec.sel(wl=400., method='nearest')) == pytest.approx(float(spec.sel(wl=443., method='nearest')), rel=0.05)
+    lo, hi = sorted([float(spec.sel(wl=w, method='nearest')) for w in (665., 865.)])
+    assert lo - 1e-9 <= float(spec.sel(wl=760., method='nearest')) <= hi + 1e-9
+    assert int(flags) >= 0

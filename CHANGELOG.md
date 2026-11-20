@@ -8,6 +8,14 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- Model gap in the uncertainty budget: `uncertainty_budget(..., model=True)` adds `u_model`
+  (`radcalnet_oc.uncertainty.model_uncertainty`, table `data/auxdata/model_uncertainty_s2.csv`), the part of the
+  Sentinel-2 matchup residual (VEIT, CORO, all glint angles) that the physical budget does not explain, per sunglint
+  level (`glint_flags`: none, low, moderate, high, near specular), sun zenith class (< 40, 40-55, > 55 deg) and band,
+  interpolated in log(wavelength); at 865 nm about 1-2.2e-3 without or with low glint, 1.7-2.8e-3 moderate, 5-7e-3
+  high or near specular; in the blue it grows with the sun zenith angle (443 nm, low glint: 0.2 / 1.2 / 2.6e-3).
+  Made by `scripts/s2_toa_matchup/residual_budget.py --glint-min 0 --model-table`. Needs `compute_sunglint`
+  (glint flags); the total uncertainty now includes it by default.
 - Direct and diffuse downwelling irradiance at the bottom of the atmosphere: `Process.boa_irradiance()` (after
   `execute`) adds `Edir` (unscattered solar beam on the horizontal plane, $E_0 T_g^{\downarrow}
   \exp[-(\tau_r + \tau_a)/\mu_0]$), `Ediff` (`Ed - Edir`), `Tdir`, `tau_r` and `tau_a` to `radcalnet_db` and
