@@ -3,7 +3,7 @@ SOS-ABS simulations of the TOA signal over a rough sea surface (Cox-Munk) + Lamb
 with full coupling of gaseous absorption (CKD 5 cm-1, fine mode) and scattering, to assess and
 parameterise the decoupled gaseous transmittance used by radcalnet_oc.
 
-Usage: python make_luts.py [v1|v2|v3|v4] [OUTDIR] [N_WORKERS] [--run]
+Usage: python make_luts.py [v1|v2|v3|v4|v5] [OUTDIR] [N_WORKERS] [--run]
 
 Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v2):
 
@@ -21,6 +21,11 @@ Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v
     one interval out of STRIDE per spectral region (ckd_wavelengths). The centres avoid the edges of the
     250 cm-1 CKD files, where SOS-ABS stops (ERROR_3500, e.g. 1.6 um = 6250 cm-1). The CKD coefficients
     start at 364 nm.
+  v5 (saturated cores of the H2O 1380 and 1880 nm bands, skipped by v3: Tg < 0.02 for an air mass of 2 and
+    2 g cm-2): one CKD interval out of two of 1344-1471 and 1801-1964 nm (88 wavelengths, 16 in MSI B10), same grid
+    and files as v3. In these cores the decoupled path reflectance is ~0, while the molecules above the water
+    vapour scatter light that is not absorbed: the clear-sky L1C B10 has a floor of ~0.5e-3
+    (scripts/s2_toa_matchup/residual_budget.py, ../sos_abs_coupling/check_fullrange_s2.py).
   v4 (robustness of the coupling, roadmap tasks 14, 17, 21): the atmosphere of the package and one condition
     changed at a time. Nominal: OPAC COAV_rh70 aerosols of the TOA LUT (mopsmap phase matrices, -AER.Model 4),
     aerosol scale height 2 km, mid-latitude summer gas profile (type 2, as v2 / v3), 1013 hPa, scalar, wind
@@ -60,7 +65,7 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SET = sys.argv[1] if len(sys.argv) > 1 else "v1"
-if SET not in ("v1", "v2", "v3", "v4"):
+if SET not in ("v1", "v2", "v3", "v4", "v5"):
     sys.exit(__doc__)
 # OUTDIR and the Mie / surface cache must be on a local disk, not in a synchronised folder (Dropbox):
 # 'data' is a link to such a directory. The cache is shared by all the workers and the sets; the surface
@@ -393,6 +398,10 @@ else:
 WL = np.unique(np.concatenate([np.arange(a, b + 1e-6, s) for a, b, s in WINDOWS])) * 1e-3
 if SET == "v3":
     WL = ckd_wavelengths()
+#: v5: saturated cores of the H2O 1380 and 1880 nm bands (one CKD interval out of two)
+V5_REGIONS = [((1300, 1500), 2), ((1800, 2000), 2)]
+if SET == "v5":
+    WL = ckd_wavelengths(regions=V5_REGIONS, tg_min=0., tg_max=0.02)
 
 ABS = {"-AP.AbsProfile.Type": 2, "-AP.SpectralResol": 5.0, "-SOS.AbsModeCKD": 1, "-AP.H2O": 2.0}
 NOABS = {"-AP.AbsProfile.Type": 7}
