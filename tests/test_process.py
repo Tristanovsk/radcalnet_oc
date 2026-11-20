@@ -416,3 +416,54 @@ def test_sunglint_single_geometry():
     assert db.glint_flags.dims == ('time',)
     np.testing.assert_allclose(db.Rtoa_glint, db.Rtoa + db.Rglint)
     np.testing.assert_allclose(db.glint_angle, input_db.sza, atol=1e-6)
+
+
+@pytest.fixture(scope='module')
+def boa_run():
+    """Process run on the clear-water template (nadir view), with the direct and diffuse BOA irradiance."""
+    process = Process(vza=angles('vza', [0.]), azi=angles('azi', [90.]))
+    process.execute()
+    process.boa_irradiance()
+    return process
+
+
+def test_boa_irradiance_closure(boa_run):
+    """Edir + Ediff = Ed of the simulation, both non-negative, added to radcalnet_db."""
+    db = boa_run.radcalnet_db
+    for name in ['Edir', 'Ediff', 'Tdir', 'tau_r', 'tau_a']:
+        assert name in db, name
+    np.testing.assert_allclose(db.Edir + db.Ediff, db.Ed, rtol=1e-10)
+    assert float(db.Edir.min()) >= 0 and float(db.Ediff.min()) >= 0
+    assert db.Edir.attrs['unit'] == 'mW m-2 nm-1'
+    assert (db.Tdir <= boa_run.Tra_d.squeeze() + 1e-6).all()
+
+
+def test_boa_irradiance_direct_beam(boa_run):
+    """Outside the gaseous bands, Edir = E0 Tg exp(-(tau_r + tau_a) / mu0); the direct fraction grows with the
+    wavelength (Rayleigh and aerosol scattering decrease)."""
+    db = boa_run.radcalnet_db.isel(time=0)
+    p = boa_run
+    wl = 550.
+    tau = float((db.tau_r + db.tau_a).sel(wl=wl, method='nearest'))
+    mu0 = float(p.mu0.isel(time=0))
+    expected = float((p.E0 * p.Tg_d).isel(time=0).sel(wl=wl, method='nearest')) * np.exp(-tau / mu0)
+    assert float(db.Edir.sel(wl=wl, method='nearest')) == pytest.approx(expected, rel=1e-10)
+    f = (db.Edir / db.Ed)
+    f443, f865, f1610 = (float(f.sel(wl=w, method='nearest')) for w in (443., 865., 1610.))
+    assert 0.4 < f443 < f865 < f1610 < 1.
+
+
+def test_boa_irradiance_decoupled_not_limited():
+    """With the decoupled gaseous transmittance (same Tg for the direct beam and Ed), Edir never exceeds Ed."""
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 3))
+    process = Process(input_db=input_db, vza=angles('vza', [0.]), azi=angles('azi', [90.]),
+                      gas_coupling='decoupled')
+    process.execute()
+    out = process.boa_irradiance()
+    assert out.Edir.attrs['n_limited'] == 0
+
+
+def test_boa_irradiance_needs_execute():
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 2))
+    with pytest.raises(RuntimeError, match='execute'):
+        Process(input_db=input_db, vza=angles('vza', [0.]), azi=angles('azi', [90.])).boa_irradiance()

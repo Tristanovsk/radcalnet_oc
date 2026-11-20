@@ -8,6 +8,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- Direct and diffuse downwelling irradiance at the bottom of the atmosphere: `Process.boa_irradiance()` (after
+  `execute`) adds `Edir` (unscattered solar beam on the horizontal plane, $E_0 T_g^{\downarrow}
+  \exp[-(\tau_r + \tau_a)/\mu_0]$), `Ediff` (`Ed - Edir`), `Tdir`, `tau_r` and `tau_a` to `radcalnet_db` and
+  returns them, e.g. for the sky / Sun irradiance ratio of above-water radiometry (AQUA3CS). With the coupled
+  gaseous transmittance `Edir` is limited to `Ed` in the cores of the water-vapour bands (`Edir.attrs['n_limited']`,
+  0.4 % of the samples of the clear-water template). `Process.optical_thickness()`: Rayleigh and aerosol optical
+  thicknesses of the measurements (shared with `compute_sunglint`). Tests and methods docs.
 - Thuillier et al. (2003) composite solar spectrum (`SolarIrradiance.thuillier2003`, file
   `data/auxdata/thuillier_2003_0.3nm.dat`, 0.3 nm sampling, 200-2397.5 nm) and option
   `solar_database='thuillier2003'` (`Process`, `--solar_database` of the command line). It is the spectrum of

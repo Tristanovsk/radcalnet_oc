@@ -255,6 +255,29 @@ Rayleigh-aerosol atmosphere, interpolated from the transmittance look-up table f
 solar zenith angle and the aerosol optical thickness at 550 nm, and :math:`T_g^{E_d}` the gaseous
 transmittance of the irradiance (Eq. :eq:`tg_term`, :math:`T_g^{\downarrow}` in the decoupled limit).
 
+Direct and diffuse components
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:py:meth:`~radcalnet_oc.process.Process.boa_irradiance` (after :py:meth:`~radcalnet_oc.process.Process.execute`)
+splits :math:`E_d` into the direct (unscattered) solar beam on the horizontal plane and the diffuse sky irradiance:
+
+.. math::
+   :label: ed_dir
+
+   E_{dir}(\lambda) = E_0(\lambda)\; T_g^{\downarrow}(\lambda)\;
+   \exp\left[-\frac{\tau_r(\lambda) + \tau_a(\lambda)}{\mu_0}\right], \qquad
+   E_{dif}(\lambda) = E_d(\lambda) - E_{dir}(\lambda),
+
+with the Rayleigh optical thickness at the surface pressure, the spectral AOT of the aerosol models and the
+gaseous transmittance of the solar path (air mass :math:`1/\mu_0`). The forward-scattered (circumsolar) light is
+part of :math:`E_{dif}`; a radiometer measuring the direct sun with a finite field of view also includes some of it.
+With the coupled gaseous transmittance, :math:`T_g^{E_d}` may fall below :math:`T_g^{\downarrow}` in the cores of
+the water-vapour bands where the diffuse part is small; :math:`E_{dir}` is then limited to :math:`E_d`
+(:math:`E_{dif}` = 0, about 0.4 % of the samples of the clear-water template), so that
+:math:`E_{dir} + E_{dif} = E_d`. The direct fraction :math:`E_{dir}/E_d` of the clear-water template (AOT(550)
+0.09-0.47, :math:`\theta_0` 24-38 deg) is 0.62 at 400 nm, 0.78 at 550 nm, 0.86 at 865 nm and 0.94 at 2200 nm.
+As ratios, :math:`E_{dir}/E_d` and :math:`E_{dif}/E_d` do not depend on the solar spectrum :math:`F_0`.
+
 The photosynthetically available radiation is derived from :math:`E_d` as
 
 .. math::
