@@ -322,27 +322,47 @@ def fig_matchup_bias(ds, site, ofile, csv):
     return tab
 
 
+STYLE = {'font.family': 'serif', 'mathtext.fontset': 'stix',
+         'font.serif': ['Times New Roman', 'TeX Gyre Termes', 'Nimbus Roman', 'Liberation Serif', 'DejaVu Serif']}
+
+
 def fig_matchup_bands(ds, site, ofile):
-    fig, axs = plt.subplots(3, 4, figsize=(12, 10), gridspec_kw={'hspace': 0.45, 'wspace': 0.35})
-    for ax, b in zip(axs.ravel(), BANDS):
-        x, y = ds.sat_median.sel(wl=b).values, ds.simg_median.sel(wl=b).values
-        ok = np.isfinite(x) & np.isfinite(y)
-        x, y = x[ok], y[ok]
-        sc = ax.scatter(x, y, c=ds.aot550.values[ok], s=6, cmap='viridis', vmin=0, vmax=0.3)
-        lim = [0, np.nanpercentile(np.r_[x, y], 99) * 1.1]
-        ax.plot(lim, lim, 'k', lw=0.8)
-        ax.set_xlim(lim)
-        ax.set_ylim(lim)
-        rel = 100 * np.median(y / x - 1)
-        r = np.corrcoef(x, y)[0, 1]
-        ax.set_title(f'{b} nm\nbias {rel:+.1f} %, r = {r:.2f}', fontsize=9)
-        ax.tick_params(labelsize=7)
-    fig.supxlabel('MSI L1C TOA reflectance (box median)')
-    fig.supylabel('RadCalNet-OC TOA reflectance with direct glint')
-    fig.colorbar(sc, ax=axs, shrink=0.6, label='AOT(550)')
-    fig.suptitle(f'{site}: Sentinel-2 matchups per band ({ds.sizes["time"]} scenes)', fontsize=10)
-    fig.savefig(ofile, dpi=200, bbox_inches='tight')
-    plt.close(fig)
+    '''Simulation against MSI per band, square panels with the 1:1 line and the least-squares regression line
+    (slope, intercept, r, median relative bias, N), points coloured by AOT(550).'''
+    with plt.rc_context({**STYLE, 'font.size': 12, 'axes.titlesize': 12}):
+        fig, axs = plt.subplots(3, 4, figsize=(12.5, 9.4), gridspec_kw={'hspace': 0.3, 'wspace': 0.32})
+        for ax, b in zip(axs.ravel(), BANDS):
+            x, y = ds.sat_median.sel(wl=b).values, ds.simg_median.sel(wl=b).values
+            ok = np.isfinite(x) & np.isfinite(y)
+            x, y, aot = x[ok], y[ok], ds.aot550.values[ok]
+            order = np.argsort(aot)                      # high AOT drawn on top
+            sc = ax.scatter(x[order], y[order], c=aot[order], s=12, cmap='Spectral_r', vmin=0, vmax=0.3,
+                            edgecolor='k', linewidth=0.15, alpha=0.9, zorder=2)
+            lo, hi = np.nanpercentile(np.r_[x, y], [0.5, 99.5])
+            pad = 0.08 * (hi - lo)
+            lim = [max(0, lo - pad), hi + pad]          # same range on both axes: square panel, 1:1 diagonal
+            ax.plot(lim, lim, color='0.4', lw=0.9, ls='--', zorder=1, label='1:1')
+            a, c = np.polyfit(x, y, 1)
+            ax.plot(lim, np.polyval([a, c], lim), color='k', lw=1.3, zorder=3, label='regression')
+            ax.set_xlim(lim)
+            ax.set_ylim(lim)
+            ax.set_box_aspect(1)
+            ax.locator_params(nbins=4)
+            ax.tick_params(labelsize=9)
+            rel = 100 * np.median(y / x - 1)
+            r = np.corrcoef(x, y)[0, 1]
+            ax.set_title(f'{b} nm', fontsize=13, pad=3)
+            fit = f'y = {a:.3f}x {c:+.4f}'.replace('-', '\u2212')
+            ax.text(0.04, 0.96, f'{fit}\nr = {r:.3f}\nbias {rel:+.1f} %\nN = {ok.sum()}',
+                    transform=ax.transAxes, ha='left', va='top', fontsize=9.5,
+                    bbox=dict(fc='w', ec='none', alpha=0.75, pad=1.5))
+        axs[0, 0].legend(loc='lower right', fontsize=9, frameon=False, handlelength=1.6)
+        fig.supxlabel('MSI L1C TOA reflectance (ROI median)', fontsize=15, y=0.035)
+        fig.supylabel('RadCalNet-OC TOA reflectance with direct glint', fontsize=15, x=0.06)
+        fig.colorbar(sc, ax=axs, shrink=0.6, pad=0.02, label='AOT(550)')
+        fig.suptitle(f'{site}: Sentinel-2 matchups per band ({ds.sizes["time"]} scenes)', fontsize=14, y=0.95)
+        fig.savefig(ofile, dpi=200, bbox_inches='tight')
+        plt.close(fig)
 
 
 def main():
