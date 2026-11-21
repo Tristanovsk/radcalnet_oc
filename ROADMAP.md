@@ -132,7 +132,12 @@ points of 10 and 24; then 15 and 17.
     f_path by 0.030: the CKD of SOS-ABS holds for the scattered light, and the real coupling is slightly stronger,
     the opposite sign to the EnMAP gap. Absorption in the RT is ruled out. Left: the EnMAP O2-A SRF shape or
     out-of-band response, the simulation inputs (surface pressure, water vapour term in the band), spherical
-    geometry (small). This decides the O2-A default (lbl or REPTRAN) in radcalnet_oc and hGRS.
+    geometry (small). *Low aerosol layer, done* (`scripts/sos_abs_coupling/o2a_variants_fpath.py`, variant ha05):
+    scale height 0.5 km lowers the EnMAP f_path by only 0.009 (AOT 0.05) to 0.019 (AOT 0.2), from 1.21/1.14 to
+    1.20/1.12, against a drop to about 1.0 needed. The hGRS gain analysis (error proportional to the signal,
+    dR = 0.23 R; 756 and 771 nm bands consistent with every model; no air-mass, glint or AOT dependence) points to
+    the EnMAP 763.7 nm band reading about 16 % low; to confirm with a closure over a bright land RadCalNet site,
+    where the coupling hardly matters. This decides the O2-A default (lbl or REPTRAN) in radcalnet_oc and hGRS.
 24. **Blue bias and pressure.** With the Rayleigh pressure scaling (done, validated with OSOAA), the residual at
     443 nm should decrease by about 0.64 % per % of pressure, but the matchups give -0.11 (t = -0.6), about three
     standard errors away: another blue term correlated with the pressure is likely present (Rrs used at nadir,

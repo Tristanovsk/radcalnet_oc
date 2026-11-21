@@ -30,7 +30,7 @@ Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v
     changed at a time. Nominal: OPAC COAV_rh70 aerosols of the TOA LUT (mopsmap phase matrices, -AER.Model 4),
     aerosol scale height 2 km, mid-latitude summer gas profile (type 2, as v2 / v3), 1013 hPa, scalar, wind
     5 m s-1, direct sun glint left out (-SOS.DirectSurf 0, as the path reflectance of radcalnet_oc). Variants:
-    WMO maritime (bridge with v2 / v3), the 5 other OPAC models, scale height 1 and 4 km, gas profiles 1, 3-6,
+    WMO maritime (bridge with v2 / v3), the 5 other OPAC models, scale height 0.5, 1 and 4 km, gas profiles 1, 3-6,
     1000 and 1030 hPa, polarisation, wind 2 m s-1, direct glint included. Wavelengths of v2 + v3: one out of
     V4_WL_STRIDE for the nominal set, one out of V4_VARIANT_SUBSAMPLE of these for the variants (a subset of the
     nominal wavelengths); reduced grid (V4_GRID). One LUT per variant in OUTDIR/<variant>/ (abs.nc, noabs.nc and,
@@ -126,7 +126,7 @@ V4_NOMINAL = {"aerosol": "COAV_rh70", "-AP.AerHS.HA": 2.0, "-AP.AbsProfile.Type"
 V4_VARIANTS = {"nominal": {},
                "wmo_maritime": {"aerosol": "WMO_maritime"},
                **{f"aer_{m}": {"aerosol": m} for m in OPAC_MODELS if m != "COAV_rh70"},
-               "ha1": {"-AP.AerHS.HA": 1.0}, "ha4": {"-AP.AerHS.HA": 4.0},
+               "ha05": {"-AP.AerHS.HA": 0.5}, "ha1": {"-AP.AerHS.HA": 1.0}, "ha4": {"-AP.AerHS.HA": 4.0},
                **{f"profile{t}": {"-AP.AbsProfile.Type": t} for t in (1, 3, 4, 5, 6)},
                "p1000": {"-AP.Psurf": 1000.}, "p1030": {"-AP.Psurf": 1030.},
                "polar": {"-SOS.Ipolar": 1},
