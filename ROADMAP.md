@@ -1,6 +1,6 @@
 # Roadmap of radcalnet_oc
 
-Status: 18 November 2026. The tasks are ordered from the easiest to the hardest, in four tiers; within a tier,
+Status: 22 November 2026. The tasks are ordered from the easiest to the hardest, in four tiers; within a tier,
 in the suggested order (task numbers are kept stable; new tasks take the next free number). The validation that motivates them is in the report
 [`reports/validation_roadmap_2026-11`](reports/validation_roadmap_2026-11) (Sentinel-2 L1C matchups at four
 AERONET-OC sites, coupling study against SOS-ABS, computing performance).
@@ -33,8 +33,36 @@ term (Rayleigh, Rrs, surface), not aerosol (task 24). At 865 nm the change is on
 near-infrared deficit stays at -2.5e-3 (AAOT L2.0) to -7.9e-3 (Section-7) (task 10). Other visible bands move by
 about 0.3 point.
 
-**Suggested order:** 25 (wavelength interpolation), 23 (release 1.2), 27; then 9 with 8 alongside, 26, the open
-points of 10 and 24; then 15 and 17.
+**Update (22 November 2026), progress since release 1.2.0 (18 November).**
+- *RadCalNet products and site documents*: daily products of an AERONET-OC site (`scripts/radcalnet_products/make_products.py`,
+  nadir, 10 nm, invRrs Rrs, retrieved aerosols, direct glint with uncertainty and flags); uncertainty statements in
+  LaTeX synchronised with Overleaf (`reports/ESA_official/latex`): VEIT-U revision 3 and CORO-U revision 1 on 1.2.0,
+  with the recommended region of interest (`roi_selection.py`) and the sunglint-flag selection of the Sentinel-2
+  matchups (`statement_figures.py`). GABU-U and the Q documents are still the converted Word versions (task 30).
+- *Uncertainty budget*: model gap of the Sentinel-2 matchups per glint level and sun zenith class (`u_model`,
+  task 17); physical residual budget of the matchups (`residual_budget.py`): closure in the visible, B10 floor of
+  0.5e-3 = Rayleigh scattering above the water vapour, missing from the simulation (task 14), cirrus 0.2e-3 at the
+  median (task 10).
+- *New outputs*: direct and diffuse irradiance at the bottom of the atmosphere (`Process.boa_irradiance`, for the
+  sky / Sun ratio of AQUA3CS) and the Thuillier (2003) composite solar spectrum of the Sentinel-2 L1C metadata
+  (`solar_database='thuillier2003'`) for comparisons in radiance; both unreleased.
+- *Full-range coupling* (task 14): end-to-end check on the Sentinel-2 matchups (B10 0.20e-3 with the candidate table
+  against 0.50e-3 observed, 0 with the package table); SOS-ABS set v5 of the saturated H2O cores (1380, 1880 nm)
+  done, not analysed yet.
+- *O2-A* (task 26): with hGRS, the EnMAP 763.7 nm band is about 9 % low over bright land (signal-independent); about
+  8 % is left over water with lbl + coupling, which no RT, aerosol, glint or chain term explains.
+- *Sentinel-3* (task 31): OLCI Cal/Val monitoring notebook at TOA with 1.2 (VEIT, GABU, CORO); tutorial moved to the
+  1.2 sunglint; the full three-site run is in progress.
+- *Other packages*: invRrs (unreleased on its develop and feature branches) changed the default sediment n_i shape
+  to `'atd_ext:0.5'` (1.4.0 has `'wl_a_sed'`) and added the Bricaud et al. (1998) phytoplankton absorption and a
+  mechanistic chlorophyll fluorescence term, both opt-in (task 27); the heavy-tailed glint statistics are now also in
+  the `coxmunk` package, and AQUA3CS has its own surface-to-TOA simulation and Sentinel-2 comparison (task 28);
+  hGRS 2.1.0 has the solar spectrum as a setting of its L1 drivers (tsis by default, thuillier2003 available); GRS
+  keeps the coupling and the pressure scaling on its study branch `feature/abs_scat_coupling` (3.2.0.dev0).
+
+**Suggested order (22 November 2026):** 27 (invRrs provenance, now urgent), 31 (Sentinel-3 run and tutorial rerun),
+14 (v5 cores, then the Rayleigh above the water vapour), 30 (GABU-U); then 9 with 8 alongside, the open points of 10,
+24 and 26; then 15, 17 and 28.
 
 ## Tier 1: quick wins (hours to a day each)
 
@@ -74,8 +102,12 @@ points of 10 and 24; then 15 and 17.
     aerosol parts separately?).
 27. **Provenance of the Rrs reconstruction.** `reconstruction.py` uses the default sediment n_i shape of invRrs,
     which changed twice on 16 November 2026 (now `'atd_ext:0.5'`): record the invRrs version and settings in
-    `provenance()`, set a minimum version, pin the shape in radcalnet_oc.
-23. **Release 1.2.** The `[Unreleased]` section has changed the default results (Rayleigh pressure scaling on by
+    `provenance()`, set a minimum version, pin the shape in radcalnet_oc. *Urgent (22 November 2026)*: the
+    released invRrs 1.4.0 still has `'wl_a_sed'`; `'atd_ext:0.5'` exists only in its unreleased branches, so the
+    reconstructed Rrs (and the 1.2.0 products and matchups) depend on the branch installed. Then: test the opt-in
+    chlorophyll fluorescence of invRrs on the reconstruction near 685 nm (AERONET-OC has no band between 667 and
+    865 nm; OLCI Oa10/Oa11 and MSI B5 are in the fluorescence peak).
+23. ~~**Release 1.2.**~~ *Done* (1.2.0, 18 November 2026, tag `v1.2.0`). The `[Unreleased]` section had changed the default results (Rayleigh pressure scaling on by
     default: about -0.06 % of the TOA reflectance per hPa below 1015.2 hPa in the blue) and added the direct
     sunglint and its flags, the first uncertainty budget and the logging scheme: release them with a tag, so
     that the matchup and GRS/hGRS studies refer to a version, not to a branch.
@@ -174,10 +206,25 @@ points of 10 and 24; then 15 and 17.
 28. **Shared physics across radcalnet_oc, GRS and hGRS.** The path-length coupling, the Rayleigh pressure
     scaling and the log-log interpolation are implemented three times: a set of reference values (inputs and
     expected outputs) tested in the CI of each package, so that they do not drift apart (e.g. the reference
-    pressure 1013.2 hPa of the linear scaling of GRS against 1015.2 hPa of the LUT runs).
+    pressure 1013.2 hPa of the linear scaling of GRS against 1015.2 hPa of the LUT runs). Since 21 November 2026
+    the heavy-tailed glint statistics (`cm_iso_t`, `cm_iso_mix`) are also in the `coxmunk` package, and AQUA3CS
+    has its own surface-to-TOA simulation: include the glint statistics in the shared references, and make AQUA3CS
+    call radcalnet_oc (or check it against it) rather than keep a third TOA model.
 29. **One wind source for the glint.** Refit the heavy-tailed glint statistics with the ERA5 or CAMS wind (GRS
     uses CAMS) before changing the defaults of `Sunglint` (with task 7); then test the glint-fraction flags of
     radcalnet_oc as the glint screening of GRS (hook: its new `p_slope` switch).
+
+30. **RadCalNet site documents.** VEIT-U (revision 3) and CORO-U (revision 1) are on 1.2.0; bring GABU-U to the
+    same state (products, budget with the model gap, Sentinel-2 matchups in a region of interest; Galata has no
+    fixed-structure detection yet), revise the Q documents, link CORO-U to Overleaf, and update the statements when
+    the products change (tasks 14, 27).
+31. **Sentinel-3 OLCI Cal/Val monitoring** (`notebook/sentinel3/sentinel3_radcalnet_oc_toa_calval_monitoring.ipynb`):
+    ratio OLCI / simulation per band, site and platform at VEIT, GABU and CORO with the 1.2 model, the uncertainty
+    budget and the glint flags. Quick run (VEIT, summer 2020): OLCI 1-2.5 % above the simulation in the blue,
+    within u_sim; S3A - S3B +1.2 to +1.9 % (not significant); O2-A (Oa13) and Oa14 still too shallow. Next: the
+    full 2016-2026 run (in progress), drift and S3A - S3B over the archive, the S3B spectral responses (S3A shape
+    shifted today), an OLCI model gap (task 17), and the rerun of the Sentinel-3 tutorial (outputs still those of
+    1.1).
 
 ## Tier 3: substantial (weeks)
 
@@ -189,7 +236,13 @@ points of 10 and 24; then 15 and 17.
     total transmittance: add CH4 to the coupled gases or drop these windows. Validate end to end before
     changing the default: band path reflectance against the coupled SOS-ABS simulations (first H2O 1380 and
     1880 nm, where the absorption tables differ by 30-40 %), then against MSI B10 (simulated ~1e-7 vs
-    8e-4 observed).
+    8e-4 observed). *End-to-end check done* (`scripts/sos_abs_coupling/check_fullrange_s2.py`, 20 November 2026):
+    B10 0.20e-3 with the candidate table against 0.50e-3 observed (correlation 0.73), other bands unchanged; the
+    1380 nm model, fitted on the wings, recovers 40 % of the core. SOS-ABS set v5 of the saturated cores
+    (`/data/sos_abs_coupling/v5`, 88 CKD intervals of 1344-1471 and 1801-1964 nm) done: refit the 1380 and 1880 nm
+    windows on v3 + v5. The residual budget assigns the B10 floor of 0.5e-3 to Rayleigh scattering above the water
+    vapour (55 +/- 8 % of the molecules in single scattering), which the coupled transmittance of the whole path
+    removes: add it as a term above the absorber before changing the default.
 15. **Bidirectional Rrs.** Adapt the normalised AERONET-OC Rrs to the viewing and solar geometry of the
     satellite (f/Q tables, or the invRrs reconstruction at the satellite geometry instead of nadir); possibly
     part of the -3 to -4 % at 443 nm. Use the per-band viewing angles of MSI.
@@ -205,7 +258,9 @@ points of 10 and 24; then 15 and 17.
     the aerosol model term (spread of the mixtures compatible with the AOT spectrum); the model residuals (coupling
     per window, REPTRAN vs CKD, invRrs reconstruction and SWIR extension of Rrs); the terms found on the matchups
     (thin cirrus, near-infrared term); per-band output and correlations between the terms; cost (two simulations
-    per input).
+    per input). *Model gap done* (`u_model`, 20 November 2026, unreleased): the part of the Sentinel-2 residual not
+    explained by the physical budget, per glint level, sun zenith class and band; derived at VZA < 12 deg, so
+    extrapolated for OLCI (up to 48 deg): an OLCI-specific gap from task 31, not fitted on the matchups it assesses.
 18. **HYPERNETS** ([waterhypernet.org/data](https://waterhypernet.org/data/)): reader of the L2 water products
     (hyperspectral Rrs, uncertainties, flags) into the input format; validation of the invRrs reconstruction
     and of the SWIR extension at the sites co-located with AERONET-OC; direct hyperspectral input with its
@@ -224,11 +279,19 @@ points of 10 and 24; then 15 and 17.
     percentiles of the band residual in the saturated bands.
 22. **Operational chain and other sensors**: scheduled update of all the sites from `aeronet_oc_db`, quality
     flags, RadCalNet-like hyperspectral TOA product per site and day; Sentinel-3/OLCI, Landsat-8/9,
-    PACE/OCI and hyperspectral missions (EnMAP, PRISMA, FLEX).
+    PACE/OCI and hyperspectral missions (EnMAP, PRISMA, FLEX). *Started*: daily products of a site
+    (`make_products.py`), Sentinel-3 OLCI monitoring (task 31).
 
 ## Done
 
-Unreleased (to go into 1.2, task 23):
+Unreleased (after 1.2.0):
+
+- Model gap in the uncertainty budget (`u_model`, task 17).
+- Direct and diffuse irradiance at the bottom of the atmosphere (`Process.boa_irradiance`).
+- Thuillier (2003) composite solar spectrum (`solar_database='thuillier2003'`).
+- Products and site documents (task 30), Sentinel-3 monitoring notebook (task 31), O2-A studies (task 26).
+
+Version 1.2.0 (18 November 2026, task 23):
 
 - Pressure scaling of the Rayleigh scattering, on by default (`rayleigh_pressure`), validated with OSOAA at
   +/- 20 hPa (within 0.03 % of the path reflectance for a Rayleigh atmosphere, 0.25 % with AOT 0.1); also
