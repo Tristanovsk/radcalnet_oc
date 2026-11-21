@@ -1,7 +1,8 @@
 # RadCalNet site documents in LaTeX, synchronised with Overleaf
 
 The Word documents of `..` converted to LaTeX (`convert.sh`: pandoc, then `clean.py`), one folder per document
-(`main.tex`, `media/`). Site codes: **VEIT** = Venise (AERONET-OC AAOT), **GABU** = Galata.
+(`main.tex`, `media/`). Site codes: **VEIT** = Venise (AERONET-OC AAOT), **GABU** = Galata, **CORO** = Section-7
+Platform.
 
 | code | folder | Overleaf project |
 |---|---|---|
@@ -9,6 +10,11 @@ The Word documents of `..` converted to LaTeX (`convert.sh`: pandoc, then `clean
 | VEIT-U | `QA4EO-WGCV-RadCalNet-Venise-U-v1` | https://www.overleaf.com/project/6afdd309590f14297f86e4c4 |
 | GABU-Q | `QA4EO-WGCV-RadCalNet-Galata-Q-v1` | https://www.overleaf.com/project/6afdd357fe4dcbdcb75d5fed |
 | GABU-U | `QA4EO-WGCV-RadCalNet-Galata-U-v1` | https://www.overleaf.com/project/6afdd370c8062c3a8df0ac84 |
+| CORO-U | `QA4EO-WGCV-RadCalNet-CORO-U-v1` | not linked yet (local git repository, written from VEIT-U revision 3) |
+
+The figures of the uncertainty statements (`media/v1.3`) are made by `scripts/radcalnet_products/statement_figures.py`
+(products, budget, matchups with the ROI and the sunglint flags) and `scripts/radcalnet_products/site_rgb.py`
+(Sentinel-2 image at 10 m with the ROI); see their docstrings for the commands of VEIT and CORO.
 
 The ACTION-TN (`ACTION-TN-101-MAGv2.0_CCN4_D2_20250818`) is converted but not linked to Overleaf.
 

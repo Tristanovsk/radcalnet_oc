@@ -16,6 +16,7 @@ Two steps:
 
 Usage: python roi_selection.py extract VEIT
        python roi_selection.py extract CORO
+       python roi_selection.py structures VEIT   # structure pixels for s2_toa_matchup.py --roi
 """
 import glob
 import os
@@ -321,7 +322,25 @@ def recommend(S, tol865=0.1, tol665=0.05, kept_margin=3., wls=(665, 865)):
     return c.sort_values(['rank', 'riqr865_%'])
 
 
+def export_structures(code, threshold=0.5):
+    """Pixels of the fixed structures (offsets x_m, y_m of the 20 m pixel centres to the site, m) written to
+    ``<ODIR>/<code>_structures.csv``, read by ``s2_toa_matchup.py --roi`` to exclude them from the ROI."""
+    ds = load_window(code)
+    freq = structure_frequency(ds)
+    mask, table = structures_from_frequency(freq, threshold)
+    X, Y = np.meshgrid(ds.x.values, ds.y.values)
+    m = mask.values
+    out = pd.DataFrame({'x_m': X[m], 'y_m': Y[m], 'freq': freq.values[m]})
+    path = os.path.join(ODIR, f'{code}_structures.csv')
+    with open(path, 'w') as f:
+        f.write(f'# fixed structures of {code}: pixels SWIR-bright in > {threshold} of {freq.n_scenes} clear scenes '
+                '(roi_selection.structure_frequency); offsets of the 20 m pixel centres to the site (m)\n')
+        out.round(1).to_csv(f, index=False)
+    print(table.round(1).to_string(index=False))
+    print(f'{code}: {len(out)} structure pixels -> {path}')
+
+
 if __name__ == '__main__':
-    if len(sys.argv) != 3 or sys.argv[1] != 'extract' or sys.argv[2] not in SITES:
+    if len(sys.argv) != 3 or sys.argv[1] not in ('extract', 'structures') or sys.argv[2] not in SITES:
         sys.exit(__doc__)
-    extract(sys.argv[2])
+    (extract if sys.argv[1] == 'extract' else export_structures)(sys.argv[2])
