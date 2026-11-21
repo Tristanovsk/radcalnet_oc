@@ -45,7 +45,9 @@ Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v
     done: an interrupted set restarts from the last chunk.
     Dry run by default (prints the plan, the checks and the size); add --run to run it. Options:
     --variants=nominal,ha1 (subset of the variants), --n-wl=N (first N wavelengths, for a test), --chunk=N
-    (wavelengths per pool, default 16).
+    (wavelengths per pool, default 16), --wl-range=LO,HI (nominal wavelengths within LO-HI nm only),
+    --variant-subsample=N (one nominal wavelength out of N for the variants, default 2; 1 runs the variants at
+    all the nominal wavelengths, e.g. for one absorption band with --wl-range).
 """
 import os, sys, time
 import numpy as np
@@ -110,7 +112,7 @@ CACHE = os.path.join(HERE, "data", "cache")
 # ---------------------------------------------------------------------------------------------------------------
 V2_WINDOWS = [(684, 698, 0.5), (712, 736, 1.0), (757, 772, 0.5), (808, 836, 1.0), (890, 990, 1.0)]
 V4_WL_STRIDE = 2
-V4_VARIANT_SUBSAMPLE = 2   # variants: one nominal wavelength out of 2 (one out of 4 of v2 + v3)
+V4_VARIANT_SUBSAMPLE = int(OPTS.get("variant-subsample", 2))   # variants: one nominal wavelength out of 2 (one out of 4 of v2 + v3)
 # parameters that do not change the runs without absorption (-AP.AbsProfile.Type 7): such variants take noabs.nc
 # and tgdir_noabs.nc from the nominal set
 NOABS_INDEPENDENT = ("-AP.AbsProfile.Type",)
@@ -241,6 +243,9 @@ def v4_checks(wls, jobs):
 
 def v4_main():
     wls = v4_wavelengths()
+    if "wl-range" in OPTS:
+        lo, hi = (float(x) * 1e-3 for x in OPTS["wl-range"].split(","))
+        wls = wls[(wls >= lo) & (wls <= hi)]
     if "n-wl" in OPTS:
         wls = wls[:int(OPTS["n-wl"])]
     if "variants" in OPTS:
