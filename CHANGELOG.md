@@ -31,6 +31,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   both sides.
 
 ### Changed
+- Rrs reconstruction (`radcalnet_oc.reconstruction.Reconstruction`): the sediment n_i shape of invRrs is pinned
+  (`ni_shape=NI_SHAPE`, `'atd_ext:0.5'`) instead of following the default of the installed invRrs (`'wl_a_sed'` in
+  invRrs 1.4.0, `'atd_ext:0.5'` in its later versions); with an invRrs that does not know the shape, its default is
+  used with a warning. The output records the invRrs version (with the git commit of a development install,
+  `invrrs_version()`), the n_i shape actually used, the phytoplankton model, the fluorescence term actually fitted
+  and the settings of the fits (attributes `invrrs_*`, `Reconstruction.provenance`); `make_products.py` copies them
+  into the products. Minimum invRrs version of the `invrrs` extra: 1.3 (first with `ni_shape`).
 - Documentation of `solar_database='thuillier'`: the packaged file is the ATLAS3 spectrum (SOLID
   distribution), 1.4 % above the Thuillier (2003) composite from 500 to 2400 nm; it does not reproduce the
   Sentinel-2 L1C solar irradiances.

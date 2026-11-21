@@ -89,7 +89,8 @@ def model_uncertainty(db, table=MODEL_UNC_FILE):
     (column ``provisional``). Interpolated linearly in log(wavelength) between the bands, constant beyond.
 
     :param db: ``radcalnet_db`` with ``glint_flags`` and the coordinate ``sza``
-    :param table: CSV of the table (default :data:`MODEL_UNC_FILE`) or :py:class:`pandas.DataFrame`
+    :param table: CSV of the table (default ``MODEL_UNC_FILE``, ``data/auxdata/model_uncertainty_s2.csv`` of the
+        package) or :py:class:`pandas.DataFrame`
     :return: standard uncertainty (reflectance), dimensions of ``glint_flags`` and ``wl``
     '''
     t = table if isinstance(table, pd.DataFrame) else pd.read_csv(table, comment='#')

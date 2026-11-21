@@ -68,6 +68,7 @@ Remote-sensing reflectance
 
    radcalnet_oc.water.extend_rrs
    radcalnet_oc.reconstruction.reconstruct_rrs
+   radcalnet_oc.reconstruction.invrrs_version
 
 Configuration and download of the TOA look-up table
 ---------------------------------------------------
@@ -145,6 +146,7 @@ Uncertainty budget
    :nosignatures:
 
    radcalnet_oc.uncertainty.uncertainty_budget
+   radcalnet_oc.uncertainty.model_uncertainty
 
 .. autodata:: radcalnet_oc.uncertainty.INPUT_UNC
 

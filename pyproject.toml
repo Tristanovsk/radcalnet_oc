@@ -54,7 +54,7 @@ dependencies = { file = ["requirements.txt"] }
 
 [project.optional-dependencies]
 # hyperspectral reconstruction of multispectral Rrs (radcalnet_oc.reconstruction)
-invrrs = ["invRrs>=1.1"]
+invrrs = ["invRrs>=1.3"]
 # shared, up-to-date AERONET-OC database (Aeronet.read_site, Aeronet.open_site, site table)
 aeronet = ["aeronet_oc_db>=1.2"]
 dev = ["black", "bumpver", "isort", "pip-tools", "pytest", "build", "twine"]

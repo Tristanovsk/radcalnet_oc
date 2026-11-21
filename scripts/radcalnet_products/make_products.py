@@ -94,6 +94,7 @@ def simulate_month(records, reconstruction, glint_stats):
             db[v + '_invrrs'] = hyp[v]
     db['chl_invrrs'].attrs = {'unit': 'mg m-3', 'description': 'chlorophyll-a concentration of the invRrs fit'}
     db['rmsd_invrrs'].attrs = {'unit': 'sr-1', 'description': 'rmsd of the invRrs fit with the AERONET-OC bands'}
+    db.attrs.update(hyp.attrs)   # invRrs version and settings of the reconstruction
     return db
 
 

@@ -104,8 +104,10 @@ about 0.3 point.
     which changed twice on 16 November 2026 (now `'atd_ext:0.5'`): record the invRrs version and settings in
     `provenance()`, set a minimum version, pin the shape in radcalnet_oc. *Urgent (22 November 2026)*: the
     released invRrs 1.4.0 still has `'wl_a_sed'`; `'atd_ext:0.5'` exists only in its unreleased branches, so the
-    reconstructed Rrs (and the 1.2.0 products and matchups) depend on the branch installed. Then: test the opt-in
-    chlorophyll fluorescence of invRrs on the reconstruction near 685 nm (AERONET-OC has no band between 667 and
+    reconstructed Rrs (and the 1.2.0 products and matchups) depend on the branch installed. *Done (22 November
+    2026)*: shape pinned (`reconstruction.NI_SHAPE`, fallback to the invRrs default with a warning), invRrs version
+    and settings in the attributes `invrrs_*` of the reconstruction and of the products, `invRrs>=1.3`. Then: test
+    the opt-in chlorophyll fluorescence of invRrs on the reconstruction near 685 nm (AERONET-OC has no band between 667 and
     865 nm; OLCI Oa10/Oa11 and MSI B5 are in the fluorescence peak).
 23. ~~**Release 1.2.**~~ *Done* (1.2.0, 18 November 2026, tag `v1.2.0`). The `[Unreleased]` section had changed the default results (Rayleigh pressure scaling on by
     default: about -0.06 % of the TOA reflectance per hPa below 1015.2 hPa in the blue) and added the direct

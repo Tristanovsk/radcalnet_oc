@@ -12,6 +12,8 @@ dependency (``pip install invRrs``).
 '''
 
 import logging
+import subprocess
+from pathlib import Path
 
 import numpy as np
 import xarray as xr
@@ -29,6 +31,9 @@ AERONET_OC_GEOMETRY = (40., 90.)
 XINIT = dict(chl=1., a_bg_ref=0.05, S_bg=0.017, spm_norm=0.3, fine_prop=0.5, nr=1.17, ni_ref=-0.003)
 # upper wavelength (nm) of the sediment optical properties of invRrs
 WL_MAX = 1150.
+# spectral shape of the imaginary refractive index of the sediments (ni_shape of invRrs), pinned so that the
+# reconstruction does not follow the default of the installed invRrs ('wl_a_sed' in 1.4.0, 'atd_ext:0.5' after)
+NI_SHAPE = 'atd_ext:0.5'
 
 
 def _import_invrrs():
@@ -40,6 +45,49 @@ def _import_invrrs():
     return solver, utils
 
 
+def invrrs_version():
+    '''
+    Version of the installed invRrs, with the git commit for a development installation (e.g.
+    ``1.4.0+g60835a4.dirty``), or ``'not installed'``.
+    '''
+    try:
+        import invRrs
+    except ImportError:
+        return 'not installed'
+    version = getattr(invRrs, '__version__', 'unknown')
+    root = Path(invRrs.__file__).resolve().parent.parent
+    if not (root / '.git').exists():
+        return version
+    try:
+        def git(*args):
+            return subprocess.run(['git', '-C', str(root), *args], capture_output=True, text=True,
+                                  timeout=5, check=True).stdout.strip()
+        commit = git('rev-parse', '--short', 'HEAD')
+        dirty = '.dirty' if git('status', '--porcelain', '--untracked-files=no', '--', 'invRrs') else ''
+    except (OSError, subprocess.SubprocessError):
+        return version
+    return f'{version}+g{commit}{dirty}'
+
+
+def _supported_ni_shape(shape):
+    '''``shape`` when the installed invRrs knows it, None (default of invRrs) otherwise, with a warning.'''
+    if shape is None:
+        return None
+    try:
+        from invRrs.forward import _check_ni_shape
+    except ImportError:
+        logger.warning(f'invRrs {invrrs_version()} cannot check ni_shape={shape!r}: its default sediment shape is '
+                       f'used')
+        return None
+    try:
+        _check_ni_shape(shape)
+    except ValueError:
+        logger.warning(f'ni_shape={shape!r} is not available in invRrs {invrrs_version()}: its default sediment '
+                       f'shape is used (see the attribute invrrs_ni_shape of the output)')
+        return None
+    return shape
+
+
 class Reconstruction:
     '''
     Hyperspectral reconstruction of multispectral remote-sensing reflectances with `invRrs`.
@@ -49,6 +97,9 @@ class Reconstruction:
     :param azi: relative azimuth angle (deg) of the measurements (90 deg for AERONET-OC)
     :param phyto_model: Chl-specific inherent optical properties of phytoplankton
         (``invRrs.utils.data.load_iop_phyto``)
+    :param ni_shape: spectral shape of the imaginary refractive index of the sediments (``ni_shape`` of
+        ``invRrs.inverse.TwoModes``), ``NI_SHAPE`` by default; None follows the default of the installed invRrs.
+        A shape unknown to the installed invRrs falls back to its default, with a warning
     :param sigma: uncertainty of the measured reflectance weighting the fit, function of the
         reflectance of the bands (e.g. ``lambda rrs: 0.05 * rrs + 2e-5``), or None for an unweighted fit
         (default, as the AERONET-OC chain of invRrs)
@@ -62,6 +113,7 @@ class Reconstruction:
                  vza=AERONET_OC_GEOMETRY[0],
                  azi=AERONET_OC_GEOMETRY[1],
                  phyto_model=PHYTO_MODEL,
+                 ni_shape=NI_SHAPE,
                  sigma=None,
                  max_nfev=100,
                  max_sza=80.,
@@ -72,7 +124,9 @@ class Reconstruction:
             raise ValueError(f'the reconstruction is limited to {WL_MAX:g} nm (sediment optical properties of '
                              f'invRrs); beyond, see radcalnet_oc.water.extend_rrs')
         self.vza, self.azi = vza, azi
+        self.phyto_model = phyto_model
         self.aphy_star, self.bbphy_star = utils.data().load_iop_phyto(phyto_model)
+        self.ni_shape = _supported_ni_shape(ni_shape)
         self.sigma = sigma
         self.max_nfev = max_nfev
         self.max_sza = max_sza
@@ -83,8 +137,34 @@ class Reconstruction:
     def _model(self, wl, sza):
         key = tuple(np.round(wl, 3))
         if key not in self._models:
-            self._models[key] = self.solver.two_modes(self.aphy_star, self.bbphy_star, sza, wl_=np.asarray(wl))
+            shape = {} if self.ni_shape is None else {'ni_shape': self.ni_shape}
+            self._models[key] = self.solver.two_modes(self.aphy_star, self.bbphy_star, sza, wl_=np.asarray(wl),
+                                                      **shape)
         return self._models[key]
+
+    def provenance(self, model=None):
+        '''
+        Settings of the reconstruction, written as global attributes of the output of :py:meth:`reconstruct`:
+        version of invRrs (:py:func:`~radcalnet_oc.reconstruction.invrrs_version`), sediment n_i shape actually
+        used, phytoplankton optical properties, fluorescence term actually fitted, weighting, geometry of the
+        measurements and limits of the fits.
+
+        :param model: an invRrs model of this reconstruction, to read the n_i shape it uses
+        :return: dict of text and number attributes (NetCDF compatible)
+        '''
+        shape = getattr(model, 'ni_shape', None) if model is not None else self.ni_shape
+        return {'invrrs_version': invrrs_version(),
+                'invrrs_model': 'TwoModes',
+                'invrrs_ni_shape': str(shape) if shape is not None else 'invRrs default',
+                'invrrs_phyto_model': str(self.phyto_model),
+                'invrrs_fluorescence': (f"{getattr(model, 'fluo_model', '?')} ({model.fit_fluo})"
+                                        if getattr(model, 'fit_fluo', False) else 'none'),
+                'invrrs_sigma': 'none' if self.sigma is None else 'user function',
+                'invrrs_max_nfev': int(self.max_nfev),
+                'invrrs_vza': float(self.vza),
+                'invrrs_azi': float(self.azi),
+                'invrrs_max_sza': float(self.max_sza),
+                'invrrs_min_bands': int(self.min_bands)}
 
     def reconstruct(self,
                     Rrs,
@@ -166,6 +246,7 @@ class Reconstruction:
         ds['rmsd'].attrs = {'unit': 'sr-1', 'description': 'root mean square difference between the fitted '
                                                            'model and the measured bands'}
         ds['success'] = ('time', success)
+        ds.attrs = self.provenance(hyper)
         return ds
 
 
