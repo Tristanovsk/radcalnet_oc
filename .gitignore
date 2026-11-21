@@ -20,3 +20,17 @@ docs/_build/
 
 # SOS-ABS coupling LUTs (link to a local data directory)
 /scripts/sos_abs_coupling/data
+
+# ESA official documents: Word/PDF originals, zips and converted LaTeX folders (the four site documents are their
+# own git repositories synchronised with Overleaf); only the conversion/sync tooling is tracked
+/reports/ESA_official/*
+!/reports/ESA_official/latex/
+/reports/ESA_official/latex/*
+!/reports/ESA_official/latex/README.md
+!/reports/ESA_official/latex/clean.py
+!/reports/ESA_official/latex/convert.sh
+!/reports/ESA_official/latex/sync.sh
+!/reports/ESA_official/latex/preamble.tex
+
+# Compiled reports
+/reports/*/main.pdf
