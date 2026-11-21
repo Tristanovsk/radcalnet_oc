@@ -137,7 +137,22 @@ points of 10 and 24; then 15 and 17.
     1.20/1.12, against a drop to about 1.0 needed. The hGRS gain analysis (error proportional to the signal,
     dR = 0.23 R; 756 and 771 nm bands consistent with every model; no air-mass, glint or AOT dependence) points to
     the EnMAP 763.7 nm band reading about 16 % low; to confirm with a closure over a bright land RadCalNet site,
-    where the coupling hardly matters. This decides the O2-A default (lbl or REPTRAN) in radcalnet_oc and hGRS.
+    where the coupling hardly matters. *Land test, done (hGRS, 21 November 2026)*: 21 EnMAP L1C scenes over bright
+    bare land (Bahia Blanca, Lampedusa, Senegal, Actium; R778 > 0.15, NDVI < 0.12), band depth against the linear
+    continuum 749/778 divided by the two-way direct lbl O2 transmittance at the scene air mass. The 756 and 771 nm
+    bands agree within ±2.5 %; the 763.7 nm band reads 0.917 (0.873-1.009, processor V010502, 14 scenes, the version
+    of all the water matchups) and 0.947 (V010506, 7 scenes), with no significant air-mass slope. The coupling over
+    a bright surface hardly changes the prediction: SOS v4 nominal, f of the total TOA signal 1.004-1.010 for
+    albedo 0.2-0.3 (surface share 88-96 % of the band signal), against 1.13-1.21 at albedo 0. The EnMAP band
+    deficit is therefore about 9 % (V010502), half of the water gap. With the water matchups corrected by the land
+    deficit (per air mass), EnMAP / simulation is 0.92 for lbl + path-length coupling, 1.03 for lbl decoupled and
+    1.05 for REPTRAN + coupling: the water data behave as f_path ≈ 1.03-1.05 against 1.12-1.20 from SOS, and the
+    earlier agreement of REPTRAN + coupling came from the band deficit compensating its over-absorption. No
+    surface-like term (water-leaving, glint residual, adjacency, f ≈ 1.0) can explain the remaining 8 %: it would
+    need a share of about 0.8 of the band signal over dark water. Open: the land deficit binned by brightness
+    (R778 0.03-0.6, from hGRS), to test a larger deficit on dark targets (non-linearity or out-of-band response of
+    the 763.7 nm band). This decides the O2-A default (lbl or REPTRAN) in radcalnet_oc and hGRS; neither is
+    supported by the corrected water data yet.
 24. **Blue bias and pressure.** With the Rayleigh pressure scaling (done, validated with OSOAA), the residual at
     443 nm should decrease by about 0.64 % per % of pressure, but the matchups give -0.11 (t = -0.6), about three
     standard errors away: another blue term correlated with the pressure is likely present (Rrs used at nadir,
