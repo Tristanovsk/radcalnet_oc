@@ -118,6 +118,21 @@ points of 10 and 24; then 15 and 17.
     reconstruction and the direct glint; per-band gains with uncertainties; extend to PRISMA. It tells whether the
     VNIR/SWIR offset that hGRS corrects empirically (29c54ea), still seen in the red by the shallowat ACTIUM study,
     is a sensor effect.
+    *O2-A conflict (21 November 2026), open.* The direct transmittance (SOS-ABS CKD, PRISMA glint scene) favours
+    line-by-line O2, while the EnMAP closure on dark water (diffuse-path dominated) has lbl + path-length coupling
+    +0.109 ± 0.023 too shallow in the 763.7 nm band (positive in 60/60 matchups, 9 sites, no smile or column
+    dependence) and REPTRAN + coupling within 3 %. Ruled out: the aerosol scale height and model (ha1/ha4/ARCT
+    variants, f_path changes ≤ 0.025 against the -0.07 needed), polarisation (-0.005), the radcalnet_oc chain and
+    the way hGRS applies f_path (closure numbers come from `Process`), the EnMAP SRF position and width (±1 nm moves
+    the error by ≤ 0.03). *Line-resolved SOS-ABS reference, done*
+    (`scripts/sos_abs_coupling/o2a_lbl_reference.py`, output in `/data/sos_abs_coupling/v4_o2a/lbl_ref`):
+    monochromatic runs through single-term CKD files (HITRAN 2012 Voigt, wings cut at 50 half-widths; 4 stratified
+    sample sets of one wavenumber per 1 cm-1 interval, 259 wavelengths, v4 nominal settings). The ppld table
+    applied per line under-predicts the line-resolved f_path by 0.038 (median, EnMAP band) and the CKD 1 cm-1
+    f_path by 0.030: the CKD of SOS-ABS holds for the scattered light, and the real coupling is slightly stronger,
+    the opposite sign to the EnMAP gap. Absorption in the RT is ruled out. Left: the EnMAP O2-A SRF shape or
+    out-of-band response, the simulation inputs (surface pressure, water vapour term in the band), spherical
+    geometry (small). This decides the O2-A default (lbl or REPTRAN) in radcalnet_oc and hGRS.
 24. **Blue bias and pressure.** With the Rayleigh pressure scaling (done, validated with OSOAA), the residual at
     443 nm should decrease by about 0.64 % per % of pressure, but the matchups give -0.11 (t = -0.6), about three
     standard errors away: another blue term correlated with the pressure is likely present (Rrs used at nadir,
