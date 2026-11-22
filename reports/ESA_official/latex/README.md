@@ -10,17 +10,19 @@ Platform.
 | VEIT-U | `QA4EO-WGCV-RadCalNet-Venise-U-v1` | https://www.overleaf.com/project/6afdd309590f14297f86e4c4 |
 | GABU-Q | `QA4EO-WGCV-RadCalNet-Galata-Q-v1` | https://www.overleaf.com/project/6afdd357fe4dcbdcb75d5fed |
 | GABU-U | `QA4EO-WGCV-RadCalNet-Galata-U-v1` | https://www.overleaf.com/project/6afdd370c8062c3a8df0ac84 |
-| CORO-U | `QA4EO-WGCV-RadCalNet-CORO-U-v1` | not linked yet (local git repository, written from VEIT-U revision 3) |
+| CORO-U | `QA4EO-WGCV-RadCalNet-CORO-U-v1` | https://www.overleaf.com/project/6b02ba23392fcfa94d0aa6ac (written from VEIT-U revision 3) |
+| CORO-Q | `QA4EO-WGCV-RadCalNet-CORO-Q-v1` | https://www.overleaf.com/project/6b02b9f77e720d9757d0fcfa (in preparation, from GABU-Q) |
 
 The figures of the uncertainty statements (`media/v1.3`) are made by `scripts/radcalnet_products/statement_figures.py`
 (products, budget, matchups with the ROI and the sunglint flags) and `scripts/radcalnet_products/site_rgb.py`
-(Sentinel-2 image at 10 m with the ROI); see their docstrings for the commands of VEIT and CORO.
+(Sentinel-2 image at 10 m with the ROI, also in section 2.3 of the Q documents); see their docstrings for the
+commands of VEIT, GABU and CORO.
 
 The ACTION-TN (`ACTION-TN-101-MAGv2.0_CCN4_D2_20250818`) is converted but not linked to Overleaf.
 
 ## Synchronisation
 
-Each of the four folders is a git repository whose remote `overleaf` is its Overleaf project (Overleaf git
+Each of the linked folders is a git repository whose remote `overleaf` is its Overleaf project (Overleaf git
 integration; the token is kept by the git credential helper of this machine).
 
 ```bash
