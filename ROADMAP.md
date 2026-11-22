@@ -139,6 +139,18 @@ about 0.3 point.
       before changing the defaults of `Sunglint`; thin cirrus in the simulation or as a screening term;
     - open: screening (box size 600 m half-size vs 150-300 m, SWIR and cirrus thresholds, homogeneity) and
       adjacency (distance to the coast, Section-7, Galata).
+    - *Regression slope below 1 (22 November 2026, `scripts/s2_toa_matchup/slope_analysis.py`)*: the slope of the
+      simulation against MSI is 0.65-0.71 at 865 nm and 0.27-0.52 at 1610-2190 nm (VEIT, CORO, ROI, sunglint-flag
+      selections). With MSI on the x axis, 1 - slope = cov(MSI - sim, MSI) / var(MSI): a term missing from the
+      simulation that grows with the signal; the noise of the ROI median (regression dilution) is < 0.001. The
+      cirrus predicted from B10 is fully missing (regression coefficient 1.0-1.5) and explains 0.12-0.28 of the
+      deficit (VEIT), the glint is not robust (sign changes with the selection). At 865 nm the deficit closes
+      without cirrus and with |dt| < 15 min (slope 0.97, VEIT, 81 matchups): cirrus and the time mismatch. In the
+      SWIR it does not (0.48 at 1610 nm, 0.42 at 2190 nm) and it grows with the AOT (2190 nm: 0.39 for AOT < 0.1,
+      0.25 above 0.15): a SWIR aerosol term (coarse mode, too little SWIR path reflectance per unit AOT, as found in
+      the aerosol diagnosis) is the next suspect; then a glint tail below the moderate level. Next: the same split
+      at CORO and in the S3 OLCI matchups (Oa17-Oa21), the slope against the retrieved coarse-mode fraction and the
+      AERONET-OC AOT(1020), and a simulation with a coarse-mode-enriched mixture constrained by the AOT spectrum.
 11. **Aerosol retrieval by default** when the spectral AOT is available (`kernel.Aerosol` is used only when
     called explicitly). *Deprioritised:* task 10 found no gain from the mixture in the NIR-SWIR; keep it for the
     consistency with the AOT spectrum, and revisit with the aerosol term of the uncertainty budget (task 17).
