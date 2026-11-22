@@ -244,7 +244,13 @@ about 0.3 point.
     (`/data/sos_abs_coupling/v5`, 88 CKD intervals of 1344-1471 and 1801-1964 nm) done: refit the 1380 and 1880 nm
     windows on v3 + v5. The residual budget assigns the B10 floor of 0.5e-3 to Rayleigh scattering above the water
     vapour (55 +/- 8 % of the molecules in single scattering), which the coupled transmittance of the whole path
-    removes: add it as a term above the absorber before changing the default.
+    removes: add it as a term above the absorber before changing the default. *Cores refitted (22 November 2026,
+    `fullrange_v5.py`, table `gas_coupling_ppld_full_v5.csv`)*: windows H2O-1380 and H2O-1880 fitted on v3 + v5
+    (154 + 88 channels): bias of T_atm in the cores -0.034 -> -0.011 (1380) and -0.025 -> -0.005 (1880), wings
+    unchanged; MSI B10 dark-water path reflectance 0.92 of SOS-ABS (0.85 with the v3 fit, 0.15 decoupled), e.g.
+    1.16e-3 (SOS) against 0.92e-3 at AOT 0.05 and 0.5 g cm-2. Next: rerun `check_fullrange_s2.py` with this table
+    (the end-to-end B10 was 0.20e-3 with the v3 fit, against 0.50e-3 observed: the gap is larger than the 15 % of
+    the fit, so look at the band integration and the H2O table of the package in the cores).
 15. **Bidirectional Rrs.** Adapt the normalised AERONET-OC Rrs to the viewing and solar geometry of the
     satellite (f/Q tables, or the invRrs reconstruction at the satellite geometry instead of nadir); possibly
     part of the -3 to -4 % at 443 nm. Use the per-band viewing angles of MSI.
