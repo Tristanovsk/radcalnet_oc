@@ -219,7 +219,12 @@ about 0.3 point.
 30. **RadCalNet site documents.** VEIT-U (revision 3) and CORO-U (revision 1) are on 1.2.0; bring GABU-U to the
     same state (products, budget with the model gap, Sentinel-2 matchups in a region of interest; Galata has no
     fixed-structure detection yet), revise the Q documents, link CORO-U to Overleaf, and update the statements when
-    the products change (tasks 14, 27).
+    the products change (tasks 14, 27). *22 November 2026*: CORO-U and CORO-Q linked to Overleaf (CORO-Q first
+    draft from GABU-Q, AERONET-OC climatology by `site_climatology.py`); Sentinel-2 overview and zoom in the Q
+    documents (`site_rgb.py`, GABU added, no ROI at Galata yet). *Data issue*: at Section-7 the AERONET-OC wind
+    is one constant value per month from April to August 2026 (level 1.5; also runs of constant wind and pressure in
+    March 2021, level 2.0): fill or climatology values, which feed the sunglint and its uncertainty in the CORO
+    products of these months; flag or replace them (ERA5 wind, task 7) before the next CORO products.
 31. **Sentinel-3 OLCI Cal/Val monitoring** (`notebook/sentinel3/sentinel3_radcalnet_oc_toa_calval_monitoring.ipynb`):
     ratio OLCI / simulation per band, site and platform at VEIT, GABU and CORO with the 1.2 model, the uncertainty
     budget and the glint flags. Quick run (VEIT, summer 2020): OLCI 1-2.5 % above the simulation in the blue,

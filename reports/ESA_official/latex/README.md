@@ -11,7 +11,7 @@ Platform.
 | GABU-Q | `QA4EO-WGCV-RadCalNet-Galata-Q-v1` | https://www.overleaf.com/project/6afdd357fe4dcbdcb75d5fed |
 | GABU-U | `QA4EO-WGCV-RadCalNet-Galata-U-v1` | https://www.overleaf.com/project/6afdd370c8062c3a8df0ac84 |
 | CORO-U | `QA4EO-WGCV-RadCalNet-CORO-U-v1` | https://www.overleaf.com/project/6b02ba23392fcfa94d0aa6ac (written from VEIT-U revision 3) |
-| CORO-Q | `QA4EO-WGCV-RadCalNet-CORO-Q-v1` | https://www.overleaf.com/project/6b02b9f77e720d9757d0fcfa (in preparation, from GABU-Q) |
+| CORO-Q | `QA4EO-WGCV-RadCalNet-CORO-Q-v1` | https://www.overleaf.com/project/6b02b9f77e720d9757d0fcfa (first draft from GABU-Q; AERONET-OC climatology by `scripts/radcalnet_products/site_climatology.py`) |
 
 The figures of the uncertainty statements (`media/v1.3`) are made by `scripts/radcalnet_products/statement_figures.py`
 (products, budget, matchups with the ROI and the sunglint flags) and `scripts/radcalnet_products/site_rgb.py`
