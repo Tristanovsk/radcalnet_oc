@@ -8,6 +8,8 @@ Figures (PNG, ``--fig-dir``):
 - ``toa_envelope.png``: temporal distribution of the TOA reflectance of the daily products at nadir (median,
   quartiles, 5-95 %), with and without the direct glint;
 - ``glint_nadir.png``: fraction of the times of the products flagged for sunglint at nadir, per month;
+- ``uncertainty_budget_flags.png`` (``--only budget_flags``): combined uncertainty of the same measurements over a
+  grid of viewing geometries, per sunglint level and for the selections by the sunglint flags;
 - ``uncertainty_budget.png``: terms of the uncertainty budget (``radcalnet_oc.uncertainty.uncertainty_budget``) for
   one measurement per month of a year of the site, at nadir: median absolute and relative uncertainties;
 - ``matchup_bias.png``: median and interquartile range of the relative difference simulation - MSI per band,
@@ -170,6 +172,108 @@ def budget(aeronet, level, year):
         radoc.Process.execute = orig
     process = captured['process']
     return uncertainty_budget(process)
+
+
+#: viewing geometries of the budget per sunglint level (deg; relative azimuth 0 = towards the Sun, glint side)
+BUDGET_VZA = (0., 15., 30., 45.)
+BUDGET_AZI = (0., 45., 90., 135., 180.)
+
+
+def budget_geometry(aeronet, level, year, vza=BUDGET_VZA, azi=BUDGET_AZI):
+    '''Uncertainty budget of the measurements of ``budget`` (one per month) at a grid of viewing geometries: the
+    glint flags, the glint uncertainty and the model gap vary with the geometry.'''
+    import make_products as mp
+    captured = {}
+    orig_execute, orig_process = radoc.Process.execute, radoc.Process
+    grid = dict(vza=xr.DataArray(list(vza), coords={'vza': list(vza)}, dims='vza'),
+                azi=xr.DataArray(list(azi), coords={'azi': list(azi)}, dims='azi'))
+
+    class GridProcess(orig_process):
+        def __init__(self, *a, **k):
+            k.update(grid)
+            super().__init__(*a, **k)
+
+    def execute(self, *a, **k):
+        r = orig_execute(self, *a, **k)
+        captured['process'] = self
+        return r
+    inputs = aeronet_inputs(aeronet, level).sel(time=str(year))
+    inputs = inputs.where(inputs.aot550.notnull() & inputs.naot.notnull().any('wl_aeronet'), drop=True)
+    t = pd.to_datetime(inputs.time.values)
+    pick = pd.Series(np.abs((t.hour + t.minute / 60) - 10), index=t).groupby(t.month).idxmin().values
+    radoc.Process, GridProcess.execute = GridProcess, execute
+    try:
+        mp.simulate_month(inputs.sel(time=pick), Reconstruction(), 'cm_iso_mix')
+    finally:
+        radoc.Process = orig_process
+    return uncertainty_budget(captured['process'])
+
+
+#: band centres of the tables of the budget (MSI bands of the comparisons)
+BUDGET_BANDS = [443, 490, 560, 665, 705, 740, 783, 842, 865, 1610, 2190]
+
+
+def fig_budget_flags(db, site, ofile, csv):
+    '''Relative combined uncertainty per sunglint level, and its bulk distribution over all the geometries against
+    the selections by the sunglint flags (SELECTIONS): what the screening removes from the uncertainty.'''
+    from radcalnet_oc.uncertainty import glint_level
+    spectral = radoc.Spectral(np.arange(400, 2500, 10), 10.)
+    conv = xr.merge([spectral.convolve2(db[n].rename(n), expon=3)[n] for n in ('u_total', 'Rtoa_glint')])
+    rel = (100 * conv.u_total / conv.Rtoa_glint)
+    level = xr.DataArray(glint_level(db.glint_flags.values), coords=db.glint_flags.coords, dims=db.glint_flags.dims)
+    rel, level = xr.broadcast(rel, level)
+    dims = [d for d in rel.dims if d != 'wl']
+    r = rel.stack(s=dims).transpose('s', 'wl')
+    lev = level.isel(wl=0).stack(s=dims).values
+    wl = r.wl.values
+    # strong water-vapour bands (the TOA reflectance vanishes, the relative uncertainty is meaningless) left out
+    absorbing = ((wl > 1330) & (wl < 1480)) | ((wl > 1780) & (wl < 2000)) | (wl > 2400)
+    r = r.where(~xr.DataArray(absorbing, coords={'wl': wl}, dims='wl'))
+    order = ['none', 'low', 'moderate', 'high', 'near_specular']
+    colors = dict(none='#1a9850', low='#91cf60', moderate='#fdae61', high='#f46d43', near_specular='#a50026')
+    sels = {'all geometries': np.ones(lev.size, bool),
+            'no high or near-specular glint': ~np.isin(lev, ['high', 'near_specular']),
+            'no moderate, high or near-specular glint': ~np.isin(lev, ['moderate', 'high', 'near_specular'])}
+    fig, axs = plt.subplots(1, 2, figsize=(12, 4.6))
+    for name in order:
+        m = lev == name
+        if m.mean() >= 0.01:   # a level on less than 1 % of the geometries is not shown (too few samples)
+            axs[0].plot(wl, np.nanmedian(r.values[m], 0), color=colors[name], lw=1.5,
+                        label=f'{name.replace("_", " ")} ({100 * m.mean():.0f} %)')
+    for (name, m), c in zip(sels.items(), ['k', '#2166ac', '#1a9850']):
+        axs[1].plot(wl, np.nanmedian(r.values[m], 0), color=c, lw=1.8,
+                    label=f'{name} ({100 * m.mean():.0f} %): median')
+        axs[1].plot(wl, np.nanpercentile(r.values[m], 90, 0), color=c, lw=1.2, ls='--', label='90th percentile')
+    for ax in axs:
+        ax.set_yscale('log')
+        ax.set_ylim(0.8, 200)
+        ax.set_xlim(380, 2420)
+        ax.set_xlabel('Wavelength (nm)', fontsize=10)
+        ax.set_ylabel('Relative standard uncertainty $u_c$ (%)', fontsize=10)
+        ax.tick_params(labelsize=9)
+    axs[0].set_title('median per sunglint level (share of the geometries)', fontsize=9.5)
+    axs[1].set_title('all the geometries and the selections by the flags', fontsize=9.5)
+    axs[0].legend(fontsize=8, loc='lower right', title='sunglint flag', title_fontsize=8.5, framealpha=0.9)
+    axs[1].legend(fontsize=7.5, loc='lower right', framealpha=0.9)
+    vza, azi = db.vza.values, db.azi.values
+    fig.suptitle(f'{site}: combined uncertainty of the simulated TOA reflectance ({db.sizes["time"]} measurements, '
+                 f'one per month; VZA {vza.min():g}-{vza.max():g} deg, relative azimuth {azi.min():g}-{azi.max():g} '
+                 'deg)', fontsize=10, y=0.99)
+    fig.tight_layout()
+    fig.savefig(ofile, dpi=200)
+    plt.close(fig)
+    idx = [int(np.argmin(np.abs(wl - b))) for b in BUDGET_BANDS]
+    rows = []
+    for name, m in {**{f'level {k}': lev == k for k in order}, **sels}.items():
+        if m.sum():
+            rows.append({'selection': name, 'share_%': round(100 * m.mean(), 1),
+                         **{f'{b} median': round(float(np.nanmedian(r.values[m][:, i])), 2)
+                            for b, i in zip(BUDGET_BANDS, idx)},
+                         **{f'{b} p90': round(float(np.nanpercentile(r.values[m][:, i], 90)), 2)
+                            for b, i in zip(BUDGET_BANDS, idx)}})
+    tab = pd.DataFrame(rows).set_index('selection')
+    tab.to_csv(csv)
+    return tab
 
 
 def fig_budget(db, site, ofile, csv):
@@ -377,7 +481,9 @@ def main():
     p.add_argument('--selection', default='noglint', choices=list(SELECTIONS), help='sunglint screening')
     p.add_argument('--no-roi', action='store_true', help='box of 1.2 km instead of the recommended ROI')
     p.add_argument('--fig-dir', required=True)
-    p.add_argument('--only', nargs='*', default=['envelope', 'budget', 'matchups', 'flags'])
+    p.add_argument('--only', nargs='*', default=['envelope', 'budget', 'matchups', 'flags'],
+                   help='parts: envelope, budget, budget_flags (budget over viewing geometries per sunglint level, '
+                        'about 1 h), rrs, matchups, flags')
     args = p.parse_args()
     radoc.set_logging('WARNING')
     warnings.filterwarnings('ignore')
@@ -400,6 +506,19 @@ def main():
             db[keep].to_netcdf(cache)
         tab = fig_budget(db, args.site, out('uncertainty_budget.png'), out('uncertainty_budget.csv'))
         print(f'uncertainty budget, median relative (%):\n{tab.to_string()}')
+    if 'budget_flags' in args.only:
+        cache = (f'{ROOT}/studies/uncertainty_budget_v{radoc.__version__}/'
+                 f'{args.site}_{args.level}_{args.year}_geometries.nc')
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        if os.path.exists(cache):
+            db = xr.open_dataset(cache).load()
+        else:
+            db = budget_geometry(args.aeronet, args.level, args.year)
+            keep = [v for v in db.data_vars if v.startswith('u_') or v in ('Rtoa', 'Rtoa_glint', 'glint_flags',
+                                                                         'glint_angle', 'aot550', 'wind')]
+            db[keep].to_netcdf(cache)
+        tab = fig_budget_flags(db, args.site, out('uncertainty_budget_flags.png'), out('uncertainty_budget_flags.csv'))
+        print(f'combined uncertainty per sunglint level and selection (%):\n{tab.to_string()}')
     if 'rrs' in args.only:
         q, chl = fig_rrs(args.site, args.level, radoc.__version__, out('rrs_products.png'))
         print(f'Rrs quantiles (sr-1):\n{q.to_string()}\nmedian chl_invrrs {chl:.2f} mg m-3')
