@@ -11,7 +11,8 @@ three bands and a gamma.
 
 The zoom shows the ROI of ``scripts/s2_toa_matchup/s2_toa_matchup.py --roi`` (square of half-size 200 m at VEIT,
 300 m at CORO, minus the fixed structure + 100 m; structure pixels detected on the 20 m L1C bands,
-``/data/radcalnet/studies/roi_selection/<code>_structures.csv``) and the 1.2 km box of the first revisions.
+``/data/radcalnet/studies/roi_selection/<code>_structures.csv``) and the 1.2 km box of the first revisions. GABU
+(Galata) has no structure detection yet: its zoom shows the platform and the 1.2 km box only.
 
     python site_rgb.py --fig-dir <document>/media/v1.3 VEIT
     python site_rgb.py --preview <dir> CORO      # quick looks of the candidate dates
@@ -44,6 +45,12 @@ SITES = {
                  bbox=(28.90, 44.36, 29.61, 44.92), date='20260307', roi=(300., 100.), zoom=800., scalebar_km=5,
                  candidates=['20260307', '20251102', '20260312', '20250920'],
                  places={'Sfântu Gheorghe': (29.594, 44.898), 'Lake Razim': (28.98, 44.83)}),
+    # relative orbit 7 covers the whole tile 35TNH (orbit 50: western part only); the eastern edge of the tile is at
+    # about 28.36 E. No fixed-structure detection at Galata yet: zoom without ROI (roi=None)
+    'GABU': dict(lon=28.19319, lat=43.044624, tile='35TNH', orbit='R007', label='GABU (Galata platform)',
+                 bbox=(27.84, 42.93, 28.34, 43.26), date='20240411', roi=None, zoom=800., scalebar_km=5,
+                 candidates=['20240411', '20230502'],
+                 places={'Varna': (27.915, 43.208), 'Cape Galata': (27.945, 43.165), 'Kamchia mouth': (27.895, 43.03)}),
 }
 
 
@@ -134,20 +141,24 @@ def plot_site(code, date, out, dpi=250):
     zimg = np.clip((sub - lo) / (hi - lo), 0, 1)
     zext = (tr.c + j0 * tr.a - px, tr.c + j1 * tr.a - px, tr.f + i1 * tr.e - py, tr.f + i0 * tr.e - py)
     az.imshow(np.where(np.isfinite(zimg), zimg, 1.), extent=zext, interpolation='none')
-    half, buffer = s['roi']
-    xy = pd.read_csv(ROI_DIR / f'{code}_structures.csv', comment='#')[['x_m', 'y_m']].values
-    g = np.arange(-z, z + 1, 5.)
-    X, Y = np.meshgrid(g, g)
-    d = np.hypot(X[..., None] - xy[:, 0], Y[..., None] - xy[:, 1]).min(-1)
-    roi = (np.maximum(np.abs(X), np.abs(Y)) <= half) & (d > buffer)
-    az.contour(g, g, roi.astype(float), [0.5], colors='#ff2bd6', linewidths=2.0)
-    az.contour(g, g, (d <= 10.).astype(float), [0.5], colors='#ff3b30', linewidths=1.2)
+    if s['roi'] is not None:
+        half, buffer = s['roi']
+        xy = pd.read_csv(ROI_DIR / f'{code}_structures.csv', comment='#')[['x_m', 'y_m']].values
+        g = np.arange(-z, z + 1, 5.)
+        X, Y = np.meshgrid(g, g)
+        d = np.hypot(X[..., None] - xy[:, 0], Y[..., None] - xy[:, 1]).min(-1)
+        roi = (np.maximum(np.abs(X), np.abs(Y)) <= half) & (d > buffer)
+        az.contour(g, g, roi.astype(float), [0.5], colors='#ff2bd6', linewidths=2.0)
+        az.contour(g, g, (d <= 10.).astype(float), [0.5], colors='#ff3b30', linewidths=1.2)
     az.add_patch(plt.Rectangle((-600, -600), 1200, 1200, fill=False, ec='w', ls='--', lw=1.2))
     az.plot(0, 0, '+', color='#ff3b30', ms=12, mew=1.8)
     az.set(xlim=(-z, z), ylim=(-z, z), xlabel='x (m, east of the AERONET-OC coordinates)', ylabel='y (m, north)')
     az.tick_params(labelsize=8)
-    az.set_title(f'{code}: ROI (magenta), square of half-size {half:g} m\nminus the structure (red) + {buffer:g} m; '
-                 'dashed: 1.2 km box', fontsize=9)
+    if s['roi'] is not None:
+        az.set_title(f'{code}: ROI (magenta), square of half-size {half:g} m\nminus the structure (red) + {buffer:g} m; '
+                     'dashed: 1.2 km box', fontsize=9)
+    else:
+        az.set_title(f'{code}: platform at the AERONET-OC coordinates (+)\ndashed: 1.2 km box', fontsize=9)
     fig.savefig(out, dpi=dpi, **({'pil_kwargs': {'quality': 92}} if str(out).endswith('.jpg') else {}))
     plt.close(fig)
     print(out, safe.name, img.shape)
