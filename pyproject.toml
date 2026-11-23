@@ -46,6 +46,7 @@ include = ["radcalnet_oc", "radcalnet_oc.*"]
 [project.scripts]
 radcalnet_oc = "radcalnet_oc.run:main"
 radcalnet_oc_config = "radcalnet_oc.config:main"
+radcalnet_oc-products = "radcalnet_oc.products:main"
 
 #dynamic = ["dependencies"]
 [tool.setuptools.dynamic]

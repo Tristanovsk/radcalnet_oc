@@ -117,6 +117,19 @@ spectral = radoc.Spectral(central_wl=np.array([443., 490., 560., 665., 865.]), f
 Rtoa_bands = spectral.convolve2(Rtoa).Rtoa
 ```
 
+### From AERONET-OC data to the RadCalNet-OC products
+
+With the AERONET-OC database ([aeronet_oc_db](https://github.com/Tristanovsk/aeronet_oc_db)) and invRrs
+(`pip install "radcalnet_oc[invrrs]"`), the daily RadCalNet-OC products of a site (TOA reflectance at nadir every
+10 nm, direct sunglint and its flags, and a copy without the glinted measurements) are made in batch:
+
+```bash
+radcalnet_oc-products --site AAOT --level lev20 --name VEIT --start 2025-01-01 --odir /path/to/products
+```
+
+See the tutorials [Quick start: from AERONET-OC to the TOA signal](https://radcalnet-oc.readthedocs.io/en/latest/tutorials/radcalnet_oc_aeronet_oc_quickstart.html)
+and [RadCalNet-OC products of an AERONET-OC site](https://radcalnet-oc.readthedocs.io/en/latest/tutorials/radcalnet_oc_products.html).
+
 ## Development
 
 ```bash

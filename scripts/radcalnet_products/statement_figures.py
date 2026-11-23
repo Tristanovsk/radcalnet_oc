@@ -159,20 +159,7 @@ def budget(aeronet, level, year):
     pick = pd.Series(np.abs((t.hour + t.minute / 60) - 10), index=t).groupby(t.month).idxmin().values
     records = inputs.sel(time=pick)
     # the simulation of make_products (invRrs reconstruction, aerosol mixture, nadir, direct glint)
-    import make_products as mp
-    captured = {}
-    orig = radoc.Process.execute
-
-    def execute(self, *a, **k):
-        r = orig(self, *a, **k)
-        captured['process'] = self
-        return r
-    radoc.Process.execute = execute
-    try:
-        mp.simulate_month(records, Reconstruction(), 'cm_iso_mix')
-    finally:
-        radoc.Process.execute = orig
-    process = captured['process']
+    _, process = simulate_month(records, Reconstruction(), 'cm_iso_mix', return_process=True)
     return uncertainty_budget(process)
 
 
@@ -184,31 +171,14 @@ BUDGET_AZI = (0., 45., 90., 135., 180.)
 def budget_geometry(aeronet, level, year, vza=BUDGET_VZA, azi=BUDGET_AZI):
     '''Uncertainty budget of the measurements of ``budget`` (one per month) at a grid of viewing geometries: the
     glint flags, the glint uncertainty and the model gap vary with the geometry.'''
-    import make_products as mp
-    captured = {}
-    orig_execute, orig_process = radoc.Process.execute, radoc.Process
     grid = dict(vza=xr.DataArray(list(vza), coords={'vza': list(vza)}, dims='vza'),
                 azi=xr.DataArray(list(azi), coords={'azi': list(azi)}, dims='azi'))
-
-    class GridProcess(orig_process):
-        def __init__(self, *a, **k):
-            k.update(grid)
-            super().__init__(*a, **k)
-
-    def execute(self, *a, **k):
-        r = orig_execute(self, *a, **k)
-        captured['process'] = self
-        return r
     inputs = aeronet_inputs(aeronet, level).sel(time=str(year))
     inputs = inputs.where(inputs.aot550.notnull() & inputs.naot.notnull().any('wl_aeronet'), drop=True)
     t = pd.to_datetime(inputs.time.values)
     pick = pd.Series(np.abs((t.hour + t.minute / 60) - 10), index=t).groupby(t.month).idxmin().values
-    radoc.Process, GridProcess.execute = GridProcess, execute
-    try:
-        mp.simulate_month(inputs.sel(time=pick), Reconstruction(), 'cm_iso_mix')
-    finally:
-        radoc.Process = orig_process
-    return uncertainty_budget(captured['process'])
+    _, process = simulate_month(inputs.sel(time=pick), Reconstruction(), 'cm_iso_mix', return_process=True, **grid)
+    return uncertainty_budget(process)
 
 
 #: band centres of the tables of the budget (MSI bands of the comparisons)

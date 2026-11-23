@@ -460,6 +460,9 @@ class Process():
                                                          'relative proportion of each aerosol model used for the computation',
                                                      'models': AEROSOL_MODELS}
         radcalnet_db['D2'] = self.D2
+        # (attributes of the day of year, e.g. those of the time coordinate it was derived from, not kept)
+        radcalnet_db['D2'].attrs = {'unit': '-', 'description': 'Earth-Sun distance correction factor of the '
+                                    'solar irradiance, (d0/d)^2'}
 
         # add sza as coordinates
         radcalnet_db['sza'] = self.sza

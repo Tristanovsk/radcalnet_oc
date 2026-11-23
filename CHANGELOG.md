@@ -8,6 +8,23 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- RadCalNet-OC products in the package: module `radcalnet_oc.products` (the chain of
+  `scripts/radcalnet_products/make_products.py` as functions: `simulate_month`, `to_10nm`, `write_daily`,
+  `glint_ok`, `glint_filtered`, and the driver `make_products(site, level, name, start, end, odir, cache, ...)`, whose
+  output folder is an argument) and console command `radcalnet_oc-products` (same options as the script; `--odir`
+  required, monthly cache in `<odir>/monthly` by default). `simulate_month` also takes `vza`, `azi` and
+  `return_process` (used by `statement_figures.py` instead of patching `Process`). `make_products.py` is now a thin
+  wrapper that keeps its command line and its defaults (/data/radcalnet): the values of the daily files, of the
+  glint-filtered copy and of the monthly cache of AAOT lev20 on 1-3 July 2025 are bitwise identical to those of the
+  previous script (attributes: see Fixed).
+- `radcalnet_oc.aeronet_oc.aeronet_inputs(site, level='lev20', start=None, end=None)`: input variables of the
+  processor from the AERONET-OC database (moved from `scripts/s2_toa_matchup/s2_toa_matchup.py`, which imports it;
+  same variables and units, plus a time selection), with an explicit error when `aeronet_oc_db` is not installed.
+- Tutorials *Quick start: from AERONET-OC to the TOA signal* (`radcalnet_oc_aeronet_oc_quickstart.ipynb`: one day
+  of AAOT, invRrs, aerosol mixture, sunglint and its flags, 10 nm bands, uncertainty budget) and *RadCalNet-OC
+  products of an AERONET-OC site* (`radcalnet_oc_products.ipynb`: AERONET-OC database, batch processing of a month,
+  content of the daily files, glint-filtered copy, full-site runs); usage page section on the products. Tests of
+  `aeronet_inputs`, of the products of one day and of the command line (`tests/test_products.py`).
 - Model gap in the uncertainty budget: `uncertainty_budget(..., model=True)` adds `u_model`
   (`radcalnet_oc.uncertainty.model_uncertainty`, table `data/auxdata/model_uncertainty_s2.csv`), the part of the
   Sentinel-2 matchup residual (VEIT, CORO, all glint angles) that the physical budget does not explain, per sunglint
@@ -41,6 +58,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Documentation of `solar_database='thuillier'`: the packaged file is the ATLAS3 spectrum (SOLID
   distribution), 1.4 % above the Thuillier (2003) composite from 500 to 2400 nm; it does not reproduce the
   Sentinel-2 L1C solar irradiances.
+
+### Fixed
+- Metadata of the RadCalNet-OC products (values unchanged): the daily files of the `daily` folder, from the second
+  day of each month, carried the attribute `glint_filter` of the filtered copy (attributes shared between the
+  days of a month); `tcwv`, `tco3` and `tcno2` had the units of the AERONET-OC fields (cm, DU) instead of kg m-2,
+  `ang_exp` and `aot865` the long name of the AOT, and `D2` the attributes of the time coordinate (now
+  `aeronet_inputs` sets the attributes of the converted variables and `Process` those of `D2`).
 
 ## [1.2.0] - 2026-11-18
 

@@ -178,3 +178,35 @@ AERONET-OC data
    :nosignatures:
 
    radcalnet_oc.aeronet_oc.Aeronet
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.aeronet_oc.aeronet_inputs
+
+RadCalNet-OC products
+---------------------
+
+Daily products of an AERONET-OC site (module ``radcalnet_oc.products``, command ``radcalnet_oc-products``, see
+:ref:`usage-products`).
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   radcalnet_oc.products.make_products
+   radcalnet_oc.products.simulate_month
+   radcalnet_oc.products.to_10nm
+   radcalnet_oc.products.write_daily
+   radcalnet_oc.products.glint_ok
+   radcalnet_oc.products.glint_filtered
+   radcalnet_oc.products.daily_file
+   radcalnet_oc.products.monthly_file
+   radcalnet_oc.products.main
+
+.. autodata:: radcalnet_oc.products.CENTRAL_WL
+.. autodata:: radcalnet_oc.products.FWHM
+.. autodata:: radcalnet_oc.products.EXPON
+.. autodata:: radcalnet_oc.products.FILTER_FLAGS
+.. autodata:: radcalnet_oc.products.UNC_RANGE

@@ -55,6 +55,7 @@ from pyproj import Transformer
 
 import aeronet_oc_db
 import radcalnet_oc as radoc
+from radcalnet_oc.aeronet_oc import aeronet_inputs  # noqa: F401 (radcalnet-oc inputs of a site; used by the other scripts)
 from radcalnet_oc.reconstruction import Reconstruction
 
 opj = os.path.join
@@ -69,26 +70,8 @@ RECONSTRUCTION_VARS = ['chl_invrrs', 'spm_norm', 'rmsd']
 
 
 # ---------------------------------------------------------------------------------------------------
-# AERONET-OC
+# AERONET-OC: radcalnet_oc.aeronet_oc.aeronet_inputs (imported above)
 # ---------------------------------------------------------------------------------------------------
-def aeronet_inputs(site, level):
-    '''AERONET-OC data of the site with the radcalnet-oc input variables (time series).'''
-    ds = aeronet_oc_db.open_site(site, level, legacy_names=True).sortby('wl')
-    aod = ds['Aerosol_Optical_Depth'].interpolate_na('wl')
-    out = xr.Dataset(coords={'time': ds.time})
-    out['tcwv'] = ds['Total_Precipitable_Water(cm)'] * 10            # kg m-2
-    out['tco3'] = ds['Total_Ozone(Du)'] * 2.14485e-5                  # kg m-2
-    out['tcno2'] = ds['Total_NO2(DU)'] * 2.055482e-5                  # kg m-2
-    out['pressure'] = ds['Pressure(hPa)']
-    out['wind'] = ds['Wind_Speed(ms)']
-    out['aot550'] = aod.interp(wl=550)
-    out['aot865'] = aod.interp(wl=865)
-    out['ang_exp'] = -np.log(out.aot550 / out.aot865) / np.log(550 / 865)
-    out['naot'] = (ds['Aerosol_Optical_Depth'] / out.aot550).rename({'wl': 'wl_aeronet'})
-    out['chl'] = ds['Chlorophyll-a']
-    out['sza_aeronet'] = ds['SZA']
-    out['Rrs_Lwn'] = ds['Rrs_Lwn']
-    return out.reset_coords(drop=True)
 
 
 # ---------------------------------------------------------------------------------------------------
