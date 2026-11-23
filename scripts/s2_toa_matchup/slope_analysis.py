@@ -23,6 +23,12 @@ The deficit 1 - b is split into the covariances of candidate terms X with the ob
 A multiple regression E = sum k_X X + c on these terms gives the missing fraction k_X of each one, and the part of
 1 - b it explains (k_X cov(X, x) / var(x)); the rest of the deficit is in the intercept-free remainder.
 
+A slope below 1 also arises from variability of the observation that the simulation does not have at all, even
+unrelated to the inputs: with x = s + m and y = s + e (m, e independent of s), b = var(s) / var(x). The last table
+gives the slope per glint-angle bin for the scenes without cirrus and with |dt| < 15 min: about 1 beyond 55 deg in
+all the bands (VEIT), 0.15-0.5 below 45 deg in the SWIR, with a small mean residual: the simulated glint is right on
+average but does not follow the scene-to-scene variation of the real glint.
+
 Usage:
     python slope_analysis.py [--site VEIT|CORO] [--selection noglint|nohigh|angle30] [--no-roi] [--csv out.csv]
 '''
@@ -49,6 +55,7 @@ SELECTIONS = {'angle30': dict(glint_min=30., flags_exclude=None),
               'noglint': dict(glint_min=0., flags_exclude=['glint_moderate', 'glint_high', 'glint_near_specular'])}
 # environment left out of the regression: nearly constant at a site, degenerate with the intercept
 TERMS = ['path', 'glint', 'cirrus', 'whitecaps']
+GLINT_BINS = [0, 35, 45, 55, 90]
 
 
 def matchups(levels, sel, roi):
@@ -159,6 +166,26 @@ def main():
         rows[band] = {k: st.spearmanr(resid, v, nan_policy='omit').correlation for k, v in drivers.items()}
     print('\nSpearman correlation of the residual after the cirrus (MSI - sim - cirrus) with:')
     print(pd.DataFrame(rows).T.round(2).to_string())
+    # slope per glint-angle bin, scenes without cirrus (B10 excess < 1e-4) and |dt| < 15 min: the path reflectance
+    # is followed (slope ~1) far from the glint; near it the scene-to-scene variation of the real glint, which the
+    # simulation (station wind, mean slope statistics) does not follow, flattens the regression
+    dt = np.abs(ds.dt_nearest.values)
+    dt = dt / np.timedelta64(1, 'm') if np.issubdtype(dt.dtype, np.timedelta64) else dt
+    clear = (ds.sat_median.sel(wl=1375).values - rb.rayleigh_above(ds)[0] < 1e-4) & (dt < 15)
+    ga = ds.glint_angle.values
+    rows = []
+    for lo, hi in zip(GLINT_BINS[:-1], GLINT_BINS[1:]):
+        k = clear & (ga >= lo) & (ga < hi)
+        if k.sum() < 8:
+            continue
+        r = {'glint angle': f'{lo:g}-{hi:g}', 'N': int(k.sum())}
+        for band in (865, 1610, 2190):
+            x, y = ds.sat_median.sel(wl=band).values[k], ds.simg_median.sel(wl=band).values[k]
+            r[f'{band} slope'] = np.polyfit(x, y, 1)[0]
+            r[f'{band} r'] = np.corrcoef(x, y)[0, 1]
+        rows.append(r)
+    print(f'\nslope per glint-angle bin, no cirrus and |dt| < 15 min ({int(clear.sum())} matchups):')
+    print(pd.DataFrame(rows).round(2).to_string(index=False))
     if args.csv:
         tab.to_csv(args.csv)
 

@@ -147,10 +147,18 @@ about 0.3 point.
       deficit (VEIT), the glint is not robust (sign changes with the selection). At 865 nm the deficit closes
       without cirrus and with |dt| < 15 min (slope 0.97, VEIT, 81 matchups): cirrus and the time mismatch. In the
       SWIR it does not (0.48 at 1610 nm, 0.42 at 2190 nm) and it grows with the AOT (2190 nm: 0.39 for AOT < 0.1,
-      0.25 above 0.15): a SWIR aerosol term (coarse mode, too little SWIR path reflectance per unit AOT, as found in
-      the aerosol diagnosis) is the next suspect; then a glint tail below the moderate level. Next: the same split
-      at CORO and in the S3 OLCI matchups (Oa17-Oa21), the slope against the retrieved coarse-mode fraction and the
-      AERONET-OC AOT(1020), and a simulation with a coarse-mode-enriched mixture constrained by the AOT spectrum.
+      0.25 above 0.15). *Coarse mode ruled out (23 November 2026)*: the retrieved mixture is 97 % WASO (median);
+      with the per-model path reflectances of `aerosol_diagnosis.py`, a maritime mixture brings the slope to 0.99 at
+      1610 nm but with a +53 % bias, and the residual fitted on (MACL - retrieved) asks for only 8-18 % of MACL and
+      moves the slope from 0.48 to 0.52. *Glint variability*: for the scenes without cirrus and |dt| < 15 min the
+      slope is about 1 beyond 55 deg of glint angle in all the bands (865: 1.18, 1610: 1.20, 2190: 0.98; r 0.7-0.9)
+      and collapses below 45 deg (0.15-0.34 in the SWIR) with a small mean residual: the simulated glint is right on
+      average but does not follow the scene-to-scene variation of the real glint (station wind, mean slope
+      statistics). A slope below 1 is then the share of the MSI variance that the simulation reproduces
+      (x = s + m, b = var(s) / var(x)), not a term proportional to the signal. Next: compare this variance with
+      u_glint (is the glint uncertainty large enough at 35-55 deg?), test the ERA5 or CAMS wind and the wind
+      variability within the hour (tasks 7, 29), and repeat per glint-angle bin on the Sentinel-3 OLCI matchups
+      (Oa17-Oa21, more scenes at CORO); in the statements, show the regression per glint-angle class.
 11. **Aerosol retrieval by default** when the spectral AOT is available (`kernel.Aerosol` is used only when
     called explicitly). *Deprioritised:* task 10 found no gain from the mixture in the NIR-SWIR; keep it for the
     consistency with the AOT spectrum, and revisit with the aerosol term of the uncertainty budget (task 17).
