@@ -15,6 +15,8 @@ Figures (PNG, ``--fig-dir``):
 - ``matchup_bias.png``: median and interquartile range of the relative difference simulation - MSI per band,
   with and without the simulated glint;
 - ``matchup_bands.png``: simulation (with glint) against MSI per band;
+- ``matchup_bands_glint.png``: the same with one regression line per glint-angle class (slopes in a CSV, also for the
+  scenes without cirrus);
 - ``matchup_flags.png``: effect of the region of interest and of the sunglint flags of the matchups on the
   statistics (1.2 km box against the recommended ROI, glint angle > 30 deg against the flags, bands flagged
   ``glint_uncertain`` masked).
@@ -469,6 +471,68 @@ def fig_matchup_bands(ds, site, ofile):
         plt.close(fig)
 
 
+#: glint-angle classes of the regressions per class (deg) and their colours
+GLINT_CLASSES = [(0., 35.), (35., 45.), (45., 55.), (55., 90.)]
+GLINT_CLASS_COLORS = ['#a50026', '#f46d43', '#74add1', '#313695']
+
+
+def fig_matchup_bands_glint(ds, site, ofile, csv, b10=None):
+    """Simulation against MSI per band with one least-squares line per glint-angle class (GLINT_CLASSES): far from the
+    glint the slope is close to 1, near it the scene-to-scene variation of the real glint, which the simulation does not
+    follow, flattens the regression. ``b10``: B10 excess over the Rayleigh scattering above the water vapour per scene
+    (cirrus indicator), to give the slopes also for the scenes without cirrus (< 1e-4) in the table."""
+    ga = ds.glint_angle.values
+    rows = []
+    with plt.rc_context({**STYLE, 'font.size': 12, 'axes.titlesize': 12}):
+        fig, axs = plt.subplots(3, 4, figsize=(12.5, 9.4), gridspec_kw={'hspace': 0.3, 'wspace': 0.32})
+        for ax, b in zip(axs.ravel(), BANDS):
+            x, y = ds.sat_median.sel(wl=b).values, ds.simg_median.sel(wl=b).values
+            ok = np.isfinite(x) & np.isfinite(y)
+            lo, hi = np.nanpercentile(np.r_[x[ok], y[ok]], [0.5, 99.5])
+            pad = 0.08 * (hi - lo)
+            lim = [max(0, lo - pad), hi + pad]
+            ax.plot(lim, lim, color='0.4', lw=0.9, ls='--', zorder=1)
+            txt = []
+            for (g0, g1), c in zip(GLINT_CLASSES, GLINT_CLASS_COLORS):
+                k = ok & (ga >= g0) & (ga < g1)
+                ax.scatter(x[k], y[k], s=10, color=c, alpha=0.75, lw=0, zorder=2)
+                row = {'band': b, 'glint angle': f'{g0:g}-{g1:g}', 'N': int(k.sum())}
+                if k.sum() >= 8:
+                    a1, c1 = np.polyfit(x[k], y[k], 1)
+                    ax.plot(lim, np.polyval([a1, c1], lim), color=c, lw=1.4, zorder=3)
+                    txt.append(f'{a1:.2f}')
+                    row.update(slope=a1, r=np.corrcoef(x[k], y[k])[0, 1])
+                else:
+                    txt.append('-')
+                if b10 is not None:
+                    kc = k & (b10 < 1e-4)
+                    row['N no cirrus'] = int(kc.sum())
+                    if kc.sum() >= 8:
+                        row['slope no cirrus'] = np.polyfit(x[kc], y[kc], 1)[0]
+                rows.append(row)
+            ax.set(xlim=lim, ylim=lim)
+            ax.set_box_aspect(1)
+            ax.locator_params(nbins=4)
+            ax.tick_params(labelsize=9)
+            ax.set_title(f'{b} nm', fontsize=13, pad=3)
+            ax.text(0.04, 0.96, 'slopes ' + ' / '.join(txt), transform=ax.transAxes, ha='left', va='top', fontsize=9,
+                    bbox=dict(fc='w', ec='none', alpha=0.75, pad=1.5))
+        handles = [plt.Line2D([], [], color=c, marker='o', lw=1.4, ms=4, label=f'{g0:g}-{g1:g}\N{DEGREE SIGN}')
+                   for (g0, g1), c in zip(GLINT_CLASSES, GLINT_CLASS_COLORS)]
+        fig.legend(handles=handles, title='glint angle', loc='center right', fontsize=10, title_fontsize=10,
+                   bbox_to_anchor=(0.99, 0.5), frameon=False)
+        fig.supxlabel('MSI L1C TOA reflectance (ROI median)', fontsize=15, y=0.035)
+        fig.supylabel('RadCalNet-OC TOA reflectance with direct glint', fontsize=15, x=0.06)
+        fig.suptitle(f'{site}: Sentinel-2 matchups per band and glint-angle class ({ds.sizes["time"]} scenes)',
+                     fontsize=14, y=0.95)
+        fig.subplots_adjust(right=0.88)
+        fig.savefig(ofile, dpi=200, bbox_inches='tight')
+        plt.close(fig)
+    tab = pd.DataFrame(rows)
+    tab.round(3).to_csv(csv, index=False)
+    return tab
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--site', default='VEIT', help='site name of the products (RadCalNet code)')
@@ -527,6 +591,24 @@ def main():
         ds = matchups(levels, args.selection, not args.no_roi)
         tab = fig_matchup_bias(ds, args.site, out('matchup_bias.png'), out('matchup_bias.csv'))
         fig_matchup_bands(ds, args.site, out('matchup_bands.png'))
+        b10 = None
+        try:   # cirrus indicator of the table: B10 excess over the Rayleigh scattering above the water vapour
+            from residual_budget import rayleigh_above
+            ex = pd.Series(np.nan, index=pd.DatetimeIndex(ds.time.values))
+            for sl in levels:
+                full = load(f'{ROOT}/matchups/sentinel2/v{radoc.__version__}', sl, SimpleNamespace(
+                    frac_min=0.5, npix_min=50, dt_max=60., aot_max=0.3, glint_min=0., flags_exclude=None,
+                    glint_stats='cm_iso_mix', glint_pixels=False, roi=not args.no_roi))
+                t = np.intersect1d(full.time.values, ds.time.values)
+                sub = full.sel(time=t)
+                v = pd.Series(sub.sat_median.sel(wl=1375).values - rayleigh_above(sub)[0], index=pd.DatetimeIndex(t))
+                ex = ex.fillna(v.reindex(ex.index))
+            b10 = ex.values
+        except Exception as e:   # noqa: BLE001
+            print('B10 excess not available:', e)
+        tg = fig_matchup_bands_glint(ds, args.site, out('matchup_bands_glint.png'), out('matchup_bands_glint.csv'),
+                                     b10)
+        print('slopes per glint-angle class:\n' + tg.round(2).to_string(index=False))
         print(f'matchups ({ds.sizes["time"]} scenes, {ds.attrs["selection"]}, levels '
               f'{pd.Series(ds.level.values).value_counts().to_dict()}):\n{tab.to_string()}')
     if 'flags' in args.only:
