@@ -66,11 +66,32 @@ def test_auxdata_interpolation():
 
 def test_solar_irradiance():
     solar = SolarIrradiance()
-    for name in ['tsis', 'thuillier', 'gueymard', 'kurucz']:
+    for name in ['tsis', 'thuillier', 'thuillier2003', 'gueymard', 'kurucz']:
         f0 = getattr(solar, name)
         # extraterrestrial irradiance in mW m-2 nm-1: about 1850 at 550 nm, 960 at 865 nm
         assert float(f0.sel(wl=slice(545, 555)).mean()) == pytest.approx(1870, rel=0.05), name
         assert float(f0.sel(wl=slice(860, 870)).mean()) == pytest.approx(960, rel=0.05), name
+
+
+def test_thuillier_2003_and_atlas3():
+    '''The ATLAS3 file is 1.4 % above the Thuillier (2003) composite from 500 to 2400 nm.'''
+    solar = SolarIrradiance()
+    t03 = solar.thuillier2003
+    assert t03.attrs['units'] == 'mW/m2/nm' and np.isfinite(t03).all()
+    assert 300 <= float(t03.wl.min()) < 301 and float(t03.wl.max()) == pytest.approx(2397.5, abs=0.1)
+    for lo, hi in [(500, 700), (1000, 1300), (1500, 1700), (2000, 2300)]:
+        sel = t03.sel(wl=slice(lo, hi))
+        ratio = solar.thuillier.interp(wl=sel.wl) / sel
+        assert float(ratio.mean()) == pytest.approx(1.014, abs=0.001), (lo, hi)
+
+
+def test_thuillier_2003_sentinel2_e0():
+    '''Sentinel-2A L1C solar irradiances of the SWIR bands (Thuillier 2003 over the MSI responses), within 0.5 %
+    with Gaussian responses of the band centre and width.'''
+    solar = SolarIrradiance()
+    spectral = Spectral(central_wl=np.array([1613.7, 2202.4]), fwhm=np.array([94.2, 184.6]))
+    e0 = spectral.convolve2(solar.thuillier2003.rename('F0')).values
+    np.testing.assert_allclose(e0, [245.59, 85.25], rtol=0.005)
 
 
 # ------------------------------------

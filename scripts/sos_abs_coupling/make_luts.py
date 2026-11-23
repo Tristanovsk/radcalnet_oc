@@ -3,7 +3,7 @@ SOS-ABS simulations of the TOA signal over a rough sea surface (Cox-Munk) + Lamb
 with full coupling of gaseous absorption (CKD 5 cm-1, fine mode) and scattering, to assess and
 parameterise the decoupled gaseous transmittance used by radcalnet_oc.
 
-Usage: python make_luts.py [v1|v2|v3|v4] [OUTDIR] [N_WORKERS] [--run]
+Usage: python make_luts.py [v1|v2|v3|v4|v5] [OUTDIR] [N_WORKERS] [--run]
 
 Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v2):
 
@@ -21,11 +21,16 @@ Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v
     one interval out of STRIDE per spectral region (ckd_wavelengths). The centres avoid the edges of the
     250 cm-1 CKD files, where SOS-ABS stops (ERROR_3500, e.g. 1.6 um = 6250 cm-1). The CKD coefficients
     start at 364 nm.
+  v5 (saturated cores of the H2O 1380 and 1880 nm bands, skipped by v3: Tg < 0.02 for an air mass of 2 and
+    2 g cm-2): one CKD interval out of two of 1344-1471 and 1801-1964 nm (88 wavelengths, 16 in MSI B10), same grid
+    and files as v3. In these cores the decoupled path reflectance is ~0, while the molecules above the water
+    vapour scatter light that is not absorbed: the clear-sky L1C B10 has a floor of ~0.5e-3
+    (scripts/s2_toa_matchup/residual_budget.py, ../sos_abs_coupling/check_fullrange_s2.py).
   v4 (robustness of the coupling, roadmap tasks 14, 17, 21): the atmosphere of the package and one condition
     changed at a time. Nominal: OPAC COAV_rh70 aerosols of the TOA LUT (mopsmap phase matrices, -AER.Model 4),
     aerosol scale height 2 km, mid-latitude summer gas profile (type 2, as v2 / v3), 1013 hPa, scalar, wind
     5 m s-1, direct sun glint left out (-SOS.DirectSurf 0, as the path reflectance of radcalnet_oc). Variants:
-    WMO maritime (bridge with v2 / v3), the 5 other OPAC models, scale height 1 and 4 km, gas profiles 1, 3-6,
+    WMO maritime (bridge with v2 / v3), the 5 other OPAC models, scale height 0.5, 1 and 4 km, gas profiles 1, 3-6,
     1000 and 1030 hPa, polarisation, wind 2 m s-1, direct glint included. Wavelengths of v2 + v3: one out of
     V4_WL_STRIDE for the nominal set, one out of V4_VARIANT_SUBSAMPLE of these for the variants (a subset of the
     nominal wavelengths); reduced grid (V4_GRID). One LUT per variant in OUTDIR/<variant>/ (abs.nc, noabs.nc and,
@@ -40,7 +45,9 @@ Simulation sets (LUTs written to OUTDIR, default data/ for v1 and data/v2/ for v
     done: an interrupted set restarts from the last chunk.
     Dry run by default (prints the plan, the checks and the size); add --run to run it. Options:
     --variants=nominal,ha1 (subset of the variants), --n-wl=N (first N wavelengths, for a test), --chunk=N
-    (wavelengths per pool, default 16).
+    (wavelengths per pool, default 16), --wl-range=LO,HI (nominal wavelengths within LO-HI nm only),
+    --variant-subsample=N (one nominal wavelength out of N for the variants, default 2; 1 runs the variants at
+    all the nominal wavelengths, e.g. for one absorption band with --wl-range).
 """
 import os, sys, time
 import numpy as np
@@ -60,13 +67,17 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SET = sys.argv[1] if len(sys.argv) > 1 else "v1"
-if SET not in ("v1", "v2", "v3", "v4"):
+if SET not in ("v1", "v2", "v3", "v4", "v5"):
     sys.exit(__doc__)
 # OUTDIR and the Mie / surface cache must be on a local disk, not in a synchronised folder (Dropbox):
 # 'data' is a link to such a directory. The cache is shared by all the workers and the sets; the surface
 # matrix files are cached per sza (older sosabs versions reused them across sza: LUTs made with them must
 # be rebuilt).
-OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "data", "" if SET == "v1" else SET)
+# simulations of SOS-ABS: $SOS_ABS_DATA, else the folder data/ next to the scripts if present, else
+# /data/sos_abs_coupling (the development machine; no symbolic link in the repository: setuptools would follow it)
+DATA = os.environ.get("SOS_ABS_DATA") or next(
+    (d for d in (os.path.join(HERE, "data"), "/data/sos_abs_coupling") if os.path.isdir(d)), os.path.join(HERE, "data"))
+OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(DATA, "" if SET == "v1" else SET)
 
 # v3: spectral regions (nm) and stride over the absorbing CKD intervals of each region
 V3_REGIONS = [((364, 684), 11),     # O3 Chappuis, NO2, O2 gamma (628 nm), H2O 590 / 650 nm
@@ -98,14 +109,14 @@ def ckd_wavelengths(regions=V3_REGIONS, tg_min=0.02, tg_max=0.99, air_mass=2., h
         out.append(1e4 / (0.5 * (nu_min[idx] + nu_max[idx])))   # um
     return np.sort(np.concatenate(out))
 N_WORKERS = int(sys.argv[3]) if len(sys.argv) > 3 else 32
-CACHE = os.path.join(HERE, "data", "cache")
+CACHE = os.path.join(DATA, "cache")
 
 # ---------------------------------------------------------------------------------------------------------------
 # v4: robustness of the coupling (see the docstring)
 # ---------------------------------------------------------------------------------------------------------------
 V2_WINDOWS = [(684, 698, 0.5), (712, 736, 1.0), (757, 772, 0.5), (808, 836, 1.0), (890, 990, 1.0)]
 V4_WL_STRIDE = 2
-V4_VARIANT_SUBSAMPLE = 2   # variants: one nominal wavelength out of 2 (one out of 4 of v2 + v3)
+V4_VARIANT_SUBSAMPLE = int(OPTS.get("variant-subsample", 2))   # variants: one nominal wavelength out of 2 (one out of 4 of v2 + v3)
 # parameters that do not change the runs without absorption (-AP.AbsProfile.Type 7): such variants take noabs.nc
 # and tgdir_noabs.nc from the nominal set
 NOABS_INDEPENDENT = ("-AP.AbsProfile.Type",)
@@ -119,7 +130,7 @@ V4_NOMINAL = {"aerosol": "COAV_rh70", "-AP.AerHS.HA": 2.0, "-AP.AbsProfile.Type"
 V4_VARIANTS = {"nominal": {},
                "wmo_maritime": {"aerosol": "WMO_maritime"},
                **{f"aer_{m}": {"aerosol": m} for m in OPAC_MODELS if m != "COAV_rh70"},
-               "ha1": {"-AP.AerHS.HA": 1.0}, "ha4": {"-AP.AerHS.HA": 4.0},
+               "ha05": {"-AP.AerHS.HA": 0.5}, "ha1": {"-AP.AerHS.HA": 1.0}, "ha4": {"-AP.AerHS.HA": 4.0},
                **{f"profile{t}": {"-AP.AbsProfile.Type": t} for t in (1, 3, 4, 5, 6)},
                "p1000": {"-AP.Psurf": 1000.}, "p1030": {"-AP.Psurf": 1030.},
                "polar": {"-SOS.Ipolar": 1},
@@ -236,6 +247,9 @@ def v4_checks(wls, jobs):
 
 def v4_main():
     wls = v4_wavelengths()
+    if "wl-range" in OPTS:
+        lo, hi = (float(x) * 1e-3 for x in OPTS["wl-range"].split(","))
+        wls = wls[(wls >= lo) & (wls <= hi)]
     if "n-wl" in OPTS:
         wls = wls[:int(OPTS["n-wl"])]
     if "variants" in OPTS:
@@ -374,7 +388,7 @@ BASE_V4 = {"-ANG.Rad.NbGauss": 24, "-ANG.Aer.NbGauss": 40, "-SOS.View.Dphi": 5, 
            "-AP.HR": 8.0, "-AP.AerProfile.Type": 1, "-SURF.Type": 1, "-SURF.Ind": 1.33}
 SZA_TG_V4 = np.degrees(np.arccos(1 / np.array([1., 1.5, 2., 3., 4., 6., 8.5])))
 if SET == "v4":
-    OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "data", "v4")
+    OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(DATA, "v4")
     v4_main()
     sys.exit(0)
 
@@ -393,6 +407,10 @@ else:
 WL = np.unique(np.concatenate([np.arange(a, b + 1e-6, s) for a, b, s in WINDOWS])) * 1e-3
 if SET == "v3":
     WL = ckd_wavelengths()
+#: v5: saturated cores of the H2O 1380 and 1880 nm bands (one CKD interval out of two)
+V5_REGIONS = [((1300, 1500), 2), ((1800, 2000), 2)]
+if SET == "v5":
+    WL = ckd_wavelengths(regions=V5_REGIONS, tg_min=0., tg_max=0.02)
 
 ABS = {"-AP.AbsProfile.Type": 2, "-AP.SpectralResol": 5.0, "-SOS.AbsModeCKD": 1, "-AP.H2O": 2.0}
 NOABS = {"-AP.AbsProfile.Type": 7}

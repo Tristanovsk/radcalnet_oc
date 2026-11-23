@@ -109,8 +109,9 @@ class Process():
             0 deg when the viewing direction points towards the Sun (sunglint geometry), 180 deg for the
             backscattering geometry (radiative transfer convention of the look-up tables)
         :param central_wl: not used (the wavelengths are those of the gaseous absorption LUT)
-        :param solar_database: solar spectrum used for :math:`F_0`: ``'tsis'`` (default), ``'thuillier'``,
-            ``'gueymard'`` or ``'kurucz'``
+        :param solar_database: solar spectrum used for :math:`F_0`: ``'tsis'`` (default), ``'thuillier'``
+            (ATLAS3), ``'thuillier2003'`` (composite of the Sentinel-2 L1C solar irradiances), ``'gueymard'`` or
+            ``'kurucz'``
         :param Rrs_name: name of the remote-sensing reflectance variable in ``input_db``
         :param o2_model: absorption of O2, ``'reptran'`` or ``'lbl'`` (line by line in the O2-B and O2-A
             bands, see :py:class:`~radcalnet_oc.kernel.GaseousTransmittance`); by default
@@ -459,6 +460,9 @@ class Process():
                                                          'relative proportion of each aerosol model used for the computation',
                                                      'models': AEROSOL_MODELS}
         radcalnet_db['D2'] = self.D2
+        # (attributes of the day of year, e.g. those of the time coordinate it was derived from, not kept)
+        radcalnet_db['D2'].attrs = {'unit': '-', 'description': 'Earth-Sun distance correction factor of the '
+                                    'solar irradiance, (d0/d)^2'}
 
         # add sza as coordinates
         radcalnet_db['sza'] = self.sza
@@ -469,6 +473,82 @@ class Process():
         if sunglint is not None:
             self.compute_sunglint(stats=sunglint, **(sunglint_kw or {}))
         logger.info('TOA simulation done in %.1f s', time.perf_counter() - t0)
+
+    def optical_thickness(self):
+        r'''
+        Rayleigh and aerosol optical thicknesses of each measurement at the wavelengths of the simulation (after
+        :py:meth:`execute`): :math:`\tau_r` of Bodhaine et al. (1999) scaled to the surface pressure
+        (:math:`\tau_r P / 1013.25`), and :math:`\tau_a` of the aerosol models of the prepared LUT at the AOT at 550 nm.
+
+        :return: ``tau_r`` (time, wl), ``tau_a`` (time, wl)
+        '''
+        full_wl = self.full_wl
+        tau_r = self.lut.rot.interp(wl=full_wl, kwargs={'fill_value': 'extrapolate'}) * \
+            self.input_db['pressure'] / 1013.25
+        tau_a = self.lut.aot_lut.interp(aot_ref=self.aot550).interp(wl=full_wl, method='quadratic')
+        return tau_r, tau_a
+
+    def boa_irradiance(self):
+        r'''
+        Direct and diffuse downwelling plane irradiance at the bottom of the atmosphere (after :py:meth:`execute`),
+        added to ``radcalnet_db`` and returned.
+
+        The direct beam is attenuated by the gases along the solar path (air mass :math:`1/\mu_0`, ``Tg_d``) and by
+        the Rayleigh and aerosol extinction (:py:meth:`optical_thickness`):
+
+        .. math::
+
+           E_{dir} = E_0\, T_g^{\downarrow}\, \exp\left[-(\tau_r + \tau_a)/\mu_0\right], \qquad
+           E_{dif} = E_d - E_{dir}, \qquad E_0 = \mu_0\, d^2\, F_0
+
+        with :math:`E_d = T^{\downarrow} T_{g,E_d} E_0` the total irradiance of :py:meth:`execute` (OSOAA total
+        transmittance, Rayleigh pressure correction, gaseous transmittance of the gas coupling). The direct beam is
+        the unscattered beam only: the forward-scattered (circumsolar) light belongs to :math:`E_{dif}`.
+
+        With the coupled gaseous transmittance (``gas_coupling`` ``'path_length'`` or ``'effective_air_mass'``),
+        :math:`T_{g,E_d}` can be lower than the direct-beam :math:`T_g^{\downarrow}` in the cores of the water-vapour
+        bands where the diffuse part is small, i.e. :math:`E_{dir} > E_d` (about 0.4 % of the samples of the
+        clear-water template, 719-724, 817-823, 897-901 nm...). :math:`E_{dir}` is then limited to :math:`E_d`
+        (:math:`E_{dif}` = 0), so that :math:`E_{dir} + E_{dif} = E_d` and both are non-negative; the number of
+        these samples is the attribute ``n_limited`` of ``Edir``.
+
+        Variables added: ``Edir``, ``Ediff`` (mW m-2 nm-1), ``Tdir`` (direct transmittance of the Rayleigh and
+        aerosol extinction, without the gases), ``tau_r`` and ``tau_a``.
+
+        :return: :py:class:`xarray.Dataset` with ``Ed``, ``Edir``, ``Ediff``, ``Tdir``, ``tau_r``, ``tau_a``
+        '''
+        if not hasattr(self, 'radcalnet_db'):
+            raise RuntimeError('boa_irradiance needs the simulation: call execute() first')
+        tau_r, tau_a = self.optical_thickness()
+        Tdir = np.exp(-(tau_r + tau_a) / self.mu0)
+        Ed = self.Tra_d * self.Tg_Ed * self.E0
+        Edir = self.E0 * self.Tg_d * Tdir
+        limited = Edir > Ed
+        Edir = xr.where(limited, Ed, Edir)
+        Ediff = Ed - Edir
+        unit = 'mW m-2 nm-1'
+        out = xr.Dataset({
+            'Ed': Ed.reset_coords(drop=True),
+            'Edir': Edir.reset_coords(drop=True),
+            'Ediff': Ediff.reset_coords(drop=True),
+            'Tdir': Tdir.reset_coords(drop=True),
+            'tau_r': tau_r.reset_coords(drop=True),
+            'tau_a': tau_a.reset_coords(drop=True),
+        })
+        out['Ed'].attrs = {'unit': unit, 'description': 'Plane solar irradiance at bottom-of-atmosphere'}
+        out['Edir'].attrs = {'unit': unit, 'n_limited': int(limited.sum()),
+                             'description': 'Direct (unscattered) solar beam on a horizontal plane at '
+                                            'bottom-of-atmosphere, limited to Ed (see Process.boa_irradiance)'}
+        out['Ediff'].attrs = {'unit': unit, 'description': 'Diffuse (sky) plane irradiance at bottom-of-atmosphere, '
+                                                           'Ed - Edir'}
+        out['Tdir'].attrs = {'unit': '-', 'description': 'Direct transmittance of the solar path, '
+                                                         'exp[-(tau_r + tau_a) / mu0], without the gases'}
+        out['tau_r'].attrs = {'unit': '-', 'description': 'Rayleigh optical thickness at the surface pressure'}
+        out['tau_a'].attrs = {'unit': '-', 'description': 'Aerosol optical thickness of the aerosol models'}
+        out = out.squeeze()
+        for name in ('Edir', 'Ediff', 'Tdir', 'tau_r', 'tau_a'):
+            self.radcalnet_db[name] = out[name]
+        return out
 
     def compute_sunglint(self, stats='cm_iso_mix', wl_ref=865., levels=None, angle_min=None, uncertainty=True,
                          threshold=None, wind_unc=None, ensemble=None, tg_min=0.9, **kwargs):
@@ -536,9 +616,7 @@ class Process():
 
         full_wl = self.full_wl
         muv = xr.DataArray(np.cos(np.radians(vza)), coords={'vza': vza}, dims='vza')
-        tau_r = self.lut.rot.interp(wl=full_wl, kwargs={'fill_value': 'extrapolate'}) * \
-            self.input_db['pressure'] / 1013.25
-        tau_a = self.lut.aot_lut.interp(aot_ref=self.aot550).interp(wl=full_wl, method='quadratic')
+        tau_r, tau_a = self.optical_thickness()
         Tdir = np.exp(-(tau_r + tau_a) * (1 / self.mu0 + 1 / muv))
         Tg = (self.Tg_d * self.Tg_u).sel(wl=full_wl)
         # single viewing angles squeezed out of Rtoa (e.g. one azimuth): squeezed from the glint too

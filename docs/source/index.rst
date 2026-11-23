@@ -42,6 +42,8 @@ full radiative transfer simulations of the coupled absorption and scattering (se
    :maxdepth: 2
    :caption: Tutorials
 
+   tutorials/radcalnet_oc_aeronet_oc_quickstart
+   tutorials/radcalnet_oc_products
    tutorials/radcalnet_oc_toa_simulation
    tutorials/radcalnet_oc_aeronet_oc_toa
    tutorials/radcalnet_oc_gaseous_transmittance

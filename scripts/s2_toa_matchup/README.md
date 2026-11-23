@@ -124,3 +124,51 @@ measurements of a site. Not part of the package.
 The results of November 2026 (AAOT, Galata, Section-7, Lucinda) are discussed in
 `reports/validation_roadmap_2026-11`. The output files record the radcalnet_oc version and settings
 (`radcalnet_oc` attribute) since the traceability change of ROADMAP task 2.
+
+9. **Region of interest at the RadCalNet sites** (`roi_selection.py`, notebook `roi_selection.ipynb`): Sentinel-2 L1C
+   window of +/- 1500 m around VEIT (AAOT) and CORO (Section-7 Platform) from all the clear scenes of the tile,
+   detection of the fixed structures (frequency of the pixels brighter than the far field at 1610 nm), footprint
+   of the structures by distance to them, and ROI candidates (square or disc, half-size 100-1200 m, exclusion
+   of a disc or of the structure + buffer) scored by contamination, heterogeneity and dispersion of the matchup
+   residual (paired bootstrap). The windows (`<code>_s2_l1c_window.nc`) and the scores are written to
+   `/data/radcalnet/studies/roi_selection`:
+
+   ```bash
+   python roi_selection.py extract VEIT     # about 6 min, then the same for CORO
+   jupyter nbconvert --to notebook --execute --inplace roi_selection.ipynb   # about 3 min (scores cached)
+   ```
+
+   Result: the platform footprint vanishes 60-100 m from the structure; the matchups cannot separate the
+   candidates; recommended ROI: square of half-size 200 m at VEIT and 300 m at CORO, minus the structure + 100 m.
+
+   Applied to the matchups: the structure pixels are exported (`<code>_structures.csv`), then the satellite
+   statistics of the gathered file are recomputed in the ROI from the subsets (`--roi`, suffix `_roi`; cached
+   scenes and simulations unchanged, a few minutes per site); `matchup_analysis.py --roi` reads these files:
+
+   ```bash
+   python roi_selection.py structures VEIT     # and CORO
+   python s2_toa_matchup.py --site AAOT --level lev20 --reglint --glint-stats cm_iso_mix --roi
+   python s2_toa_matchup.py --site Section-7_Platform --level lev20 --reglint --glint-stats cm_iso_mix --roi  # and lev15
+   python matchup_analysis.py stats --glint-stats cm_iso_mix --roi --flags-exclude glint_moderate glint_high glint_near_specular
+   ```
+
+   The ROI changes the medians by less than 0.4 % (the 1.2 km box is not contaminated); the sunglint flags matter
+   more: at VEIT, excluding the moderate glint (258 of 325 scenes) lowers the robust SD of the residual from 6.4 to
+   5.5 % at 665 nm and from 12.1 to 10.1 % at 865 nm (8.5 % with the bands flagged `glint_uncertain` masked); at CORO,
+   viewed near nadir by the single orbit R007 (glint fraction 0.3-0.4 at 865 nm), only 13 scenes have no moderate
+   glint, and the statements exclude the high and near-specular glint only (44 scenes). Figures and tables of the site
+   statements: `scripts/radcalnet_products/statement_figures.py` and `site_rgb.py`.
+
+10. **Physical residual budget** (`residual_budget.py`): the residual sat - sim (simulation with the heavy-tailed glint,
+    `_cm_iso_mix` files, standard selection) compared, per matchup and band (443-2190 nm), with the terms missing
+    from the simulation, each predicted by a physical model with no coefficient fitted on the matchups: Rayleigh
+    scattering above the water vapour in B10 (single scattering, 55 +/- 8 % of the molecules above the opaque
+    layer), thin cirrus from the B10 excess (Gordon 1999), whitecaps (Gordon and Wang 1994, spectral factors of
+    Frouin et al. 1996) and land environment (6S functions); and with the uncertainties of the glint, the AOT and the
+    aerosol model, the MSI calibration, the water-leaving term and the time window. Prints the medians of the terms,
+    the remaining residual and its uncertainty, the closure fractions (|r| < u, < 2u), the residual per glint-angle
+    bin and S2 unit, and checks the cirrus model against the slope of the residual with the B10 excess (about 30 s):
+
+    ```bash
+    python residual_budget.py --csv-dir /data/radcalnet/studies/residual_budget
+    ```

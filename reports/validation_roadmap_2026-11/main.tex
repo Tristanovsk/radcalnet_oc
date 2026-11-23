@@ -36,7 +36,11 @@ TOA reflectance agrees with MSI within $-3$ to $0\,\%$ (443--560\,nm). Beyond 66
 systematically too low by $2$--$3\times10^{-3}$ in reflectance, nearly flat with wavelength, i.e.\ $-8\,\%$
 at 705\,nm to $-60\,\%$ at 2190\,nm in relative terms. This deficit decreases with the angular distance to
 the specular direction and increases with the aerosol optical thickness, which points first to the sunglint
-and to the aerosol model as the priorities of the roadmap.
+and to the aerosol model as the priorities of the roadmap. A physical residual budget (update of November 2026)
+shows that, with the heavy-tailed glint, the differences are 1--2$\times10^{-3}$ in every band; that the B10 floor
+($0.5\times10^{-3}$) is the Rayleigh scattering above the water vapour, missing from the simulation, and the cirrus
+only $0.2\times10^{-3}$; and that a glint-angle term of $\sim1\times10^{-3}$ at 865\,nm remains, now carried by a model
+gap per sunglint level and sun zenith angle in the uncertainty budget.
 \end{abstract}
 
 \tableofcontents
@@ -868,8 +872,10 @@ transfer to make, not only a term of the budget (started in Section~\ref{sec:pre
 
 \paragraph{Not yet in the budget.} The aerosol model (spread of the mixtures compatible with the measured AOT
 spectrum, Section~\ref{sec:aerosol_diag}), the residuals of the models (gas coupling, absorption tables, invRrs
-reconstruction and SWIR extension), and the terms identified on the matchups: thin cirrus ($\sim1\times10^{-3}$,
-Section~\ref{sec:aot_term}) and the additional near-infrared term ($\sim-1\times10^{-3}$ at 865\,nm).
+reconstruction and SWIR extension), and the terms identified on the matchups: thin cirrus and the additional
+near-infrared term. \textit{Update:} these now enter the budget through the model gap \code{u\_model} per sunglint
+level and sun zenith angle (Section~\ref{sec:phys_budget}); the cirrus term is $0.2\times10^{-3}$ at the median once
+the clear-sky Rayleigh scattering of B10 is removed.
 
 \begin{table}[h]
 \centering\small
@@ -890,6 +896,163 @@ Glint                       & 0.8 & 2.9 & 6.0 & 14.1 & 20.7 & 42.7 & 63.6 \\
 \midrule
 Total, glint angle $35^\circ$ & 1.3 & 3.3 & 6.5 & 14.7 & 21.4 & 43.2 & 63.9 \\
 Total, glint angle $27^\circ$ & 3.6 & 12.5 & 23.8 & 45.4 & 58.3 & 86.3 & 103.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Physical residual budget, B10 floor and model gap}
+\label{sec:phys_budget}
+The regressions of Sections~\ref{sec:sixs}--\ref{sec:aot_term} found the terms of the deficit by fitting them on
+the matchups. The residual is here confronted with the terms the simulation lacks, each \emph{predicted} by a
+physical model from independent inputs, with no coefficient fitted on the matchups, and with the uncertainties of
+the simulation and of the observation (\code{scripts/s2\_toa\_matchup/residual\_budget.py}; VEIT = AAOT L2.0, 325
+matchups, CORO = Section-7 L1.5, 52 matchups; heavy-tailed glint \code{cm\_iso\_mix}, standard selection). The
+question is closure: whether the remaining residual stays within its uncertainty.
+
+\paragraph{Absolute rather than relative.} With the direct glint, simulation $-$ MSI is $-2.0$, $+1.0$, $-0.5$,
+$-1.6$, $-0.7$, $-0.6\times10^{-3}$ at 443, 560, 665, 865, 1610, 2190\,nm at VEIT ($-1.8$, $-0.4$, $-0.8$, $-1.5$,
+$-0.8$, $-0.3\times10^{-3}$ at CORO, Fig.~\ref{fig:abs_spectrum}): 1--2$\times10^{-3}$ in every band, the largest at
+443\,nm. The relative differences ($-1.4$ to $-24\,\%$) grow into the SWIR because the signal falls from 0.14 to
+0.003, not because the error grows. Both scales matter: the calibration of a sensor is relative, the atmospheric
+correction and the water signal are absolute ($10^{-3}$ at the TOA is $\sim$10\,\% of the water-leaving reflectance
+at 443\,nm at VEIT).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/s2_abs_spectrum.png}
+\caption{Median and IQR of simulation $-$ MSI ($\times10^{-3}$ of reflectance) without and with the simulated direct
+glint, glint angle $>30^\circ$; grey: $\pm2\,\%$ of the MSI signal of each band.}
+\label{fig:abs_spectrum}
+\end{figure}
+
+\paragraph{Predicted terms.}
+\begin{itemize}
+\item \textbf{Rayleigh scattering above the water vapour in B10.} The L1C B10 (1375\,nm) never falls below
+  $0.4$--$0.5\times10^{-3}$, at both sites, for every processing baseline (N0400--N0512), unit and year, while the
+  simulation gives $\sim$0. In the saturated water-vapour band the light scattered by the molecules above the
+  absorbing layer is not absorbed; the package multiplies the whole path reflectance by the gaseous transmittance,
+  i.e.\ puts all the scattering below the absorbers. In single scattering, $f\,\tau_r(1375)\,P_R(\Theta)/(4\mu_s\mu_v)$
+  with $f = 0.55\pm0.08$ (molecules above 4--6\,km) gives $0.55\times10^{-3}$ at the median geometry; the floor is
+  0.50--0.58 times the whole-column value and rises with the air mass (lower envelope 5.0 to $7.3\times10^{-4}$ from
+  the lowest to the highest air-mass quartile at VEIT), as expected (Fig.~\ref{fig:b10}).
+\item \textbf{Thin cirrus from the B10 excess.} What remains in B10 over this floor was scattered above the water
+  vapour (Gordon 1999, MODIS ATBD of the normalised water-leaving radiance, 3.1.1.9.1): $C(\lambda) = s(\lambda)\,
+  (\mathrm{B10} - R_\mathrm{above})/K_a$, $K_a = 0.9\pm0.1$ for the water vapour above the cirrus, $s = 1$ in the
+  visible--NIR, $0.95\pm0.10$ and $0.85\pm0.15$ at 1610 and 2190\,nm (ice absorption, bounds). The cirrus term is
+  $0.2\times10^{-3}$ at the median (90th percentile 0.7--$1.2\times10^{-3}$), not $\sim1\times10^{-3}$ as stated in
+  Section~\ref{sec:aot_term}, whose regression on the raw B10 attributed the clear-sky floor to the cirrus. The model
+  is checked without fit: the slope of the residual against the B10 excess (with the glint angle) is 1.13--1.34 in
+  the visible--NIR and 0.94, 0.83 at 1610, 2190\,nm at VEIT, against $1.11\pm0.14$, $1.06\pm0.16$, $0.94\pm0.20$
+  predicted (CORO: 1.6--2.2 in the visible--NIR, 1.02, 0.95 in the SWIR, 52 matchups).
+\item \textbf{Whitecaps}: coverage $2.95\times10^{-6}U^{3.52}$, effective reflectance 0.22 (Gordon and Wang 1994),
+  spectral factor of the foam relative to the visible 0.645 at 865\,nm, 0.15 at 1610\,nm (Frouin et al.\ 1996:
+  $-40\,\%$ at 0.85\,$\mu$m, $-85\,\%$ at 1.65\,$\mu$m) and 0.10 at 2190\,nm, total transmittances, $u$ = 100\,\%:
+  0.01--$0.02\times10^{-3}$ at VEIT, $0.1\times10^{-3}$ at CORO. (The factors 0.75, 0.35, 0.20 of
+  \code{sixs\_terms.py} overestimated the SWIR foam 2--3 times; the conclusion of Section~\ref{sec:sixs} holds.)
+\item \textbf{Land environment}: 6S functions of Section~\ref{sec:sixs}, half the vegetation bound, $u$ = half:
+  $0.1\times10^{-3}$ at 865\,nm at VEIT.
+\end{itemize}
+
+\paragraph{Uncertainties (zero mean).} Glint (\code{glint\_unc}, Section~\ref{sec:glint_unc}); AOT(550) $\pm0.01$
+times the sensitivity of the simulation ($dR_\mathrm{toa}/d\mathrm{AOT}$ = 117, 94, 87, 62, 23, $11\times10^{-3}$ per
+unit AOT from 443 to 2190\,nm, from the simulations of each window); aerosol model (half range of the mixtures
+compatible with the AOT spectrum, Table~\ref{tab:aerosol}, times AOT); MSI L1C calibration 2\,\% ($k = 1$, assumed);
+water-leaving term ($\Rrs$ 5\,\%); time (spread of the simulations of the $\pm2$\,h window).
+
+\begin{table}[h]
+\centering\small
+\caption{Physical budget, medians ($\times10^{-3}$), glint angle $>30^\circ$: residual $E$ = MSI $-$ simulation
+(with glint), predicted missing terms, remaining residual $r = E -$ terms, its standard uncertainty $u$, and the
+fraction of the matchups with $|r| < 2u$ (95\,\% expected if the budget closes).}
+\label{tab:phys_budget}
+\begin{tabular}{llrrrrrr}
+\toprule
+ & & 443 & 560 & 665 & 865 & 1610 & 2190\,nm \\
+\midrule
+\multirow{6}{*}{VEIT} & $E$ & 1.96 & $-0.98$ & 0.49 & 1.59 & 0.68 & 0.59 \\
+ & cirrus & 0.23 & 0.23 & 0.23 & 0.23 & 0.21 & 0.19 \\
+ & whitecaps + environment & 0.19 & 0.17 & 0.07 & 0.12 & 0.01 & 0.00 \\
+ & $r$ & 1.39 & $-1.68$ & $-0.05$ & 1.08 & 0.35 & 0.32 \\
+ & $u$ & 3.71 & 2.28 & 1.70 & 1.29 & 0.90 & 0.79 \\
+ & $|r|<2u$ & 0.93 & 0.85 & 0.87 & 0.77 & 0.79 & 0.80 \\
+\midrule
+\multirow{4}{*}{CORO} & $E$ & 1.83 & 0.37 & 0.80 & 1.51 & 0.82 & 0.33 \\
+ & $r$ & 1.31 & $-0.37$ & 0.47 & 0.70 & 0.04 & $-0.30$ \\
+ & $u$ & 3.82 & 3.02 & 2.88 & 3.35 & 3.24 & 3.17 \\
+ & $|r|<2u$ & 0.92 & 0.90 & 0.90 & 0.90 & 0.85 & 0.87 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Closure.} At VEIT the budget closes in the visible but not in the NIR--SWIR (Table~\ref{tab:phys_budget},
+Fig.~\ref{fig:budget}): $1.1$, 0.35, $0.3\times10^{-3}$ remain at 865, 1610, 2190\,nm, with 77--80\,\% of the matchups
+within $2u$. The remaining term follows the glint angle ($1.7\times10^{-3}$ at 865\,nm at 30--50$^\circ$, 1.0 at
+50--60$^\circ$, 0.15 beyond $60^\circ$, where the budget closes) and decreases with the wavelength (1.7, 1.0, 0.6 at
+30--40$^\circ$), which a surface reflection alone, nearly flat, does not explain. It is the same for S2A and S2B.
+CORO closes, but only through its large glint uncertainty ($\sim3\times10^{-3}$): it does not constrain the term.
+Near the specular direction (glint angle 20--30$^\circ$, budget of all the glint angles), the sign reverses: the
+simulation with glint exceeds MSI by 2--4 (VEIT) and 4--9$\times10^{-3}$ (CORO), flat with wavelength, partly because
+the clear-pixel test (B11 $<0.03$) removes the most glinted pixels (Section~\ref{sec:glint_flags}).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/s2_residual_budget.png}
+\caption{VEIT, glint angle $>30^\circ$. Left: simulation $-$ MSI, predicted missing terms (cirrus from the B10
+excess, whitecaps + land) and remaining residual (simulation + terms $-$ MSI) $\pm u$, medians ($\times10^{-3}$).
+Right: remaining residual per glint-angle bin (shaded: $\pm u$).}
+\label{fig:budget}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/s2_b10_floor.png}
+\caption{Left: MSI B10 against the single-scattering Rayleigh reflectance of the molecules above the water vapour
+(55\,\% of the column), VEIT and CORO. Right: 30 VEIT scenes without cirrus (B10 excess $<10^{-4}$): observed B10, the
+single-scattering estimate, the package (coupling 684--990\,nm only) and the full-range coupling candidate.}
+\label{fig:b10}
+\end{figure}
+
+\paragraph{End-to-end check of the full-range coupling.} The candidate table of the SOS-ABS study (package windows
+684--990\,nm plus H$_2$O 1000, 1130, 1380, 1880, 2150, 2450\,nm, O$_2$ 1270, CO$_2$ 2010\,nm; O$_3$ and CO$_2$
+1600\,nm decoupled, CH$_4$ windows left out) was run on 59 VEIT matchups (nearest measurement;
+\code{scripts/sos\_abs\_coupling/check\_fullrange\_s2.py}). On the 30 cloud-free scenes, B10 is $0.50\times10^{-3}$
+(L1C, median), 0.55 (single-scattering estimate), 0 (package) and 0.20 with the candidate (correlation 0.73 with the
+observation); the other bands are unchanged ($+0.015\times10^{-3}$ at 2190\,nm). The candidate has the right
+behaviour but recovers 40\,\% of the floor: the SOS-ABS simulations v3 skipped the saturated CKD intervals
+($T_g<0.02$), i.e.\ 1347--1426 and 1814--1942\,nm, the whole B10 band, so the 1380\,nm model is extrapolated from the
+band wings. A set v5 of these cores (88 CKD intervals, 16 in B10, \code{make\_luts.py v5}) is being simulated to
+refit the 1380 and 1880\,nm windows.
+
+\paragraph{Model gap per sunglint level and sun zenith angle.} Over all the glint angles (both sites pooled),
+the part of the remaining residual not covered by the known uncertainties,
+$u_\mathrm{model} = \sqrt{\tilde r^2 + \max(0, s_r^2 - \tilde u^2)}$ ($\tilde r$ median, $s_r$ = 1.4826 MAD,
+$\tilde u$ median of $u$), depends on the sunglint level of \code{glint\_flags} in the NIR--SWIR and on the sun zenith
+angle in the blue (Table~\ref{tab:model_gap}). The flags were checked: the bitmask is cumulative (direct glint
+$\geq$ 1, 10, 50\,\% of the TOA reflectance at 865\,nm $\to$ 1, 3, 7; $+8$ below a glint angle of $30^\circ$), only valid
+values occur in the matchup files and they are recomputed identically from the glint fraction and angle. The table
+per level, sun zenith class (<40, 40--55, >55$^\circ$) and band is shipped with the package
+(\code{data/auxdata/model\_uncertainty\_s2.csv}) and enters \code{uncertainty\_budget} as \code{u\_model}
+(\code{radcalnet\_oc.uncertainty.model\_uncertainty}, from \code{glint\_flags} and the sun zenith angle; classes with
+fewer than 20 matchups take the value of their level). Above $55^\circ$ the simulation exceeds MSI by 2--$3\times10^{-3}$
+at 560\,nm and falls below at 443\,nm (ozone, radiative transfer at low Sun): to investigate.
+
+\begin{table}[h]
+\centering\small
+\caption{Model gap $u_\mathrm{model}$ ($\times10^{-3}$, standard uncertainty) per sunglint level of \code{glint\_flags},
+pooled over the sun zenith angles, and at 443\,nm per sun zenith class for the level low; VEIT + CORO, all glint
+angles.}
+\label{tab:model_gap}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Level (bits) & 443 & 560 & 665 & 865 & 1610 & 2190\,nm & $N$ \\
+\midrule
+none (0)            & 2.4 & 4.1 & 2.2 & 1.4 & 0.6 & 0.5 & 36 \\
+low (1)             & 1.3 & 2.2 & 0.9 & 1.7 & 0.9 & 0.7 & 233 \\
+moderate (1+2)      & 1.5 & 1.6 & 2.8 & 2.8 & 2.0 & 0.9 & 99 \\
+high (1+2+4)        & 1.5 & 4.6 & 6.0 & 6.8 & 7.6 & 8.8 & 9 \\
+near specular (+8)  & 2.5 & 7.6 & 7.5 & 5.3 & 9.2 & 7.6 & 88 \\
+\midrule
+low, $\theta_s$ <40 / 40--55 / >55$^\circ$ (443\,nm) & \multicolumn{7}{l}{0.2 / 1.2 / 2.6} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1083,6 +1246,20 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
 \item \prio{P2} \textbf{LUT coverage}: VZA nodes stop at 48.9$^\circ$, below the swath edges of OLCI and VIIRS;
   quantify the extrapolation or extend the LUT. Check whether the LUT is scalar or vector (polarisation)
   \todo{to check}.
+\item \textit{Checked (November 2026):} \textbf{azimuth conventions}. Radiative transfer (OSOAA, LUT of the
+  package, \code{coxmunk.glint\_angle}): azimuth $0^\circ$ at the sunglint, the sensor looking towards the Sun; remote
+  sensing (\code{raa} of the matchup files, \code{coxmunk.Sunglint}): $180^\circ$ at the sunglint,
+  $\varphi_\mathrm{RT} = 180^\circ - \varphi_\mathrm{RS}$ (\code{compute\_sunglint} converts). Both give the same glint
+  angle in the matchup files. Sentinel-2 sees VEIT at $\varphi_\mathrm{RT}$ = 57--147$^\circ$ and CORO at
+  17--43$^\circ$, towards the glint: the geometric reason why CORO is glint-dominated.
+\item \prio{P2} \textbf{Directional validation} (the RadCalNet files are nadir): (1) store VZA and azimuth with the
+  convention as an attribute, and the glint angle and flags per geometry; (2) water-leaving reflectance at the
+  sensor geometry (invRrs $g(\theta_s,\theta_v,\varphi)$, item above); (3) angular accuracy of the LUT (interpolation,
+  scalar versus vector) against OSOAA runs at VZA 0--60$^\circ$ and all azimuths; (4) matchups with sensors covering
+  the viewing hemisphere: Sentinel-3/OLCI (VZA $\leq55^\circ$, swath tilted away from the glint), MODIS and VIIRS
+  ($\leq65^\circ$), PRISMA and EnMAP tilts, the PARASOL/POLDER multi-angle archive (2005--2013, AAOT since 2002) and the
+  HYPERNETS in situ multi-angle radiometry; (5) residual and \code{u\_model} binned in VZA $\times$ azimuth (glint
+  side, backscattering, side views), to extend the model gap beyond the Sentinel-2 geometry.
 \end{itemize}
 
 \subsection{Aerosol model}
@@ -1114,7 +1291,9 @@ Priorities: \prio{P1} next 3 months (drives the NIR--SWIR deficit or blocks the 
 \item \prio{P1} \textbf{Path-length coupling beyond 990\,nm}: adopt the windows where the gain is large and robust
   (H$_2$O 1000, 1130, 1380, 1880, 2150, 2450\,nm; O$_2$ 1270; CO$_2$ 2010\,nm); keep O$_3$ and CO$_2$ 1600\,nm
   decoupled; add CH$_4$ to the coupled gases or drop its windows. Validate end to end against SOS-ABS first in the
-  1380 and 1880\,nm windows, then against MSI B10 (Table~\ref{tab:s2}).
+  1380 and 1880\,nm windows, then against MSI B10 (Table~\ref{tab:s2}). \textit{Started (November 2026):} the
+  candidate gives 0.20 against a clear-sky B10 of $0.50\times10^{-3}$ (Section~\ref{sec:phys_budget}); the saturated
+  cores are being simulated (SOS-ABS v5) before the refit.
 \item \prio{P2} \textbf{H$_2$O absorption table}: line-by-line in the strong bands (as done for O$_2$), since REPTRAN
   differs from CKD by 25--40\,\% at 720, 900, 1880, 2150\,nm and $-33\,\%$ at 1380\,nm.
 \item \prio{P3} Wider coupling training set (continental/urban aerosols, other H$_2$O profiles and pressures,
@@ -1311,6 +1490,11 @@ H2 2027 & HYPERNETS reader and reconstruction validation; H$_2$O line-by-line; S
   validation: scripts and README in the folder \code{rayleigh\_pressure} of \code{scripts}.
 \item Coupling study: \code{scripts/sos\_abs\_coupling} (SOS-ABS simulations, \code{ppld.py} fit,
   \code{conclusions\_fullrange.md}).
+\item Physical residual budget (Section~\ref{sec:phys_budget}): \code{residual\_budget.py} in
+  \code{scripts/s2\_toa\_matchup} (about 30\,s), with \code{--csv-dir} for the per-matchup budget and, with
+  \code{--glint-min 0 --model-table}, the model-gap table of the package; end-to-end check of the coupling:
+  \code{check\_fullrange\_s2.py} in \code{scripts/sos\_abs\_coupling} (about 20\,min for 60 matchups, 4 processes);
+  saturated cores: \code{make\_luts.py v5}.
 \end{itemize}
 
 \end{document}

@@ -54,7 +54,7 @@ IQR_GLINT = 0.15  # relative IQR at 2190 nm below which a scene rejected by the 
 
 
 def suffix(args):
-    return '' if args.glint_stats == 'cm_iso' else f'_{args.glint_stats}'
+    return ('' if args.glint_stats == 'cm_iso' else f'_{args.glint_stats}') + ('_roi' if getattr(args, 'roi', False) else '')
 
 
 def load(odir, site, args=None):
@@ -384,6 +384,8 @@ def main():
     p.add_argument('--fig-dir', default=None, help='figures, glint: output folder of the figures (figures: default .)')
     p.add_argument('--glint-site', default='AAOT_lev20', help='figures: site of the glint-angle figure')
     p.add_argument('--glint-stats', default='cm_iso', help='glint statistics of the matchup files (suffix)')
+    p.add_argument('--roi', action='store_true', help='matchup files with the satellite statistics in the recommended '
+                                                      'ROI (s2_toa_matchup.py --roi, suffix _roi)')
     p.add_argument('--glint-pixels', action='store_true',
                    help='satellite statistics without the SWIR threshold, homogeneous glint scenes kept')
     p.add_argument('--flags-exclude', nargs='+', default=None, choices=list(FLAGS),

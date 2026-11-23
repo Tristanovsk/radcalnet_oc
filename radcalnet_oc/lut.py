@@ -32,6 +32,7 @@ opj = os.path.join
 dir, filename = os.path.split(__file__)
 
 thuillier_file = files('radcalnet_oc.data.auxdata').joinpath('ref_atlas_thuillier3.nc')
+thuillier2003_file = files('radcalnet_oc.data.auxdata').joinpath('thuillier_2003_0.3nm.dat')
 gueymard_file = files('radcalnet_oc.data.auxdata').joinpath('NewGuey2003.dat')
 kurucz_file = files('radcalnet_oc.data.auxdata').joinpath('kurucz_0.1nm.dat')
 tsis_file = files('radcalnet_oc.data.auxdata').joinpath(
@@ -580,7 +581,12 @@ class SolarIrradiance():
     2600 nm.
 
     :ivar tsis: TSIS-1 hybrid solar reference spectrum (Coddington et al., 2021), 0.1 nm resolution
-    :ivar thuillier: Thuillier et al. (2003) spectrum
+    :ivar thuillier: ATLAS3 spectrum of SOLSPEC (Thuillier et al., 2004), SOLID distribution; 1.4 % above
+        ``thuillier2003`` from 500 to 2400 nm
+    :ivar thuillier2003: Thuillier et al. (2003) composite spectrum (ATLAS 1-2-3 and EURECA), about 0.3 nm
+        sampling, 200-2397.5 nm: the spectrum of the solar irradiances of the Sentinel-2 L1C products
+        (reproduced within 0.02 % by integration over the MSI spectral responses); like ``thuillier``, it
+        ends at 2397.5 nm (NaN beyond in ``Process``)
     :ivar gueymard: Gueymard (2004) spectrum
     :ivar kurucz: Kurucz (1992) spectrum, 0.1 nm resolution
     '''
@@ -596,6 +602,7 @@ class SolarIrradiance():
         self.gueymard = self.read_gueymard()
         self.kurucz = self.read_kurucz()
         self.thuillier = self.read_thuillier()
+        self.thuillier2003 = self.read_thuillier2003()
         self.tsis = self.read_tsis()
 
     def read_tsis(self):
@@ -633,6 +640,24 @@ class SolarIrradiance():
         solar_irr.attrs['units'] = 'mW/m2/nm'
         return solar_irr
 
+    def read_thuillier2003(self):
+        '''
+        Read the Thuillier et al. (2003) composite solar spectrum.
+
+        :return: solar irradiance (mW m-2 nm-1), :py:class:`xarray.DataArray` with a ``wl`` dimension (nm)
+        '''
+        # SeaBASS-like header: lines starting with / or !
+        wl, data = np.loadtxt(thuillier2003_file, comments=['/', '!'], unpack=True)
+        solar_irr = xr.DataArray(data, coords={'wl': wl}, dims='wl', name='data')
+        # keep spectral range of interest UV-SWIR
+        solar_irr = solar_irr[(solar_irr.wl <= self.wl_max) & (solar_irr.wl >= self.wl_min)]
+        solar_irr.attrs['units'] = 'mW/m2/nm'
+        solar_irr.attrs['reference'] = 'Thuillier, G., Herse, M., Simon, P. C., Labs, D., Mandel, H., Gillotay, D., ' + \
+                                       'Foujols, T. (2003). The solar spectral irradiance from 200 to 2400 nm as ' + \
+                                       'measured by the SOLSPEC spectrometer from the ATLAS 1-2-3 and EURECA ' + \
+                                       'missions. Solar Physics, 214(1), 1-22.'
+        return solar_irr
+
     def read_gueymard(self):
         '''
         Read the Gueymard solar spectrum.
@@ -667,11 +692,12 @@ class SolarIrradiance():
 
     def interp(self, wl=[440, 550, 660, 770, 880]):
         '''
-        Interpolate the Thuillier and Gueymard spectra at new wavelengths (in place).
+        Interpolate the Thuillier (ATLAS3 and 2003) and Gueymard spectra at new wavelengths (in place).
 
         :param wl: wavelengths (nm)
         '''
         self.thuillier = self.thuillier.interp(wl=wl)
+        self.thuillier2003 = self.thuillier2003.interp(wl=wl)
         self.gueymard = self.gueymard.interp(wl=wl)
 
 

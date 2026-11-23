@@ -12,8 +12,9 @@ section *Coupling of absorption and scattering*). They are not part of the packa
   `pip install -e $SOS_ABS_ROOT/python`), only to run the simulations (`make_luts.py`). Its CKD coefficients
   (`fic/COEFF_CKD/ckd_5cmm1.nc`, 5 cm-1) start at 364 nm.
 - The simulations, about 1 GB: `data/v2` (684-990 nm, 0.3 GB) and `data/v3` (rest of 364-2500 nm, 0.7 GB),
-  plus `data/` for v1. `data` is not tracked: on the development machine it is a link to
-  `/data/sos_abs_coupling`. `SOS_ABS_V3` overrides the location of v3.
+  plus `data/` for v1, in `$SOS_ABS_DATA`, else in a folder `data/` next to the scripts, else in
+  `/data/sos_abs_coupling` (development machine; no symbolic link in the repository, which `pip install -e .` would
+  follow). `SOS_ABS_V3` overrides the location of v3.
 
 ## Steps
 

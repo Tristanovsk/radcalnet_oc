@@ -69,6 +69,25 @@ def test_provenance_decoupled():
     assert attrs['o2_model'] == 'reptran'
 
 
+def test_solar_database_thuillier2003():
+    '''Thuillier (2003) composite as F0: same TOA reflectance as TSIS-1, irradiances of the composite
+    (up to 2397.5 nm, NaN beyond as for the ATLAS3 spectrum).'''
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 2))
+    out = {}
+    for name in ['tsis', 'thuillier2003']:
+        process = Process(input_db=input_db, solar_database=name)
+        process.execute()
+        out[name] = process.radcalnet_db
+    db = out['thuillier2003']
+    assert db.attrs['solar_database'] == 'thuillier2003'
+    swir = db.wl < 2397
+    assert np.isfinite(db.E0.where(swir, drop=True)).all()
+    xr.testing.assert_allclose(db.Rtoa.where(swir, drop=True), out['tsis'].Rtoa.where(swir, drop=True), rtol=1e-10)
+    # band-averaged irradiance 1000-1300 nm: Thuillier 2003 about 2 % above TSIS-1
+    ratio = (db.E0 / out['tsis'].E0).sel(wl=slice(1000, 1300)).mean()
+    assert float(ratio) == pytest.approx(1.02, abs=0.02)
+
+
 def test_wind_default(clear_water):
     """Without wind speed in the input, the default of the configuration (2 m s-1) is used."""
     np.testing.assert_array_equal(clear_water.radcalnet_db.wind, 2.)
@@ -350,11 +369,12 @@ def test_uncertainty_budget(glint_run):
     R0 = p.radcalnet_db.Rtoa.copy()
     ratm_lut = p.lut.Rdiff_lut.copy()
     db = uncertainty_budget(p, inputs={'aot550': ('abs', 0.02), 'tco3': ('rel', 0.)})
-    for name in ['u_aot550', 'u_tco3', 'u_glint', 'u_total', 'u_total_rel']:
+    for name in ['u_aot550', 'u_tco3', 'u_glint', 'u_model', 'u_total', 'u_total_rel']:
         assert name in db, name
     assert float(db.u_tco3.max()) == 0.
     assert float(db.u_aot550.sel(wl=865., method='nearest').min()) > 0.
-    np.testing.assert_allclose(db.u_total, np.sqrt(db.u_aot550 ** 2 + db.u_tco3 ** 2 + db.u_glint ** 2))
+    np.testing.assert_allclose(db.u_total, np.sqrt(db.u_aot550 ** 2 + db.u_tco3 ** 2 + db.u_glint ** 2
+                                                   + db.u_model.transpose(*db.u_total.dims) ** 2))
     np.testing.assert_allclose(db.u_total_rel, db.u_total / db.Rtoa_glint)
     xr.testing.assert_identical(db.Rtoa, R0)
     xr.testing.assert_identical(p.lut.Rdiff_lut, ratm_lut)
@@ -397,3 +417,77 @@ def test_sunglint_single_geometry():
     assert db.glint_flags.dims == ('time',)
     np.testing.assert_allclose(db.Rtoa_glint, db.Rtoa + db.Rglint)
     np.testing.assert_allclose(db.glint_angle, input_db.sza, atol=1e-6)
+
+
+@pytest.fixture(scope='module')
+def boa_run():
+    """Process run on the clear-water template (nadir view), with the direct and diffuse BOA irradiance."""
+    process = Process(vza=angles('vza', [0.]), azi=angles('azi', [90.]))
+    process.execute()
+    process.boa_irradiance()
+    return process
+
+
+def test_boa_irradiance_closure(boa_run):
+    """Edir + Ediff = Ed of the simulation, both non-negative, added to radcalnet_db."""
+    db = boa_run.radcalnet_db
+    for name in ['Edir', 'Ediff', 'Tdir', 'tau_r', 'tau_a']:
+        assert name in db, name
+    np.testing.assert_allclose(db.Edir + db.Ediff, db.Ed, rtol=1e-10)
+    assert float(db.Edir.min()) >= 0 and float(db.Ediff.min()) >= 0
+    assert db.Edir.attrs['unit'] == 'mW m-2 nm-1'
+    assert (db.Tdir <= boa_run.Tra_d.squeeze() + 1e-6).all()
+
+
+def test_boa_irradiance_direct_beam(boa_run):
+    """Outside the gaseous bands, Edir = E0 Tg exp(-(tau_r + tau_a) / mu0); the direct fraction grows with the
+    wavelength (Rayleigh and aerosol scattering decrease)."""
+    db = boa_run.radcalnet_db.isel(time=0)
+    p = boa_run
+    wl = 550.
+    tau = float((db.tau_r + db.tau_a).sel(wl=wl, method='nearest'))
+    mu0 = float(p.mu0.isel(time=0))
+    expected = float((p.E0 * p.Tg_d).isel(time=0).sel(wl=wl, method='nearest')) * np.exp(-tau / mu0)
+    assert float(db.Edir.sel(wl=wl, method='nearest')) == pytest.approx(expected, rel=1e-10)
+    f = (db.Edir / db.Ed)
+    f443, f865, f1610 = (float(f.sel(wl=w, method='nearest')) for w in (443., 865., 1610.))
+    assert 0.4 < f443 < f865 < f1610 < 1.
+
+
+def test_boa_irradiance_decoupled_not_limited():
+    """With the decoupled gaseous transmittance (same Tg for the direct beam and Ed), Edir never exceeds Ed."""
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 3))
+    process = Process(input_db=input_db, vza=angles('vza', [0.]), azi=angles('azi', [90.]),
+                      gas_coupling='decoupled')
+    process.execute()
+    out = process.boa_irradiance()
+    assert out.Edir.attrs['n_limited'] == 0
+
+
+def test_boa_irradiance_needs_execute():
+    input_db = xr.open_dataset(CLEAR_WATER).isel(time=slice(0, 2))
+    with pytest.raises(RuntimeError, match='execute'):
+        Process(input_db=input_db, vza=angles('vza', [0.]), azi=angles('azi', [90.])).boa_irradiance()
+
+
+def test_model_uncertainty(glint_run):
+    """Model gap per sunglint level and sun zenith angle: defined everywhere, larger for the near-specular and high
+    glint than without glint at 865 nm, interpolated between the bands of the table and constant beyond."""
+    from radcalnet_oc.uncertainty import model_uncertainty, glint_level, MODEL_UNC_FILE
+    import pandas as pd
+    np.testing.assert_array_equal(glint_level([0, 1, 3, 7, 9, 15]),
+                                  ['none', 'low', 'moderate', 'high', 'near_specular', 'near_specular'])
+    db = glint_run.radcalnet_db
+    u = model_uncertainty(db)
+    assert set(u.dims) == set(db.glint_flags.dims) | {'wl'}
+    assert np.isfinite(u).all() and float(u.min()) > 0
+    t = pd.read_csv(MODEL_UNC_FILE, comment='#')
+    at865 = t[t.wl == 865].groupby('level').u_model.median()
+    assert at865['near_specular'] > at865['none'] and at865['high'] > at865['low']
+    # constant beyond the bands of the table, between them in the range of the neighbours
+    flags = db.glint_flags.isel(time=0, vza=0, azi=0)
+    spec = u.isel(time=0, vza=0, azi=0)
+    assert float(spec.sel(wl=400., method='nearest')) == pytest.approx(float(spec.sel(wl=443., method='nearest')), rel=0.05)
+    lo, hi = sorted([float(spec.sel(wl=w, method='nearest')) for w in (665., 865.)])
+    assert lo - 1e-9 <= float(spec.sel(wl=760., method='nearest')) <= hi + 1e-9
+    assert int(flags) >= 0

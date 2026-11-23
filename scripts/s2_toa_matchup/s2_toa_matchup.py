@@ -29,10 +29,16 @@ depend on the slope statistics; the output file then gets the suffix ``_<glint-s
 core slope variance ``--glint-s0 + --glint-s1 W`` differs from Cox-Munk). ``--reglint`` only gathers
 the cached scenes (no new scene), e.g. to switch the glint statistics without rerunning the simulations.
 
+With ``--roi``, the satellite statistics of the gathered file are computed in the recommended region of interest
+of the site (``ROI``: square of half-size 200 m at AAOT/VEIT and 300 m at Section-7/CORO, minus the fixed structure
++ 100 m; README step 9), read again from the subsets at the gathering; the cached scenes keep the box of
+``--half-size`` and the simulations are unchanged. Output suffix ``_roi``.
+
 Example::
 
     python s2_toa_matchup.py --site AAOT --level lev20 --n-jobs 4
     python s2_toa_matchup.py --site AAOT --level lev20 --reglint --glint-stats cm_iso_mix
+    python s2_toa_matchup.py --site AAOT --level lev20 --reglint --glint-stats cm_iso_mix --roi
 '''
 import argparse
 import glob
@@ -49,6 +55,7 @@ from pyproj import Transformer
 
 import aeronet_oc_db
 import radcalnet_oc as radoc
+from radcalnet_oc.aeronet_oc import aeronet_inputs  # noqa: F401 (radcalnet-oc inputs of a site; used by the other scripts)
 from radcalnet_oc.reconstruction import Reconstruction
 
 opj = os.path.join
@@ -63,26 +70,8 @@ RECONSTRUCTION_VARS = ['chl_invrrs', 'spm_norm', 'rmsd']
 
 
 # ---------------------------------------------------------------------------------------------------
-# AERONET-OC
+# AERONET-OC: radcalnet_oc.aeronet_oc.aeronet_inputs (imported above)
 # ---------------------------------------------------------------------------------------------------
-def aeronet_inputs(site, level):
-    '''AERONET-OC data of the site with the radcalnet-oc input variables (time series).'''
-    ds = aeronet_oc_db.open_site(site, level, legacy_names=True).sortby('wl')
-    aod = ds['Aerosol_Optical_Depth'].interpolate_na('wl')
-    out = xr.Dataset(coords={'time': ds.time})
-    out['tcwv'] = ds['Total_Precipitable_Water(cm)'] * 10            # kg m-2
-    out['tco3'] = ds['Total_Ozone(Du)'] * 2.14485e-5                  # kg m-2
-    out['tcno2'] = ds['Total_NO2(DU)'] * 2.055482e-5                  # kg m-2
-    out['pressure'] = ds['Pressure(hPa)']
-    out['wind'] = ds['Wind_Speed(ms)']
-    out['aot550'] = aod.interp(wl=550)
-    out['aot865'] = aod.interp(wl=865)
-    out['ang_exp'] = -np.log(out.aot550 / out.aot865) / np.log(550 / 865)
-    out['naot'] = (ds['Aerosol_Optical_Depth'] / out.aot550).rename({'wl': 'wl_aeronet'})
-    out['chl'] = ds['Chlorophyll-a']
-    out['sza_aeronet'] = ds['SZA']
-    out['Rrs_Lwn'] = ds['Rrs_Lwn']
-    return out.reset_coords(drop=True)
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -102,9 +91,27 @@ def s2_inventory(tile, root=S2_ROOT):
     return df.sort_values('processing').groupby(level=0).tail(1).sort_index()
 
 
-def s2_extract(path, lon, lat, half_size=600., swir_max=0.03, cirrus_max=0.01):
+#: recommended region of interest (scripts/s2_toa_matchup/roi_selection.ipynb, README step 9): square of half-size
+#: ``half_size`` m minus the fixed structures dilated by ``buffer`` m (structure pixels of
+#: ``<ROI_DIR>/<code>_structures.csv``, written by ``roi_selection.py structures <code>``)
+ROI_DIR = '/data/radcalnet/studies/roi_selection'
+ROI = {'AAOT': dict(code='VEIT', half_size=200., buffer=100.),
+       'Section-7_Platform': dict(code='CORO', half_size=300., buffer=100.)}
+
+
+def roi_settings(site):
+    '''Half-size (m), buffer (m) and structure pixels (N x 2 offsets to the site, m) of the ROI of ``site``.'''
+    if site not in ROI:
+        raise ValueError(f'no ROI defined for {site} (ROI: {", ".join(ROI)})')
+    r = ROI[site]
+    xy = pd.read_csv(opj(ROI_DIR, f'{r["code"]}_structures.csv'), comment='#')[['x_m', 'y_m']].values
+    return r['half_size'], r['buffer'], xy
+
+
+def s2_extract(path, lon, lat, half_size=600., swir_max=0.03, cirrus_max=0.01, exclude_xy=None, buffer=0.):
     '''
-    TOA reflectance statistics in the box of ``2 * half_size`` m centred on (lon, lat).
+    TOA reflectance statistics in the box of ``2 * half_size`` m centred on (lon, lat), without the pixels
+    within ``buffer`` m of the points ``exclude_xy`` (offsets to the site, m: fixed structures; ROI).
 
     Two sets of pixels:
 
@@ -120,10 +127,16 @@ def s2_extract(path, lon, lat, half_size=600., swir_max=0.03, cirrus_max=0.01):
         srf = ds.SRF.load()
         wl_true = ds.wl_true.load()
     bands = box.bands
-    n_tot = bands.sizes['x'] * bands.sizes['y']
+    roi = xr.DataArray(np.ones((box.sizes['y'], box.sizes['x']), bool), coords={'y': box.y, 'x': box.x},
+                       dims=('y', 'x'))
+    if exclude_xy is not None and len(exclude_xy) and roi.size:
+        X, Y = np.meshgrid(box.x.values - x0, box.y.values - y0)
+        d = np.hypot(X[..., None] - exclude_xy[:, 0], Y[..., None] - exclude_xy[:, 1]).min(-1)
+        roi = roi & (d > buffer)
+    n_tot = int(roi.sum())
     if n_tot == 0:  # subset made around another site
         return None, None
-    cirrus_ok = bands.notnull().all('wl') & (bands.sel(wl=1375) < cirrus_max)
+    cirrus_ok = bands.notnull().all('wl') & (bands.sel(wl=1375) < cirrus_max) & roi
     out = xr.Dataset(coords={'wl': box.wl.values})
     for prefix, valid in [('sat', cirrus_ok & (bands.sel(wl=1610) < swir_max)), ('satg', cirrus_ok)]:
         stacked = bands.where(valid).stack(pix=('y', 'x')).dropna('pix', how='all')
@@ -358,7 +371,35 @@ def glint_unc_scene(s):
     return (factor * xr.DataArray(u, coords=old.coords, dims=old.dims)).median('rec_time')
 
 
-def gather(files, site, level, glint=(GLINT_STATS, {})):
+#: satellite statistics of a scene (s2_extract), replaced by restat_scene
+SAT_VARS = [f'{p}_{v}' for p in ('sat', 'satg') for v in ('median', 'q25', 'q75', 'mean', 'std')] + \
+    ['n_pix', 'frac_valid', 'n_pix_glint', 'frac_valid_glint']
+
+
+def make_restat(site, tile, args):
+    '''Function recomputing the satellite statistics of a cached scene in the ROI of ``site`` (``--roi``), from
+    the L1C subset of the scene; the simulations are kept.'''
+    half, buffer, xy = roi_settings(site)
+    paths = s2_inventory(tile, args.s2_root).set_index('product').path
+    info = aeronet_oc_db.site_info(level=args.level).loc[site]
+    lon, lat = float(info.longitude), float(info.latitude)
+
+    def restat(s):
+        prod = str(s['product'].values)
+        if prod not in paths.index:
+            return None
+        sat, _ = s2_extract(paths[prod], lon, lat, half, args.swir_max, args.cirrus_max, xy, buffer)
+        if sat is None:
+            return None
+        for v in SAT_VARS:
+            s[v] = sat[v]
+        return s
+    restat.attrs = dict(roi_half_size_m=half, roi_buffer_m=buffer, roi_structures=f'{ROI[site]["code"]}_structures.csv',
+                        roi=f'square of half-size {half:g} m minus the fixed structures + {buffer:g} m')
+    return restat
+
+
+def gather(files, site, level, glint=(GLINT_STATS, {}), restat=None):
     stats, kw = glint
     scenes, recs = [], []
     n_reglint = 0
@@ -367,6 +408,10 @@ def gather(files, site, level, glint=(GLINT_STATS, {})):
             s = s.load()
         if 'rec_Rtoa' not in s:
             continue
+        if restat is not None:
+            s = restat(s)
+            if s is None:
+                continue
         if (s.attrs.get('glint_stats', 'cm_iso'), s.attrs.get('glint_kw', '[]')) != (stats, repr(sorted(kw.items()))):
             s = reglint(s, stats, kw)
             n_reglint += 1
@@ -449,6 +494,10 @@ def main():
     p.add_argument('--end', default=None)
     p.add_argument('--window', type=float, default=2., help='half time window around the overpass (h)')
     p.add_argument('--half-size', type=float, default=600., help='half size of the box (m)')
+    p.add_argument('--roi', action='store_true',
+                   help='satellite statistics of the gathered file in the recommended ROI of the site (ROI: square '
+                        'minus the fixed structures + buffer), recomputed from the subsets for the cached scenes '
+                        '(the cache keeps the box of --half-size); output suffix _roi')
     p.add_argument('--swir-max', type=float, default=0.03)
     p.add_argument('--cirrus-max', type=float, default=0.01)
     p.add_argument('--s2-root', default=S2_ROOT)
@@ -473,7 +522,7 @@ def main():
     warnings.filterwarnings('ignore', category=RuntimeWarning)
 
     stats, kw = glint_kw(args)
-    suffix = output_suffix(stats, kw)
+    suffix = output_suffix(stats, kw) + ('_roi' if args.roi else '')
     ofile = opj(args.odir, f'{args.site}_{args.level}_s2_toa_matchup{suffix}.nc')
     if args.reglint:
         files = sorted(glob.glob(opj(args.odir, 'scenes', f'{args.site}_{args.level}', '*.nc')))
@@ -481,7 +530,11 @@ def main():
             # settings and provenance of the simulations of the reference file (only the glint is recomputed)
             attrs = {k: ref.attrs[k] for k in ['window_h', 'half_size_m', 'swir_max', 'cirrus_max', 'tile',
                                                'radcalnet_oc', 'aeronet_oc_db', 'created'] if k in ref.attrs}
-        out = gather(files, args.site, args.level, (stats, kw))
+        restat = make_restat(args.site, args.tile or attrs['tile'], args) if args.roi else None
+        out = gather(files, args.site, args.level, (stats, kw), restat)
+        if restat is not None:
+            attrs.update(restat.attrs)
+            attrs.pop('half_size_m', None)
         attrs['glint_recomputed'] = (f'{pd.Timestamp.now("UTC").isoformat()}, radcalnet_oc '
                                      f'{radoc.process.package_version()}')
         out.attrs.update(attrs)
@@ -518,9 +571,10 @@ def main():
     errors = [st for f, st in results if f is None]
     if errors:
         logging.warning(f'{len(errors)} scene(s) failed (see the log), they will be retried at the next run')
-    out = gather([f for f, _ in results if f is not None], args.site, args.level, (stats, kw))
-    out.attrs.update(window_h=args.window, half_size_m=args.half_size, swir_max=args.swir_max,
-                     cirrus_max=args.cirrus_max, tile=tile)
+    restat = make_restat(args.site, tile, args) if args.roi else None
+    out = gather([f for f, _ in results if f is not None], args.site, args.level, (stats, kw), restat)
+    out.attrs.update(window_h=args.window, swir_max=args.swir_max, cirrus_max=args.cirrus_max, tile=tile,
+                     **(restat.attrs if restat is not None else {'half_size_m': args.half_size}))
     out.to_netcdf(ofile)
     logging.info(f'{out.sizes["time"]} matchups, {out.sizes["rec"]} simulations -> {ofile}')
 
