@@ -73,7 +73,11 @@ if SET not in ("v1", "v2", "v3", "v4", "v5"):
 # 'data' is a link to such a directory. The cache is shared by all the workers and the sets; the surface
 # matrix files are cached per sza (older sosabs versions reused them across sza: LUTs made with them must
 # be rebuilt).
-OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "data", "" if SET == "v1" else SET)
+# simulations of SOS-ABS: $SOS_ABS_DATA, else the folder data/ next to the scripts if present, else
+# /data/sos_abs_coupling (the development machine; no symbolic link in the repository: setuptools would follow it)
+DATA = os.environ.get("SOS_ABS_DATA") or next(
+    (d for d in (os.path.join(HERE, "data"), "/data/sos_abs_coupling") if os.path.isdir(d)), os.path.join(HERE, "data"))
+OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(DATA, "" if SET == "v1" else SET)
 
 # v3: spectral regions (nm) and stride over the absorbing CKD intervals of each region
 V3_REGIONS = [((364, 684), 11),     # O3 Chappuis, NO2, O2 gamma (628 nm), H2O 590 / 650 nm
@@ -105,7 +109,7 @@ def ckd_wavelengths(regions=V3_REGIONS, tg_min=0.02, tg_max=0.99, air_mass=2., h
         out.append(1e4 / (0.5 * (nu_min[idx] + nu_max[idx])))   # um
     return np.sort(np.concatenate(out))
 N_WORKERS = int(sys.argv[3]) if len(sys.argv) > 3 else 32
-CACHE = os.path.join(HERE, "data", "cache")
+CACHE = os.path.join(DATA, "cache")
 
 # ---------------------------------------------------------------------------------------------------------------
 # v4: robustness of the coupling (see the docstring)
@@ -384,7 +388,7 @@ BASE_V4 = {"-ANG.Rad.NbGauss": 24, "-ANG.Aer.NbGauss": 40, "-SOS.View.Dphi": 5, 
            "-AP.HR": 8.0, "-AP.AerProfile.Type": 1, "-SURF.Type": 1, "-SURF.Ind": 1.33}
 SZA_TG_V4 = np.degrees(np.arccos(1 / np.array([1., 1.5, 2., 3., 4., 6., 8.5])))
 if SET == "v4":
-    OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "data", "v4")
+    OUTDIR = sys.argv[2] if len(sys.argv) > 2 else os.path.join(DATA, "v4")
     v4_main()
     sys.exit(0)
 

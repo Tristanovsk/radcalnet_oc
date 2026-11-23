@@ -21,7 +21,7 @@ sys.path.insert(0, HERE)
 import coupling as cp  # noqa: E402
 import ppld  # noqa: E402
 
-DATA_V3 = os.environ.get("SOS_ABS_V3", os.path.join(HERE, "data", "v3"))
+DATA_V3 = os.environ.get("SOS_ABS_V3", os.path.join(cp.DATA, "v3"))
 TABLE_FULL = os.path.join(HERE, "gas_coupling_ppld_full.csv")
 
 # windows of the 684-990 nm parameterization (coupling.WINDOWS) and new windows, by dominant absorber

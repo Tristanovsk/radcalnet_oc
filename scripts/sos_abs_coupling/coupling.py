@@ -25,8 +25,12 @@ import numpy as np
 import xarray as xr
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_V1 = os.path.join(HERE, "data")
-DATA_V2 = os.path.join(HERE, "data", "v2")
+# simulations of SOS-ABS: $SOS_ABS_DATA, else the folder data/ next to the scripts if present, else
+# /data/sos_abs_coupling (the development machine; no symbolic link in the repository: setuptools would follow it)
+DATA = os.environ.get("SOS_ABS_DATA") or next(
+    (d for d in (os.path.join(HERE, "data"), "/data/sos_abs_coupling") if os.path.isdir(d)), os.path.join(HERE, "data"))
+DATA_V1 = DATA
+DATA_V2 = os.path.join(DATA, "v2")
 TABLE = os.path.join(HERE, "..", "..", "radcalnet_oc", "data", "auxdata", "gas_coupling_eta.csv")
 
 # absorption windows of the parameterization; the O2-A band (head and R branch / P branch, either side of
