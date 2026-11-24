@@ -40,16 +40,32 @@ full radiative transfer simulations of the coupled absorption and scattering (se
 
 .. toctree::
    :maxdepth: 2
-   :caption: Tutorials
+   :caption: Getting started
 
-   tutorials/radcalnet_oc_aeronet_oc_quickstart
-   tutorials/radcalnet_oc_products
-   tutorials/radcalnet_oc_toa_simulation
-   tutorials/radcalnet_oc_aeronet_oc_toa
-   tutorials/radcalnet_oc_gaseous_transmittance
-   tutorials/radcalnet_oc_solar_irradiance
-   tutorials/radcalnet_oc_downwelling_irradiance
-   tutorials/sentinel3_radcalnet_oc_matchup
+   tutorials/getting_started
+
+.. toctree::
+   :maxdepth: 2
+   :caption: AERONET-OC and RadCalNet-OC products
+
+   tutorials/products
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Physics of the simulation
+
+   tutorials/physics
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Satellite Cal/Val
+
+   tutorials/calval
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Research
+
    tutorials/research/index
 
 .. toctree::
