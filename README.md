@@ -119,8 +119,16 @@ Rtoa_bands = spectral.convolve2(Rtoa).Rtoa
 
 ### From AERONET-OC data to the RadCalNet-OC products
 
-With the AERONET-OC database ([aeronet_oc_db](https://github.com/Tristanovsk/aeronet_oc_db)) and invRrs
-(`pip install "radcalnet_oc[invrrs]"`), the daily RadCalNet-OC products of a site (TOA reflectance at nadir every
+With the AERONET-OC database ([aeronet_oc_db](https://github.com/Tristanovsk/aeronet_oc_db)) and
+[invRrs](https://github.com/Tristanovsk/invRrs) 1.4, both installed from GitHub:
+
+```bash
+pip install "git+https://github.com/Tristanovsk/invRrs.git@v1.4.0"
+pip install "git+https://github.com/Tristanovsk/aeronet_oc_db.git"
+pip install "radcalnet_oc[invrrs,aeronet]"
+```
+
+the daily RadCalNet-OC products of a site (TOA reflectance at nadir every
 10 nm, direct sunglint and its flags, and a copy without the glinted measurements) are made in batch:
 
 ```bash
