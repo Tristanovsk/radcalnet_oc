@@ -26,6 +26,27 @@ or from the root of a clone of the repository:
 
    pip install .
 
+Optional dependencies: invRrs and the AERONET-OC database
+---------------------------------------------------------
+
+The simulation from AERONET-OC data (tutorials :doc:`tutorials/radcalnet_oc_aeronet_oc_quickstart` and
+:doc:`tutorials/radcalnet_oc_products`) needs two more packages, not on PyPI, installed from GitHub first:
+
+- `invRrs <https://github.com/Tristanovsk/invRrs>`__ (version 1.3 or later, 1.4.0 recommended): hyperspectral
+  reconstruction of the multispectral :math:`R_{rs}` (:py:class:`~radcalnet_oc.reconstruction.Reconstruction`);
+- `aeronet_oc_db <https://github.com/Tristanovsk/aeronet_oc_db>`__: local, up-to-date copy of the AERONET-OC
+  database.
+
+.. code-block:: bash
+
+   pip install "git+https://github.com/Tristanovsk/invRrs.git@v1.4.0"
+   pip install "git+https://github.com/Tristanovsk/aeronet_oc_db.git"
+   pip install "radcalnet_oc[invrrs,aeronet]"
+
+The version and settings of invRrs used are written in the attributes ``invrrs_*`` of the outputs
+(:py:func:`~radcalnet_oc.reconstruction.invrrs_version`). The RadCalNet-OC products v1.2.0 were made with
+invRrs 1.4.0.
+
 Look-up tables
 --------------
 
