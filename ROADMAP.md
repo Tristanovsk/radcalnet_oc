@@ -159,6 +159,32 @@ about 0.3 point.
       u_glint (is the glint uncertainty large enough at 35-55 deg?), test the ERA5 or CAMS wind and the wind
       variability within the hour (tasks 7, 29), and repeat per glint-angle bin on the Sentinel-3 OLCI matchups
       (Oa17-Oa21, more scenes at CORO); in the statements, show the regression per glint-angle class.
+    - *Near-infrared term, OLCI and MSI together (27 November 2026, `scripts/aerosol_phase`)*: the same additive
+      excess is seen by both sensors at 865 nm: +1.6 to +2.4e-3 for OLCI (three sites, S3A and S3B; slope 1.02,
+      intercept 1.9e-3) and +1.6 to +1.9e-3 for MSI (VEIT, CORO, ROI, heavy-tailed glint). It is nearly flat from 709
+      to 885 nm. The two sensors are calibrated independently, so it is a model or input term. It comes from below or
+      inside the water vapour: in-band / continuum, it is attenuated like the simulated signal (OLCI 940 nm 0.52
+      against 0.45, 900 nm 0.82 against 0.78; MSI B9 0.56 against 0.38). This rules out a sensor offset, stray light
+      or high cirrus as the main term. In OLCI it is not glint: it is largest beyond 70 deg of glint angle and for the
+      scenes without glint flag. It grows with the AOT and the viewing zenith angle, decreases with the sun zenith
+      angle (about 0 in winter, 2.7e-3 in summer), and has a backscatter signature: dR = c0 + dP(theta)
+      tau865 / (4 mu_s mu_v) gives the same dP curve for both sensors, from about -0.04 at 90-130 deg to +0.03 at
+      150-170 deg, also at a fixed sun zenith angle. *AERONET almucantar phase functions at AAOT* (4670 V3
+      retrievals 2018-2026, Level 1.5 with the Level 2 flag; mixture refitted per retrieval, 95 % WASO_rh0): omega*P
+      at 865 nm is 12-22 % above the OPAC mixture, +0.03 at 90-150 deg and +0.05 at 160-170 deg. No OPAC component
+      closes it: humid WASO and the coarse models have less backscatter than WASO_rh0. The single-scattering
+      prediction with the same-day difference explains about half of the VEIT excess: OLCI 1.3 of 2.4e-3 (slope
+      0.59 +/- 0.08), MSI 0.9 of 2.3e-3 (slope 0.80 +/- 0.19). A control with the same tau / (mu_s mu_v) scaling but
+      no angular shape has no skill (R2 0.003 against 0.05-0.075). About 1e-3 remains where the prediction is zero,
+      partly above the water vapour (missing Rayleigh above the vapour, cirrus). Caveats: the almucantar measures up
+      to 2 sza only (median 124 deg at AAOT), so the backscatter part is the extrapolation of the retrieval (over the
+      measured range the difference falls to +0.02 at 90-120 deg and about 0 at 150-160 deg); the AERONET single
+      scattering albedo is unreliable at low AOD (about 2 of the 13 %). Not related to the HYPERNETS irradiance deficit
+      of aqua3cs (5-9 % below the simulation, multiplicative, growing with the sun zenith angle, while the direct beam
+      of radcalnet_oc matches Beer-Lambert with the AERONET AOT within 0.15 % at 865 nm). Next: OSOAA runs of a few
+      VEIT matchups with the AERONET size distribution and refractive index instead of OPAC; the principal-plane or
+      hybrid scans for the backscatter; inversions at GABU and CORO; an aerosol model with AERONET-like backscatter
+      (narrower fine mode) in the LUT, if confirmed.
 11. **Aerosol retrieval by default** when the spectral AOT is available (`kernel.Aerosol` is used only when
     called explicitly). *Deprioritised:* task 10 found no gain from the mixture in the NIR-SWIR; keep it for the
     consistency with the AOT spectrum, and revisit with the aerosol term of the uncertainty budget (task 17).
