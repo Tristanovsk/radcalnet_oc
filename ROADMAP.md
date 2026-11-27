@@ -61,7 +61,7 @@ about 0.3 point.
   keeps the coupling and the pressure scaling on its study branch `feature/abs_scat_coupling` (3.2.0.dev0).
 
 **Suggested order (27 November 2026):** 27 and the Sentinel-3 full run and tutorial rerun of 31 are done.
-14 (end-to-end B10 check with the v5 cores, running; then the Rayleigh above the water vapour, also a candidate for
+14 (end-to-end B10 with the v5 cores done, half of the observed floor; then the Rayleigh above the water vapour, also a candidate for
 the aerosol-independent part of the NIR excess), 30 (GABU-U); then the next steps of 10 (OSOAA with the AERONET
 aerosols of AAOT, inversions at GABU and CORO) and the open points of 31 (S3B spectral responses, VEIT drift); then 9
 with 8 alongside, 24 and 26; then 15, 17 and 28.
@@ -322,6 +322,17 @@ with 8 alongside, 24 and 26; then 15, 17 and 28.
     1.16e-3 (SOS) against 0.92e-3 at AOT 0.05 and 0.5 g cm-2. Next: rerun `check_fullrange_s2.py` with this table
     (the end-to-end B10 was 0.20e-3 with the v3 fit, against 0.50e-3 observed: the gap is larger than the 15 % of
     the fit, so look at the band integration and the H2O table of the package in the cores).
+    *End-to-end check with the v5 table (27 November 2026, `check_fullrange_s2.py --table
+    gas_coupling_ppld_full_v5.csv`, same 59 VEIT L2.0 matchups as the v3 run; outputs in
+    `/data/radcalnet/studies/fullrange_check`)*: B10 without cirrus (N 30) is 0.26e-3 with v5 against 0.20e-3 with
+    v3 (median, +29 %), 0.50e-3 observed and 0.55e-3 for the single-scattering Rayleigh above the water vapour; the
+    correlation with the L1C stays 0.74. The v5 simulation reaches 0.51 of the observation (0.60 below 15 kg m-2 of
+    water vapour, 0.49 above), against 0.92 of SOS-ABS in the table check of `fullrange_v5.py` (dark water, AOT 0.05,
+    0.5 g cm-2). The other bands do not change (B11 by 1e-6). The refit of the cores is not the limiting term: the
+    end-to-end B10 is still half of the observation, so the gap is in the chain between the table and the band (band
+    integration of the saturated core, H2O absorption table of the package against SOS-ABS, wetter atmospheres than
+    the table check) or in the missing Rayleigh above the water vapour itself. Next: B10 of the package against
+    SOS-ABS at the matchup water vapour (2-3 g cm-2), then the Rayleigh-above term.
 15. **Bidirectional Rrs.** Adapt the normalised AERONET-OC Rrs to the viewing and solar geometry of the
     satellite (f/Q tables, or the invRrs reconstruction at the satellite geometry instead of nadir); possibly
     part of the -3 to -4 % at 443 nm. Use the per-band viewing angles of MSI.

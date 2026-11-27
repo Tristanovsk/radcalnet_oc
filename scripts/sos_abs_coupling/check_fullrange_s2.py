@@ -19,7 +19,14 @@ is simulated with the package table and with the candidate (geometry, spectral r
 (scenes without cirrus: B10 excess over the Rayleigh above the water vapour below 1e-4) and the change of the other
 bands.
 
-Usage: python check_fullrange_s2.py [--n N] [--n-jobs 4] [--out csv]
+The candidate windows are read from ``--table``: gas_coupling_ppld_full.csv (fit of set v3, default) or
+gas_coupling_ppld_full_v5.csv (windows H2O-1380 and H2O-1880 refitted on v3 + v5 with the saturated cores,
+fullrange_v5.py).
+
+Results (VEIT L2.0, 30 matchups without cirrus, median B10): v3 0.20e-3, v5 0.26e-3, L1C 0.50e-3, single-scattering
+Rayleigh above the water vapour 0.55e-3 (20 November and 27 November 2026); the other bands are unchanged.
+
+Usage: python check_fullrange_s2.py [--n N] [--n-jobs 4] [--table csv] [--out csv]
 '''
 import argparse
 import os
@@ -45,10 +52,10 @@ SITE, LEVEL, CODE = 'AAOT', 'lev20', 'AAOT_lev20'
 BANDS = [865, 945, 1375, 1610, 2190]
 
 
-def candidate_table():
-    '''Package table (684-990 nm) and the recommended full-range windows beyond 990 nm.'''
+def candidate_table(path=FULL_TABLE):
+    '''Package table (684-990 nm) and the recommended full-range windows beyond 990 nm of the table ``path``.'''
     base = pd.read_csv(GAS_COUPLING_PPLD_FILE, comment='#')
-    full = pd.read_csv(FULL_TABLE, comment='#')
+    full = pd.read_csv(path, comment='#')
     return pd.concat([base, full[full.window.isin(NEW_WINDOWS)]], ignore_index=True)
 
 
@@ -73,9 +80,9 @@ def run_scene(product, path, lon, lat, records, table):
     return None if rec is None else rec.Rtoa.isel(time=0).sel(wl=BANDS).values
 
 
-def task(product, path, lon, lat, records):
+def task(product, path, lon, lat, records, table_path=FULL_TABLE):
     out = {'product': product}
-    for name, table in (('ref', None), ('new', candidate_table())):
+    for name, table in (('ref', None), ('new', candidate_table(table_path))):
         r = run_scene(product, path, lon, lat, records, table)
         if r is None:   # Rrs reconstruction failed for the measurement
             return None
@@ -88,8 +95,10 @@ def main():
     p.add_argument('--n', type=int, default=60, help='number of matchups (half without cirrus, half at random)')
     p.add_argument('--n-jobs', type=int, default=4)
     p.add_argument('--odir', default='/data/radcalnet/matchups/sentinel2/v1.2.0')
+    p.add_argument('--table', default=FULL_TABLE, help='full-range coupling table of the candidate windows')
     p.add_argument('--out', default=None, help='CSV of the band reflectances per scene')
     args = p.parse_args()
+    print('candidate table:', os.path.basename(args.table))
 
     _, ds = load(args.odir, CODE)
     r_above, _ = rayleigh_above(ds)
@@ -118,7 +127,7 @@ def main():
         tasks.append((row['product'], path.iloc[0], lon, lat, rec.isel(time=[nearest])))
 
     from joblib import Parallel, delayed
-    res = Parallel(n_jobs=args.n_jobs)(delayed(task)(*t) for t in tasks)
+    res = Parallel(n_jobs=args.n_jobs)(delayed(task)(*t, table_path=args.table) for t in tasks)
     res = [r for r in res if r is not None]
     out = pick.merge(pd.DataFrame(res), on='product')
     if args.out:
