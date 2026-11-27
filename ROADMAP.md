@@ -60,9 +60,11 @@ about 0.3 point.
   hGRS 2.1.0 has the solar spectrum as a setting of its L1 drivers (tsis by default, thuillier2003 available); GRS
   keeps the coupling and the pressure scaling on its study branch `feature/abs_scat_coupling` (3.2.0.dev0).
 
-**Suggested order (22 November 2026):** 27 (invRrs provenance, now urgent), 31 (Sentinel-3 run and tutorial rerun),
-14 (v5 cores, then the Rayleigh above the water vapour), 30 (GABU-U); then 9 with 8 alongside, the open points of 10,
-24 and 26; then 15, 17 and 28.
+**Suggested order (27 November 2026):** 27 and the Sentinel-3 full run and tutorial rerun of 31 are done.
+14 (end-to-end B10 check with the v5 cores, running; then the Rayleigh above the water vapour, also a candidate for
+the aerosol-independent part of the NIR excess), 30 (GABU-U); then the next steps of 10 (OSOAA with the AERONET
+aerosols of AAOT, inversions at GABU and CORO) and the open points of 31 (S3B spectral responses, VEIT drift); then 9
+with 8 alongside, 24 and 26; then 15, 17 and 28.
 
 ## Tier 1: quick wins (hours to a day each)
 
@@ -274,10 +276,28 @@ about 0.3 point.
 31. **Sentinel-3 OLCI Cal/Val monitoring** (`notebook/sentinel3/sentinel3_radcalnet_oc_toa_calval_monitoring.ipynb`):
     ratio OLCI / simulation per band, site and platform at VEIT, GABU and CORO with the 1.2 model, the uncertainty
     budget and the glint flags. Quick run (VEIT, summer 2020): OLCI 1-2.5 % above the simulation in the blue,
-    within u_sim; S3A - S3B +1.2 to +1.9 % (not significant); O2-A (Oa13) and Oa14 still too shallow. Next: the
-    full 2016-2026 run (in progress), drift and S3A - S3B over the archive, the S3B spectral responses (S3A shape
-    shifted today), an OLCI model gap (task 17), and the rerun of the Sentinel-3 tutorial (outputs still those of
-    1.1).
+    within u_sim; S3A - S3B +1.2 to +1.9 % (not significant); O2-A (Oa13) and Oa14 still too shallow.
+    *Full run done (22 November 2026)*: 2027 matchups from April 2016 to August 2026 (VEIT 830, CORO 624, GABU 573),
+    1735 without high or near-specular glint (`/data/radcalnet/matchups/sentinel3/v1.2.0`). Statement figures and
+    tables (`scripts/radcalnet_products/s3_statement_figures.py`) are in VEIT-U and CORO-U (media v1.3). Tutorial
+    rerun with 1.2.0 (27 November 2026). Findings:
+    - *Visible*: OLCI is above the simulation by +1 to +3 % at 400-560 nm, within u_sim (1.1-4.2 %).
+    - *S3A - S3B*: significant over the archive, +1.2 to +2.5 % in the visible (90 % bootstrap interval excludes 0;
+      Oa03 +2.2 % at VEIT, +2.1 % at CORO), smaller and not significant beyond 750 nm. This is a sensor term, and it
+      is consistent between the sites.
+    - *Near infrared*: an additive excess of +1.6 to +2.4e-3 at 865 nm (ratio +10 to +13 % at Oa17, +26 to +33 % at
+      Oa21), the same as MSI. It grows with the viewing zenith angle, the AOT and toward backscattering, and is not
+      glint (task 10, `scripts/aerosol_phase`). Oa21 has a larger excess than Oa17 (3.0-3.8e-3), probably specific
+      to OLCI.
+    - *Absorption bands*: Oa13 is 5-8 % below the simulation (OLCI deeper than simulated), beyond the NIR excess
+      (task 26). Oa19 and Oa20 are absorbed like the surface signal.
+    - *Drift* (Theil-Sen, 90 % interval): none at CORO and GABU (|drift| < 0.6 %/yr, intervals include 0). At VEIT,
+      S3A drifts by +0.1 %/yr at 443 nm, +0.3 at 665 nm, +0.7 at 865 nm and +1.4 at 1020 nm (all significant), and
+      S3B by +0.15 %/yr at 443 nm. Seen at one site only and growing with the wavelength, so likely a change at VEIT
+      (inputs, NIR term) rather than a sensor drift: to be checked.
+    Next: the S3B spectral responses (the S3A response shifted to the detector lambda0 is used for both
+    platforms), an OLCI model gap (task 17; u_model is derived at VZA < 12 deg and the NIR excess grows with the
+    VZA), the VEIT drift, and the per-band gains with the uncertainty budget.
 
 ## Tier 3: substantial (weeks)
 
